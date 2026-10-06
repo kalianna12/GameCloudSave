@@ -1,0 +1,8 @@
+.venv/
+data/
+test-data/
+__pycache__/
+*.dpapi
+build/
+dist/
+*.spec
