@@ -12,6 +12,12 @@ ApplicationWindow {
     signal cloudSetupRequested()
     function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text} }
     property var currentResult: backend.matchResults.find(function(r) { return r.id===matcher.selectedId }) || ({})
+    function manualStartDirectory() {
+        var candidates=currentResult.candidates || []
+        if(candidates.length && candidates[0].path) return candidates[0].path
+        var local=backend.gameSettings(selectedId)
+        return local.save_dir || local.install_dir || ""
+    }
     function openMatcher(ident) {
         var s=backend.settings
         enabledSwitch.checked=s.ai_enabled; modelName.text=s.ai_model; apiKey.text=""
@@ -111,7 +117,7 @@ ApplicationWindow {
                         model: matcher.currentResult.checked || []
                         Label { required property var modelData; text: (modelData.exists ? "✓ 存在  " : "× 未找到  ")+modelData.path; Layout.fillWidth: true; wrapMode: Text.Wrap; color: modelData.exists ? "#a6d88f" : "#a4978c"; font.pixelSize: 12 }
                     }
-                    Button { text: "匹配不到？手动选择存档目录"; enabled: !backend.busy && !!matcher.selectedId; onClicked: { var p=backend.pickFolder(""); if(p) backend.saveGame(matcher.selectedId,{save_dir:p}) } }
+                    Button { text: "匹配不到？手动选择存档目录"; enabled: !backend.busy && !!matcher.selectedId; onClicked: { var p=backend.pickFolder(matcher.manualStartDirectory()); if(p) backend.saveGame(matcher.selectedId,{save_dir:p}) } }
                 }
             }
         }
