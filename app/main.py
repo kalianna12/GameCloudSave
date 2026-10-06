@@ -96,7 +96,9 @@ class Bridge(QObject):
             return
         self._busy = True
         self._status = {'import': '正在导入 Playnite 游戏与封面…', 'cloud': '先创建本地快照，再尝试上传…',
-                        'list': '正在连接 DAV 并读取目录…', 'watch': '检查游戏运行状态…'}.get(action, '正在处理…')
+                        'list': '正在连接 DAV 并读取目录…', 'watch': '检查游戏运行状态…',
+                        'cloud-organize':'正在整理旧备份并校验文件…','cloud-mkdir':'正在创建文件夹…',
+                        'cloud-download':'正在下载文件…'}.get(action, '正在处理…')
         self.changed.emit()
         def work():
             try:
@@ -113,7 +115,7 @@ class Bridge(QObject):
             self._status = error
         elif action == 'import':
             self._status = f'已导入 {result} 款游戏 · 封面已缓存 · 重复导入不会产生重复项'
-        elif action == 'list':
+        elif action in ('list','cloud-mkdir'):
             self._dirs = result['entries']
             self._cloud_path = result['path']
             self._preview = {}
@@ -196,6 +198,25 @@ class Bridge(QObject):
 
     @Slot('QVariantMap')
     def configureCloud(self,values): self.job('cloud-config',lambda:self.store.configure_cloud(values))
+
+    @Slot(str,'QVariantMap',result=str)
+    def cloudGamePath(self,ident,values):
+        try: return self.store.cloud_directory(ident,values=values)
+        except ValueError: return ''
+
+    @Slot(str,str,'QVariantMap')
+    def createCloudFolder(self,parent,name,values):
+        self.job('cloud-mkdir',lambda:self.store.create_cloud_folder(parent,name,values))
+
+    @Slot(str,'QVariantMap','QVariantMap')
+    def downloadCloud(self,folder,entry,values):
+        if self._busy:return
+        destination=QFileDialog.getSaveFileName(None,'保存云端文件',str(Path.home()/'Downloads'/entry['Name']))[0]
+        if destination:self.job('cloud-download',lambda:self.store.download_cloud(folder,entry,destination,values))
+
+    @Slot(str,str,'QVariantMap')
+    def organizeCloud(self,ident,folder,values):
+        self.job('cloud-organize',lambda:self.store.organize_cloud(ident,folder,values))
 
     @Slot()
     def retryAll(self):
@@ -402,7 +423,8 @@ class Bridge(QObject):
                 self._running[ident] = running
                 if running != previous:
                     archive = self.store.backup(ident, 'game_start' if running else 'game_stop')
-                    try: self.store.upload(ident, archive)
+                    try:
+                        if self.store.settings.get('watch_upload',True): self.store.upload(ident, archive)
                     except Exception: pass
                     count += 1
             return f'监听中 · 本次完成 {count} 个自动快照' if count else '监听中 · 本地备份优先'

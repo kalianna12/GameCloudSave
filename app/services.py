@@ -71,7 +71,8 @@ class Store:
                     'snapshots': str(self.profile / 'snapshots'), 'rclone': str(RESOURCES / 'tools/rclone.exe') if (RESOURCES / 'tools/rclone.exe').exists() else shutil.which('rclone') or 'rclone',
                     'dav_url': 'http://10.208.190.125:5244/dav/', 'dav_user': 'admin', 'cloud_folder': '',
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
-                    'ai_enabled': False, 'ai_model': 'deepseek-flash'}
+                    'ai_enabled': False, 'ai_model': 'deepseek-flash',
+                    'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True}
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         self.games = read_json(self.root / 'library.json', [])
         self.local = read_json(self.profile / 'games.json', {})
@@ -211,14 +212,25 @@ class Store:
                             'RCLONE_CONFIG_GAMECLOUD_PASS': obscured.stdout.strip()})
         empty_config = self.profile / 'rclone-empty.conf'
         empty_config.touch(exist_ok=True)
-        args = [settings['rclone'], '--config', str(empty_config), '--contimeout', '6s', '--timeout', '20s', '--retries', '1']
+        retries=max(1,min(3,int(settings.get('cloud_retries',1))))
+        timeout=max(10,min(120,int(settings.get('cloud_timeout',20))))
+        args = [settings['rclone'], '--config', str(empty_config), '--contimeout', '6s', '--timeout', str(timeout)+'s', '--retries', str(retries)]
         if command == 'list':
             args += ['lsjson', 'gamecloud:' + folder.strip('/')]
         else:
             args += command
-        result = run_process(args, env=environment, timeout=50)
+        result = run_process(args, env=environment, timeout=timeout*retries+30)
         if result.returncode:
             # Do not surface raw subprocess output containing server/account details.
+            detail=result.stderr.casefold()
+            if '401' in detail or 'unauthorized' in detail:
+                raise ValueError('DAV 登录失败：请在连接设置中检查用户名和密码')
+            if '403' in detail or 'forbidden' in detail:
+                raise ValueError('DAV 没有读写权限：请选择可写的挂载文件夹')
+            if 'timed out' in detail or 'timeout' in detail:
+                raise ValueError('DAV 连接超时：请检查网络，或在传输选项中增加超时和尝试次数')
+            if '404' in detail or 'not found' in detail:
+                raise ValueError('DAV 目录或文件暂不可用：请刷新目录后重试')
             raise ValueError('DAV 操作失败：检查地址、账号密码、网络及目录读写权限')
         return sorted(json.loads(result.stdout),key=lambda row:(not row['IsDir'],row['Name'].casefold())) if command == 'list' else result.stdout
 
@@ -288,15 +300,53 @@ class Store:
         return archive
 
     def upload(self, ident, archive):
-        folder = self.settings['cloud_folder'].strip('/')
         if not self.settings['cloud_folder'].strip():
             raise ValueError('本地备份已完成；请先在系统设置选择云端根目录')
-        target = 'gamecloud:' + '/'.join(part for part in (folder, ident, archive.name) if part)
+        archive=Path(archive)
+        save_dir=self.local.get(ident,{}).get('save_dir','')
+        # Retried archives retain the save folder they backed up, even if local settings changed.
+        import zipfile
+        with zipfile.ZipFile(archive) as zipped:
+            try:
+                info=zipped.getinfo('_snapshot_meta.json')
+                if info.file_size>65536: raise ValueError('备份元数据过大')
+                metadata=json.loads(zipped.read(info))
+                if metadata.get('game')!=ident: raise ValueError('备份不属于所选游戏')
+                save_dir=metadata.get('save_dir') or save_dir
+            except KeyError: pass
+        if not save_dir: raise ValueError('备份中缺少存档目录信息')
+        target = 'gamecloud:' + self.cloud_directory(ident,save_dir) + '/' + archive.name
         self.rclone(['copyto', str(archive), target, '--transfers', '1', '--checkers', '2'])
         core = self.core()
         with closing(core.connect_db()) as conn:
             conn.execute('UPDATE snapshots SET uploaded=1,cloud_ref=? WHERE archive_path=?', (target, str(archive)))
             conn.commit()
+
+    def cloud_directory(self,ident,save_dir=None,values=None):
+        from cloud_paths import directory
+        return directory(self.games,ident,save_dir or self.local.get(ident,{}).get('save_dir',''),{**self.settings,**(values or {})})
+
+    def create_cloud_folder(self,parent,name,values=None):
+        from cloud_paths import folder_path
+        name=str(name).strip()
+        if not name or '/' in name or '\\' in name or name in ('.','..'):
+            raise ValueError('请输入一个文件夹名，不能包含路径分隔符')
+        target='/'.join(p for p in (folder_path(parent),name) if p)
+        self.rclone(['mkdir','gamecloud:'+target],values=values)
+        return {'path':folder_path(parent),'entries':self.rclone('list',parent,values)}
+
+    def download_cloud(self,folder,entry,destination,values=None):
+        from cloud_paths import folder_path
+        name=entry['Name']
+        if entry.get('IsDir') or '/' in name or '\\' in name or name in ('.','..'):
+            raise ValueError('请选择一个文件')
+        remote='gamecloud:'+'/'.join(p for p in (folder_path(folder),name) if p)
+        self.rclone(['copyto',remote,str(destination)],values=values)
+        return '文件已下载：'+str(destination)
+
+    def organize_cloud(self,ident,old_folder,values=None):
+        from cloud_management import organize
+        return organize(self,ident,old_folder,values)
 
     def history(self, ident):
         core = self.core()

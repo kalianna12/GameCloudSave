@@ -1,4 +1,4 @@
-# GameCloudSave V1.3 工作目录
+# GameCloudSave V1.4 工作目录
 
 源码从 D:/Playground/06_脚本与生成器 复制迁入 legacy，保留原位置以便回退。当前便携版 EXE 不变。
 
@@ -7,11 +7,11 @@
 - tests：隔离验证脚本。
 - test-data：仅测试数据，不连接真实游戏存档。
 
-V1.3 已完成，双击上级目录“启动新版.bat”。优先运行 dist/GameCloudSave-V1.3 下的独立 EXE；旧版本二进制保留，源码运行环境也已配置。
+V1.4 已完成，双击上级目录“启动新版.bat”。优先运行 dist/GameCloudSave-V1.4 下的独立 EXE；旧版本二进制保留，源码运行环境也已配置。
 
 新 UI 在 ui，Python 服务与界面桥接在 app。共享游戏清单和封面在 data，电脑独立设置在 data/machines/<机器与用户标识>。密码/API Key 使用 Windows DPAPI 保存，不在 JSON 中保存明文。启动脚本把共享数据位置指定为 workspace/data。
 
-当前界面与测试说明见 docs/V1.3界面与高分屏.md，存档工作流程见 docs/V1.2修复与自动备份.md。旧文档保留为历史记录。
+云端目录与管理见 docs/V1.4云端目录与管理.md，界面说明见 docs/V1.3界面与高分屏.md，存档工作流程见 docs/V1.2修复与自动备份.md。
 
 开发测试（在 workspace 下执行）：
 

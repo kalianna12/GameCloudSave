@@ -1,6 +1,10 @@
 @echo off
 cd /d "%~dp0workspace"
 set "GAMECLOUD_DATA=%~dp0workspace\data"
+if exist "dist\GameCloudSave-V1.4\GameCloudSave-V1.4.exe" (
+  start "" "dist\GameCloudSave-V1.4\GameCloudSave-V1.4.exe"
+  exit /b 0
+)
 if exist "dist\GameCloudSave-V1.3\GameCloudSave-V1.3.exe" (
   start "" "dist\GameCloudSave-V1.3\GameCloudSave-V1.3.exe"
   exit /b 0

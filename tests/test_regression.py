@@ -55,7 +55,7 @@ class Regression(unittest.TestCase):
         with patch.object(self.store, 'rclone', return_value='') as rclone:
             self.assertEqual(self.store.retry(self.ident), 1)
             args = rclone.call_args.args[0]
-            self.assertTrue(args[2].startswith('gamecloud:' + self.ident + '/'))
+            self.assertTrue(args[2].startswith('gamecloud:中文游戏存档测试/游戏自带存档/'))
         self.assertTrue(self.store.history(self.ident)[0]['uploaded'])
 
     def test_machine_paths_and_credentials_isolated(self):
