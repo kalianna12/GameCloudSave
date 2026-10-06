@@ -75,6 +75,8 @@ class Store:
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         self.games = read_json(self.root / 'library.json', [])
         self.local = read_json(self.profile / 'games.json', {})
+        self.match_report = read_json(self.profile / 'match-report.json', [])
+        self.thumbnails = read_json(self.root/'thumbnail-index.json',{})
 
     def save_settings(self, values):
         values = dict(values)
@@ -84,6 +86,7 @@ class Store:
             (self.profile / 'ai-key.dpapi').write_bytes(protect(ai_key.encode('utf-8')))
         if password:
             (self.profile / 'credential.dpapi').write_bytes(protect(password.encode('utf-8')))
+        self.settings.update(read_json(self.profile/'settings.json',{}))
         self.settings.update(values)
         write_json(self.profile / 'settings.json', self.settings)
 
@@ -109,7 +112,8 @@ class Store:
             raise ValueError('请在系统设置中分别选择 Playnite 程序目录和 library 数据目录')
         with tempfile.TemporaryDirectory(dir=self.profile) as temporary:
             temporary = Path(temporary)
-            shutil.copy2(library / 'games.db', temporary / 'games.db')
+            try: shutil.copy2(library / 'games.db', temporary / 'games.db')
+            except PermissionError: raise ValueError('Playnite 正在占用游戏库；请关闭 Playnite 后再导入。现有游戏列表仍可使用。') from None
             result = run_process(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                                   str(RESOURCES / 'scripts/export_playnite.ps1'), '-AssemblyPath', str(dll),
                                   '-DatabasePath', str(temporary / 'games.db'), '-OutputPath', str(temporary / 'games.json')], timeout=60)
@@ -134,13 +138,55 @@ class Store:
                                'cover': cover, 'installed': bool(row.get('IsInstalled')), 'source': 'Playnite'}
             # Installation paths are specific to the importing computer.
             self.local[ident] = {**self.local.get(ident, {}), 'install_dir': row.get('InstallDirectory') or '', 'installed':bool(row.get('IsInstalled'))}
+            self.update_launch_actions(row,ident)
             count += 1
         self.games = sorted(existing.values(), key=lambda g: (not g['installed'], g['name'].casefold()))
         write_json(self.root / 'library.json', self.games)
         write_json(self.profile / 'games.json', self.local)
+        self.prepare_thumbnails()
         return count
 
+    def update_launch_actions(self,row,ident):
+        direct=[]
+        installation=row.get('InstallDirectory') or ''
+        for action in row.get('GameActions') or []:
+            if not action.get('IsPlayAction',False) or action.get('Type','File')!='File': continue
+            path=(action.get('Path') or '').replace('{InstallDir}',installation)
+            arguments=(action.get('Arguments') or '').replace('{InstallDir}',installation)
+            if '{' in path or '{' in arguments: continue
+            if path and not Path(path).is_absolute() and installation: path=str(Path(installation)/path)
+            if path.lower().endswith('.exe') and Path(path).is_file():
+                direct.append({'exe':path,'arguments':arguments,
+                               'working_dir':(action.get('WorkingDir') or installation).replace('{InstallDir}',installation)})
+        if len(direct)==1 and not any(row.get(field) for field in ('PreScript','PostScript','GameStartedScript')):
+            self.local.setdefault(ident,{})
+            for field,value in direct[0].items(): self.local[ident].setdefault(field,value)
+            self.local[ident].setdefault('launch_mode','direct')
+
+    def prepare_thumbnails(self):
+        from PySide6.QtGui import QImageReader
+        directory=self.root/'thumbnails'
+        directory.mkdir(parents=True,exist_ok=True)
+        for game in self.games:
+            if not game.get('cover'): continue
+            source=self.root/'covers'/Path(game['cover']).name
+            if not source.exists(): continue
+            fingerprint=hashlib.sha256((source.name+str(source.stat().st_size)+str(source.stat().st_mtime_ns)).encode()).hexdigest()[:12]
+            target=directory/(game['id']+'-'+fingerprint+'.jpg')
+            if target.exists():
+                self.thumbnails[game['id']]=target.name
+                continue
+            reader=QImageReader(str(source)); size=reader.size()
+            if size.width()<=0: continue
+            from PySide6.QtCore import QSize
+            reader.setScaledSize(QSize(360,round(size.height()*360/size.width())))
+            image=reader.read()
+            if not image.isNull() and image.save(str(target),'JPEG',90): self.thumbnails[game['id']]=target.name
+        write_json(self.root/'thumbnail-index.json',self.thumbnails)
+
     def rclone(self, command, folder='', values=None):
+        if command=='list' and '..' in folder.replace('\\','/').split('/'):
+            raise ValueError('浏览路径不能包含上级跳转符号')
         settings = {**self.settings, **(values or {})}
         password = settings.pop('password', '') or self.password()
         if not password:
@@ -161,14 +207,33 @@ class Store:
         empty_config.touch(exist_ok=True)
         args = [settings['rclone'], '--config', str(empty_config), '--contimeout', '6s', '--timeout', '20s', '--retries', '1']
         if command == 'list':
-            args += ['lsjson', 'gamecloud:' + folder.strip('/'), '--dirs-only']
+            args += ['lsjson', 'gamecloud:' + folder.strip('/')]
         else:
             args += command
         result = run_process(args, env=environment, timeout=50)
         if result.returncode:
             # Do not surface raw subprocess output containing server/account details.
             raise ValueError('DAV 操作失败：检查地址、账号密码、网络及目录读写权限')
-        return json.loads(result.stdout) if command == 'list' else result.stdout
+        return sorted(json.loads(result.stdout),key=lambda row:(not row['IsDir'],row['Name'].casefold())) if command == 'list' else result.stdout
+
+    def preview_cloud(self,folder,entry,values=None):
+        name=entry['Name']
+        if '/' in name or '\\' in name or name in ('.','..'): raise ValueError('无效文件名')
+        target='gamecloud:'+ '/'.join(part for part in (folder.strip('/'),name) if part)
+        suffix=Path(name).suffix.casefold()
+        result={'name':name,'size':entry.get('Size',0),'modified':entry.get('ModTime',''),
+                'mime':entry.get('MimeType',''),'path':target,'text':'','image':''}
+        if entry.get('IsDir'):
+            result['text']='双击该文件夹进入，查看里面的目录与文件。'
+        elif suffix in ('.json','.txt','.log','.ini','.md','.yaml','.yml','.xml','.csv'):
+            result['text']=self.rclone(['cat',target,'--head','32768'],values=values)[:32768]
+        elif suffix in ('.jpg','.jpeg','.png','.webp') and 0<=entry.get('Size',0)<=4*1024*1024:
+            preview=self.profile/'previews'/(hashlib.sha256(target.encode()).hexdigest()+suffix)
+            preview.parent.mkdir(parents=True,exist_ok=True)
+            self.rclone(['copyto',target,str(preview)],values=values)
+            result['image']=str(preview)
+        else: result['text']='此类型提供文件信息预览；快照 ZIP 不会自动解压。'
+        return result
 
     def core(self):
         if not hasattr(self, '_core'):
@@ -186,8 +251,9 @@ class Store:
             self._core = module
             module.init_db()
         cfg = self._core.load_config()
-        cfg['snapshot_root'] = self.settings['snapshots']
-        self._core.save_config(cfg)
+        if cfg.get('snapshot_root')!=self.settings['snapshots']:
+            cfg['snapshot_root'] = self.settings['snapshots']
+            self._core.save_config(cfg)
         return self._core
 
     def game(self, ident):
@@ -260,11 +326,15 @@ class Store:
 
     def launch(self, ident):
         local = self.local.get(ident, {})
-        if local.get('exe'):
+        mode=local.get('launch_mode','direct' if local.get('exe') else 'playnite')
+        if mode=='direct':
+            if not local.get('exe'): raise ValueError('直接启动需要在游戏设置中选择 EXE')
             exe = Path(local['exe'])
             if not exe.is_file():
                 raise ValueError('本机启动文件不存在，请重新设置')
-            subprocess.Popen([str(exe)], cwd=exe.parent)
+            arguments=local.get('arguments','').strip()
+            command=subprocess.list2cmdline([str(exe)])+(' '+arguments if arguments else '')
+            subprocess.Popen(command,cwd=local.get('working_dir') or exe.parent)
         else:
             base = Path(self.settings['playnite'])
             if not (base / 'Playnite.DesktopApp.exe').exists():
@@ -273,6 +343,33 @@ class Store:
             if not exe.is_file():
                 raise ValueError('本机 Playnite 路径不存在，请重新设置')
             subprocess.Popen([str(exe), '--start', str(uuid.UUID(ident))], cwd=base)
+
+    def match_game(self,ident):
+        from matching import scan
+        from ai_match import identify_game
+        import time
+        item=next(g for g in self.games if g['id']==ident)
+        local=self.local.get(ident,{})
+        started=time.monotonic()
+        identity={'english_name':'','aliases':[],'hints':[],'note':''}
+        ai_error=''
+        key_path=self.profile/'ai-key.dpapi'
+        if self.settings.get('ai_enabled'):
+            if key_path.exists():
+                try: identity=identify_game(item['name'],Path(local.get('install_dir','')).name,
+                                           protect(key_path.read_bytes(),True).decode(),self.settings['ai_model'])
+                except ValueError as error: ai_error=str(error)
+            else: ai_error='未配置 DeepSeek API Key，已使用本地规则'
+        candidates,checked=scan(item['name'],local,identity)
+        status='failed' if ai_error else 'review' if candidates else 'notfound'
+        message=ai_error or (f'找到 {len(candidates)} 个已验证候选；请确认后应用' if candidates else '未找到可确认的存档目录，可手动选择或补充别名后重试')
+        return {'id':ident,'name':item['name'],'status':status,'message':message,'candidates':candidates,'checked':checked,
+                'english_name':identity['english_name'],'aliases':identity['aliases'],'note':identity['note'],
+                'elapsed':round(time.monotonic()-started,2),'model':self.settings['ai_model'] if self.settings.get('ai_enabled') else '本地规则'}
+
+    def save_match_report(self,results):
+        self.match_report=results
+        write_json(self.profile/'match-report.json',results)
 
     def candidates(self, ident):
         import re

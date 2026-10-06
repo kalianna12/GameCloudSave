@@ -2,6 +2,9 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1] / 'ui/icons'
 root.mkdir(parents=True, exist_ok=True)
 paths = {
+    'success': '<path d="m5 12 4 4L19 6" stroke="#b4f49b" stroke-width="2"/>',
+    'failed': '<circle cx="12" cy="12" r="9" stroke="#ffae9e"/><path d="m9 9 6 6m0-6-6 6" stroke="#ffae9e"/>',
+    'spark': '<path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5z"/>',
     'play': '<path d="M8 5v14l11-7z" fill="#183018" stroke="none"/>',
     'settings': '<path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 2 3-1 2 3 3-1 1-3 3-1 1-3-2-2 1-3-2-2-3 1-2-2z"/><circle cx="12" cy="12" r="3"/>',
     'cloud': '<path d="M7 18a5 5 0 1 1 1-10 6 6 0 0 1 11 2 4 4 0 0 1-1 8H7"/><path d="m9 13 3-3 3 3m-3-3v10"/>',
