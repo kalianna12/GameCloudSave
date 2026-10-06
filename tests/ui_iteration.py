@@ -56,7 +56,7 @@ QMetaObject.invokeMethod(slider,'moved'); settle()
 assert abs(grid.property('cardWidth')-252)<.01
 assert spy.count()==0
 images=[i for i in all_items(window.contentItem()) if i.objectName()=='coverImage']
-assert images and all(i.property('sourceSize').width()==360 for i in images)
+assert images and all(i.property('sourceSize').width()>=251*window.devicePixelRatio() for i in images)
 buttons=[i for i in all_items(window.contentItem()) if i.objectName().startswith('action-')]
 assert buttons
 assert all(abs(button.x()+button.width()/2-button.parentItem().width()/2)<.6 for button in buttons)

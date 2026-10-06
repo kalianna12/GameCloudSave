@@ -77,6 +77,7 @@ class Store:
         self.local = read_json(self.profile / 'games.json', {})
         self.match_report = read_json(self.profile / 'match-report.json', [])
         self.thumbnails = read_json(self.root/'thumbnail-index.json',{})
+        self.high_thumbnails = read_json(self.root/'thumbnail-hd-index.json',{})
         self.identities = read_json(self.profile/'ai-identities.json',{})
 
     def save_settings(self, values):
@@ -166,24 +167,28 @@ class Store:
 
     def prepare_thumbnails(self):
         from PySide6.QtGui import QImageReader
+        from PySide6.QtCore import QSize
         directory=self.root/'thumbnails'
         directory.mkdir(parents=True,exist_ok=True)
+        old_index=dict(self.thumbnails)
+        old_high_index=dict(self.high_thumbnails)
         for game in self.games:
             if not game.get('cover'): continue
             source=self.root/'covers'/Path(game['cover']).name
             if not source.exists(): continue
             fingerprint=hashlib.sha256((source.name+str(source.stat().st_size)+str(source.stat().st_mtime_ns)).encode()).hexdigest()[:12]
-            target=directory/(game['id']+'-'+fingerprint+'.jpg')
-            if target.exists():
-                self.thumbnails[game['id']]=target.name
-                continue
-            reader=QImageReader(str(source)); size=reader.size()
-            if size.width()<=0: continue
-            from PySide6.QtCore import QSize
-            reader.setScaledSize(QSize(360,round(size.height()*360/size.width())))
-            image=reader.read()
-            if not image.isNull() and image.save(str(target),'JPEG',90): self.thumbnails[game['id']]=target.name
-        write_json(self.root/'thumbnail-index.json',self.thumbnails)
+            for limit,index,suffix in ((360,self.thumbnails,''),(1080,self.high_thumbnails,'-hd')):
+                target=directory/(game['id']+'-'+fingerprint+suffix+'.jpg')
+                if not target.exists():
+                    reader=QImageReader(str(source)); reader.setAutoTransform(True); size=reader.size()
+                    if size.width()<=0: continue
+                    width=min(limit,size.width())
+                    reader.setScaledSize(QSize(width,max(1,round(size.height()*width/size.width()))))
+                    image=reader.read()
+                    if image.isNull() or not image.save(str(target),'JPEG',92): continue
+                index[game['id']]=target.name
+        if self.thumbnails!=old_index: write_json(self.root/'thumbnail-index.json',self.thumbnails)
+        if self.high_thumbnails!=old_high_index: write_json(self.root/'thumbnail-hd-index.json',self.high_thumbnails)
 
     def rclone(self, command, folder='', values=None):
         if command=='list' and '..' in folder.replace('\\','/').split('/'):

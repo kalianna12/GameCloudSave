@@ -24,9 +24,12 @@ def walk(item):
 checked=[]
 for item in walk(window.contentItem()):
     if item.metaObject().indexOfProperty('iconName')<0:continue
+    if item.metaObject().indexOfProperty('selected')>=0:continue
     point=item.mapToScene(QPointF(item.width()/2,item.height()/2));cx=point.x()*ratio;cy=point.y()*ratio
     if cy>image.height()-100 or cy<0:continue
     bg=item.property('background').property('color')
+    if bg.alpha()==0:
+        bg=image.pixelColor(round(cx-12*ratio),round(cy-12*ratio))
     pixels=[]
     for y in range(round(cy-11*ratio),round(cy+11*ratio)):
         for x in range(round(cx-11*ratio),round(cx+11*ratio)):

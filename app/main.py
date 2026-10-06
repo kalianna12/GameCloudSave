@@ -29,7 +29,7 @@ class Bridge(QObject):
         self.store = store
         self.pool = ThreadPoolExecutor(max_workers=1)
         self._busy = False
-        self._status = '准备就绪 · 本地备份优先'
+        self._status = '就绪'
         self._dirs = []
         self._history = []
         self._candidates = []
@@ -42,7 +42,7 @@ class Bridge(QObject):
         self._transfer_ident = ''
         self._cancel_match = threading.Event()
         self._matching = False
-        self._ai_connection = '凭据仅保存于本机'
+        self._ai_connection = ''
         self._layout_values = {}
         self.layoutTimer = QTimer(self)
         self.layoutTimer.setSingleShot(True)
@@ -59,6 +59,7 @@ class Bridge(QObject):
         if self._games_cache is None:
             self._games_cache = [{**game, 'installed':self.store.local.get(game['id'], {}).get('installed', False),
                      'coverUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.thumbnails[game['id']])).toString() if game['id'] in self.store.thumbnails else QUrl.fromLocalFile(str(self.store.root / 'covers' / Path(game['cover']).name)).toString() if game['cover'] else '',
+                     'coverHighUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.high_thumbnails[game['id']])).toString() if game['id'] in self.store.high_thumbnails else '',
                      'saveSet': bool(self.store.local.get(game['id'], {}).get('save_dir'))} for game in self.store.games]
         return self._games_cache
 
@@ -463,7 +464,7 @@ def main():
     app.setWindowIcon(QIcon(str(RESOURCES / 'ui/icons/app.svg')))
     app.setStyle('Fusion')
     QQuickStyle.setStyle('Material')
-    app.setStyleSheet('QWidget { background: #18201d; color: #f2f5f3; } QPushButton { padding: 8px; }')
+    app.setStyleSheet('QWidget { background: #242629; color: #f0f1f2; } QPushButton { padding: 8px; }')
     bridge = Bridge(Store())
     bridge.store.prepare_thumbnails()
     engine = QQmlApplicationEngine()
