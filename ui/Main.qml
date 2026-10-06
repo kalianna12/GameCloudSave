@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V1.1"
+    title: "GameCloudSave · V1.2"
     color: "#101612"
     Material.theme: Material.Dark
     Material.accent: "#8ce34f"
@@ -45,7 +45,7 @@ ApplicationWindow {
     function openMatch(ident) { matchWindow.openMatcher(ident || "") }
     function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly}) }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
-    MatchWindow { id: matchWindow; objectName: "matchWindow" }
+    MatchWindow { id: matchWindow; objectName: "matchWindow"; onCloudSetupRequested: win.openCloud() }
 
 
     Rectangle {
@@ -59,7 +59,7 @@ ApplicationWindow {
             IconButton { iconName: "cloud"; hint: "云端存储与文件浏览"; width: 52; height: 48; onClicked: win.openCloud() }
             IconButton { iconName: "spark"; hint: "AI 存档匹配"; width: 52; height: 48; onClicked: win.openMatch("") }
         }
-        Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 30; anchors.horizontalCenter: parent.horizontalCenter; text: "1.1"; color: "#738c7b"; font.pixelSize: 12 }
+        Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 30; anchors.horizontalCenter: parent.horizontalCenter; text: "1.2"; color: "#738c7b"; font.pixelSize: 12 }
     }
 
     ColumnLayout {

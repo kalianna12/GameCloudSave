@@ -77,6 +77,7 @@ class Store:
         self.local = read_json(self.profile / 'games.json', {})
         self.match_report = read_json(self.profile / 'match-report.json', [])
         self.thumbnails = read_json(self.root/'thumbnail-index.json',{})
+        self.identities = read_json(self.profile/'ai-identities.json',{})
 
     def save_settings(self, values):
         values = dict(values)
@@ -349,27 +350,48 @@ class Store:
         from ai_match import identify_game
         import time
         item=next(g for g in self.games if g['id']==ident)
-        local=self.local.get(ident,{})
+        local=dict(self.local.get(ident,{}))
+        if not local.get('install_dir') and local.get('exe'):local['install_dir']=str(Path(local['exe']).parent)
         started=time.monotonic()
         identity={'english_name':'','aliases':[],'hints':[],'note':''}
         ai_error=''
         key_path=self.profile/'ai-key.dpapi'
         if self.settings.get('ai_enabled'):
             if key_path.exists():
-                try: identity=identify_game(item['name'],Path(local.get('install_dir','')).name,
-                                           protect(key_path.read_bytes(),True).decode(),self.settings['ai_model'])
+                try:
+                    cache_key=hashlib.sha256((item['name']+local.get('install_dir','')+self.settings['ai_model']+'v2').encode()).hexdigest()
+                    if cache_key in self.identities: identity=self.identities[cache_key]
+                    else:
+                        identity=identify_game(item['name'],Path(local.get('install_dir','')).name,protect(key_path.read_bytes(),True).decode(),self.settings['ai_model'])
+                        self.identities[cache_key]=identity; write_json(self.profile/'ai-identities.json',self.identities)
                 except ValueError as error: ai_error=str(error)
             else: ai_error='未配置 DeepSeek API Key，已使用本地规则'
         candidates,checked=scan(item['name'],local,identity)
-        status='failed' if ai_error else 'review' if candidates else 'notfound'
-        message=ai_error or (f'找到 {len(candidates)} 个已验证候选；请确认后应用' if candidates else '未找到可确认的存档目录，可手动选择或补充别名后重试')
+        status='review' if candidates else 'failed' if ai_error else 'notfound'
+        message=(f'找到 {len(candidates)} 个本地候选；'+('AI 暂不可用，仍可按本地证据自动处理' if ai_error else '可批量自动配置并备份')) if candidates else ai_error or '未找到可确认的存档目录'
         return {'id':ident,'name':item['name'],'status':status,'message':message,'candidates':candidates,'checked':checked,
                 'english_name':identity['english_name'],'aliases':identity['aliases'],'note':identity['note'],
+                'ai_warning':ai_error,
                 'elapsed':round(time.monotonic()-started,2),'model':self.settings['ai_model'] if self.settings.get('ai_enabled') else '本地规则'}
 
     def save_match_report(self,results):
         self.match_report=results
         write_json(self.profile/'match-report.json',results)
+
+    def configure_cloud(self,values):
+        values=dict(values)
+        folder=values.get('cloud_folder','').strip('/')
+        if not values.get('cloud_folder','').strip(): raise ValueError('请选择右侧浏览中的存储文件夹')
+        self.rclone('list',folder,values)
+        name='.gamecloud-write-check-'+str(uuid.uuid4())+'.txt'
+        target='gamecloud:'+ '/'.join(p for p in (folder,name) if p)
+        with tempfile.TemporaryDirectory(dir=self.profile) as temporary:
+            probe=Path(temporary)/name; probe.write_text('GameCloudSave write verification',encoding='utf-8')
+            try: self.rclone(['copyto',str(probe),target],values=values)
+            except ValueError: raise ValueError('该目录可浏览但不能上传；请进入可写的挂载文件夹，再验证保存') from None
+            self.rclone(['deletefile',target],values=values)
+        self.save_settings(values)
+        return '已验证目录读写权限并保存；所有游戏共用此位置'
 
     def candidates(self, ident):
         import re

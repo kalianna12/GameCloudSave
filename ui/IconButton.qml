@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-Button {
+AbstractButton {
     id: control
     property string iconName: "play"
     property string hint: ""
@@ -10,6 +10,8 @@ Button {
     implicitWidth: 42
     implicitHeight: 42
     padding: 0
+    hoverEnabled: true
+    leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
     topInset: 0; bottomInset: 0; leftInset: 0; rightInset: 0
     scale: down ? 0.94 : hovered ? 1.06 : 1
     Behavior on scale { NumberAnimation { duration: 110 } }
@@ -24,6 +26,7 @@ Button {
         border.color: control.activeFocus ? "#b5fa85" : "transparent"
     }
     contentItem: Item {
+        x: 0; y: 0; width: control.width; height: control.height
         Image {
             id: glyph
             anchors.centerIn: parent

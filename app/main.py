@@ -149,10 +149,11 @@ class Bridge(QObject):
         if action == 'cloud' and error:
             self.setTransfer(self._transfer_ident,'failed')
         if action == 'match': self._matching=False
-        if action in ('import', 'remove', 'game-settings','apply-match') and not error:
+        if action=='workflow': self._matching=False
+        if action in ('import', 'remove', 'game-settings','apply-match','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
-        if action in ('settings','ai-test') and not error:
+        if action in ('settings','ai-test','cloud-config','workflow') and not error:
             self.settingsChanged.emit()
         if action=='ai-test' and error:
             self._ai_connection=error
@@ -191,6 +192,37 @@ class Bridge(QObject):
     @Slot(str, 'QVariantMap')
     def browseCloud(self, folder, values):
         self.job('list', lambda: {'path':folder.strip('/'),'entries':self.store.rclone('list', folder, values)})
+
+    @Slot('QVariantMap')
+    def configureCloud(self,values): self.job('cloud-config',lambda:self.store.configure_cloud(values))
+
+    @Slot()
+    def retryAll(self):
+        if self._busy:return
+        def retry():
+            count=0; failed=0
+            for game in self.store.games:
+                ident=game['id']
+                if not any(not r['uploaded'] and Path(r['archive_path']).exists() for r in self.store.history(ident)):continue
+                self.transferReady.emit(ident,'uploading')
+                try:
+                    count+=self.store.retry(ident);self.transferReady.emit(ident,'success')
+                except Exception:
+                    failed+=1;self.transferReady.emit(ident,'failed')
+            return f'批量补传完成：成功 {count} 条，失败 {failed} 个游戏；失败快照仍保留本地'
+        self.job('retry-all',retry)
+
+    @Slot('QVariantList',bool)
+    @Slot('QVariantList',bool,'QVariantMap')
+    def autoWorkflow(self,idents,upload,values=None):
+        if self._busy:return
+        self._cancel_match.clear(); self._matching=True
+        def run():
+            from save_workflow import run_workflow
+            if values:self.store.save_settings(values)
+            totals=run_workflow(self.store,idents,self.matchReady.emit,self._cancel_match,upload)
+            return f"批量完成：云端成功 {totals['uploaded']}，本地保留 {totals['local_only']}，待核对 {totals['review']}，失败 {totals['failed']}"
+        self.job('workflow',run)
 
     @Slot(str,'QVariantMap','QVariantMap')
     def previewCloud(self,folder,entry,values):
@@ -277,6 +309,9 @@ class Bridge(QObject):
 
     @Slot(object)
     def receiveMatch(self,result):
+        if result.get('upload_requested'):
+            mapped={'saving':'saving','uploading':'uploading','uploaded':'success','local_only':'failed','failed':'failed'}
+            if result['status'] in mapped:self.setTransfer(result['id'],mapped[result['status']])
         existing={row['id']:row for row in self._matches}
         existing[result['id']]=result
         self._matches=list(existing.values())

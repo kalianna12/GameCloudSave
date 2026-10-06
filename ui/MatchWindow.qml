@@ -9,6 +9,8 @@ ApplicationWindow {
     Material.theme: Material.Dark; Material.accent: "#8ce34f"
     font.family: "Microsoft YaHei UI"
     property string selectedId: ""
+    signal cloudSetupRequested()
+    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text} }
     property var currentResult: backend.matchResults.find(function(r) { return r.id===matcher.selectedId }) || ({})
     function openMatcher(ident) {
         var s=backend.settings
@@ -17,13 +19,13 @@ ApplicationWindow {
         else if(!selectedId && backend.games.length) { selectedId=backend.matchResults.length ? backend.matchResults[0].id : backend.games[0].id; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===matcher.selectedId }) }
         show(); raise(); requestActivate()
     }
-    function label(state) { return state==="running" ? "匹配中" : state==="applied" ? "已设置" : state==="review" ? "待确认" : state==="notfound" ? "未找到" : state==="failed" ? "失败" : "未匹配" }
+    function label(state) { return state==="ready" ? "待自动备份" : state==="uploaded" ? "已上传" : state==="local_only" ? "本地已保存" : state==="saving" ? "本地备份中" : state==="uploading" ? "上传中" : state==="running" ? "匹配中" : state==="applied" ? "已设置" : state==="review" ? "待集中核对" : state==="notfound" ? "未找到" : state==="failed" ? "失败" : "未匹配" }
     onVisibleChanged: if(!visible) apiKey.text=""
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 24; spacing: 14
         RowLayout {
             Label { text: "AI 存档匹配"; font.pixelSize: 28; font.bold: true }
-            Label { text: "名称识别 → 存档规则 → 本地验证 → 手动确认"; color: "#91ae99"; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
+            Label { text: "批量查找 → 验证存档 → 自动配置 → 本地备份 → 云端上传"; color: "#91ae99"; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
         }
         Rectangle {
             Layout.fillWidth: true; Layout.preferredHeight: 126; color: "#203729"; radius: 12
@@ -36,8 +38,14 @@ ApplicationWindow {
                     Button { text: "保存并测试连接"; enabled: !backend.busy; onClicked: backend.testAi({ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text}) }
                 }
                 Label { text: backend.aiConnection; color: "#a0d98c" }
-                Label { text: "只发送游戏名与安装文件夹名称，不发送存档内容。结果仅确认目录存在，是否为正确存档需人工核对。"; color: "#99ad9f"; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { text: "有明确存档文件证据的目录自动配置；多候选、共享目录及证据不足的结果集中核对。不会向 AI 发送存档内容。"; color: "#99ad9f"; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
+        }
+        RowLayout {
+            Button { text: "自动配置并备份云端 · 已安装游戏"; highlighted: true; enabled: !backend.busy; onClicked: { if(!backend.settings.cloud_folder) matcher.cloudSetupRequested(); else backend.autoWorkflow(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),true,matcher.aiValues()) } }
+            Button { text: "自动配置并保存本地"; enabled: !backend.busy; onClicked: backend.autoWorkflow(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),false,matcher.aiValues()) }
+            Button { text: "批量补传"; enabled: !backend.busy; onClicked: backend.retryAll() }
+            Label { text: "云端位置："+(backend.settings.cloud_folder || "点击设置 DAV"); Layout.fillWidth: true; elide: Text.ElideRight; color: "#b2d39f"; TapHandler { onTapped: matcher.cloudSetupRequested() } HoverHandler { cursorShape: Qt.PointingHandCursor } }
         }
         RowLayout {
             ComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: matcher.selectedId=currentValue }
@@ -58,7 +66,7 @@ ApplicationWindow {
                         contentItem: ColumnLayout {
                             Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
                             RowLayout {
-                                BusyIndicator { implicitWidth: 20; implicitHeight: 20; running: modelData.status==="running"; visible: running }
+                                BusyIndicator { implicitWidth: 20; implicitHeight: 20; running: ["running","saving","uploading"].indexOf(modelData.status)>=0; visible: running }
                                 Label { text: matcher.label(modelData.status)+"  ·  "+modelData.candidates.length+" 个候选"; color: modelData.status==="failed" ? "#f29c8e" : "#a8d98d"; font.pixelSize: 12 }
                             }
                         }
@@ -77,6 +85,7 @@ ApplicationWindow {
                     Label { text: matcher.currentResult.name || "选择游戏，开始匹配"; font.pixelSize: 22; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
                     Label { text: matcher.label(matcher.currentResult.status)+" · "+(matcher.currentResult.model || "")+" · "+(matcher.currentResult.elapsed || 0)+" 秒"; color: "#9dcc91" }
                     Label { text: matcher.currentResult.message || "匹配结果会保存在本机，可随时重新查看。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: matcher.currentResult.status==="failed" ? "#f4a092" : "#aac2b0" }
+                    Label { text: matcher.currentResult.ai_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#e3c893" }
                     Label { text: "识别名称："+(matcher.currentResult.english_name || "—"); Layout.fillWidth: true; wrapMode: Text.Wrap }
                     Label { text: "别名："+(matcher.currentResult.aliases || []).join(" / "); Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a0b5a7" }
                     Label { text: matcher.currentResult.note || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#96aa9d"; visible: !!text }

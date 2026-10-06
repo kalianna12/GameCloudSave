@@ -43,10 +43,10 @@ ApplicationWindow {
                 clip: true; contentWidth: availableWidth
                 ColumnLayout {
                     width: connectionPane.availableWidth-12; spacing: 8
-                    Label { text: "云端存储文件夹"; color: "#b4e0a0"; font.bold: true; font.pixelSize: 17 }
+                    Label { text: "① 连接 → ② 选目录 → ③ 验证保存"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#b4e0a0"; font.bold: true }
                     TextField { id: storage; objectName: "cloudStorage"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "选择右侧浏览中的文件夹" }
                     Button { text: "使用当前浏览文件夹"; Layout.fillWidth: true; enabled: !backend.busy; onClicked: storage.text=backend.cloudPath || "/" }
-                    Button { text: "保存云端存储设置"; highlighted: true; Layout.fillWidth: true; enabled: !backend.busy; onClicked: { var v=cloud.values(); v.cloud_folder=storage.text; backend.saveSettings(v); password.text="" } }
+                    Button { text: "验证读写权限并保存"; highlighted: true; Layout.fillWidth: true; enabled: !backend.busy; onClicked: { var v=cloud.values(); v.cloud_folder=storage.text; backend.configureCloud(v) } }
                     Rectangle { Layout.fillWidth: true; height: 1; color: "#35483b" }
                     Label { text: "连接设置"; font.pixelSize: 18; font.bold: true }
                     TextField { id: server; objectName: "davServer"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 地址" }
@@ -56,7 +56,7 @@ ApplicationWindow {
                     Button { id: advanced; text: "高级：rclone 程序位置"; checkable: true; Layout.fillWidth: true }
                     TextField { id: rclonePath; visible: advanced.checked; Layout.fillWidth: true; selectByMouse: true }
                     Button { visible: advanced.checked; text: "选择 rclone.exe"; Layout.fillWidth: true; onClicked: { var p=backend.pickFile("exe"); if(p) rclonePath.text=p } }
-                    Label { text: "双击文件夹进入；单击文件查看预览。设置只用于本机。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#879e8e"; font.pixelSize: 12 }
+                    Label { text: "单击文件夹进入，单击文件预览。AList 请进入实际挂载文件夹后选择保存位置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#879e8e"; font.pixelSize: 12 }
                 }
             }
             ColumnLayout {
@@ -85,8 +85,7 @@ ApplicationWindow {
                                 Label { text: modelData.Name; Layout.fillWidth: true; elide: Text.ElideRight }
                                 Label { text: modelData.IsDir ? "文件夹" : cloud.fileSize(modelData.Size); color: "#91a798"; font.pixelSize: 11 }
                             }
-                            onClicked: { cloud.selectedName=modelData.Name; if(!backend.busy) backend.previewCloud(backend.cloudPath,modelData,cloud.values()) }
-                            onDoubleClicked: if(modelData.IsDir && !backend.busy) backend.browseCloud((backend.cloudPath ? backend.cloudPath+"/" : "")+modelData.Name,cloud.values())
+                            onClicked: { cloud.selectedName=modelData.Name; if(!backend.busy) { if(modelData.IsDir) backend.browseCloud((backend.cloudPath ? backend.cloudPath+"/" : "")+modelData.Name,cloud.values()); else backend.previewCloud(backend.cloudPath,modelData,cloud.values()) } }
                         }
                         ScrollBar.vertical: ScrollBar {}
                         Label { anchors.centerIn: parent; visible: files.count===0; text: backend.busy ? "正在读取…" : "当前目录为空，或尚未连接"; color: "#8aa18f" }

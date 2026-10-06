@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import time
 
-SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rvdata2','.lsv','.sl2'}
+SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rvdata2','.lsv','.sl2','.celeste','.ksd','.es3'}
 
 def roots_for(local):
     documents=Path.home()/'Documents'
@@ -24,7 +24,7 @@ def normalize(name): return re.sub(r'[^\w]','',name.casefold())
 def inspect_directory(path):
     files=[]
     try:
-        for file in path.iterdir():
+        for file in list(path.iterdir())[:400]:
             if file.is_file() and file.suffix.casefold() in SAVE_TYPES:
                 files.append(file.name)
                 if len(files)>=30: break
@@ -50,7 +50,7 @@ def scan(title, local, identity=None, root_override=None):
         except OSError: return
         value=str(path.resolve())
         files=inspect_directory(path)
-        confidence=min(.97,confidence+(0.08 if any(Path(f).suffix.casefold() in ('.sav','.save','.lsv','.rpgsave','.sl2') for f in files) else 0))
+        confidence=min(.97,confidence+(0.08 if any(Path(f).suffix.casefold() in ('.sav','.save','.lsv','.rpgsave','.sl2','.celeste','.ksd','.es3') for f in files) else 0))
         candidate={'path':value,'confidence':round(confidence,2),'reason':reason,'source':origin,'files':files,
                    'fileSummary':', '.join(files[:6]) or '该层未发现常见存档文件，请检查子目录'}
         if value not in found or found[value]['confidence']<confidence: found[value]=candidate
@@ -66,8 +66,13 @@ def scan(title, local, identity=None, root_override=None):
     for kind,root in roots.items():
         if not root.is_dir(): continue
         if kind=='install':
-            for name in ('save','saves','savedata','SaveData','Saved','userdata','www/save','game/saves'):
+            for name in ('save','saves','savedata','SaveData','Saved/SaveGames','Saved','userdata','www/save','game/saves'):
                 add(root/name,.78,'游戏安装目录中的常见存档位置','本地规则')
+            try:
+                for child in list(root.iterdir())[:300]:
+                    if child.is_dir() and re.search(r'save|存档',child.name.casefold()):
+                        add(child,.83,'安装目录中带存档标识的文件夹，已核查文件','本地规则')
+            except OSError:pass
             continue
         try: children=list(root.iterdir())[:1500]
         except OSError: continue
