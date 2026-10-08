@@ -5,7 +5,8 @@ from pathlib import Path
 import re
 import time
 
-SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rvdata2','.lsv','.sl2','.celeste','.ksd','.es3'}
+SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rvdata2','.lsv','.sl2','.celeste','.ksd','.es3','.nson'}
+GENERIC_INSTALL={'game','games','common','steamapps','bin','binaries','win64','x64','release','debug'}
 
 def roots_for(local):
     documents=Path.home()/'Documents'
@@ -19,7 +20,7 @@ def roots_for(local):
     if local.get('install_dir'): roots['install']=Path(local['install_dir'])
     return roots
 
-def normalize(name): return re.sub(r'[^\w]','',name.casefold())
+def normalize(name): return re.sub(r'[\W_]','',name.casefold())
 
 def inspect_directory(path):
     files=[]
@@ -43,8 +44,18 @@ def inspect_directory(path):
 def scan(title, local, identity=None, root_override=None,cancel=None):
     identity=identity or {'english_name':'','aliases':[],'hints':[],'note':''}
     roots=root_override or roots_for(local)
-    aliases=list(dict.fromkeys([title,identity.get('english_name',''),*identity.get('aliases',[]),Path(local.get('install_dir','')).name]))
-    names=[normalize(name) for name in aliases if len(normalize(name))>=4]
+    installation=Path(local.get('install_dir',''))
+    install_alias=installation.name if installation.name.casefold() not in GENERIC_INSTALL else ''
+    executables=[]
+    if local.get('exe'):executables.append(Path(local['exe']).stem)
+    if local.get('install_dir') and installation.is_dir():
+        from itertools import islice
+        executables.extend(file.stem for file in islice(installation.glob('*.exe'),20))
+    executables=[name for name in executables if normalize(name) not in GENERIC_INSTALL and not any(word in name.casefold() for word in ('launcher','setup','unins','crashhandler','update'))]
+    aliases=list(dict.fromkeys([title,identity.get('english_name',''),*identity.get('aliases',[]),install_alias,*executables]))
+    names=[normalize(name) for name in aliases if len(normalize(name))>=3 and normalize(name) not in GENERIC_INSTALL.union({'save','saves','savedata','saved','savegames','userdata','profiles'})]
+    version=re.search(r'(?:\s|[-_])(\d{1,2})$',title.strip())
+    version_base=normalize(title[:version.start()]) if version else ''
     found={}; checked=[]
     def add(path, confidence, reason, origin):
         try:
@@ -62,13 +73,28 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         from save_workflow import evidence
         strong=evidence({'path':value,'files':files})
         confidence=min(.97,confidence+(0.08 if strong else 0)+(0.05 if developer_match else 0))
+        sample_backup=any(part.casefold() in ('补丁','patch','patches','crack') or any(word in part.casefold() for word in ('全cg','全通关','全要素','100%存档')) for part in path.parts)
+        if sample_backup:
+            confidence=min(confidence,.55);reason+='；附带补丁/示例存档，需手动核对'
         candidate={'path':value,'confidence':round(confidence,2),'reason':reason,'source':origin,'files':files,
                    'fileSummary':', '.join(files[:6]) or '该层未发现常见存档文件，请检查子目录',
-                   'score_details':{'developer_match':developer_match,'strong_files':strong},'verified':bool(files)}
+                   'score_details':{'developer_match':developer_match,'strong_files':strong},'verified':bool(files),'sample_backup':sample_backup}
         for kind,root in roots.items():
             if path.resolve().is_relative_to(root.resolve()):
                 candidate['root']=kind;candidate['relative']=path.resolve().relative_to(root.resolve()).as_posix();break
         if value not in found or found[value]['confidence']<confidence: found[value]=candidate
+    import json
+    from services import RESOURCES
+    try:rules=json.loads((RESOURCES/'ui/save-rules.json').read_text(encoding='utf-8'))['rules']
+    except (OSError,ValueError,KeyError):rules=[]
+    rule_names={normalize(title),normalize(identity.get('english_name',''))}
+    for rule in rules:
+        root=roots.get(rule.get('root'))
+        if root is None or not any(normalize(alias) in rule_names for alias in rule.get('aliases',[])):continue
+        candidate=(root/rule['relative']).resolve()
+        if not candidate.is_relative_to(root.resolve()):continue
+        checked.append({'path':str(candidate),'exists':candidate.is_dir(),'reason':'已验证的游戏路径规则'})
+        add(candidate,.89,'已验证路径规则 + 本地文件检查','路径规则')
     for hint in identity.get('hints',[]):
         root=roots.get(hint['root'])
         if root is None: continue
@@ -81,8 +107,12 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
     from concurrent.futures import ThreadPoolExecutor
     name_scores={}
     def name_score(normalized):
+        if normalized in GENERIC_INSTALL or normalized in ('save','saves','savedata','saved','savegames','userdata','profiles'):return 0
         if normalized not in name_scores:
-            name_scores[normalized]=max((.82 if normalized==name else .70 if len(normalized)>=5 and (name in normalized or normalized in name) else .62 if SequenceMatcher(None,normalized,name).ratio()>.86 else 0 for name in names),default=0)
+            def same_series(left,right):
+                a=re.findall(r'\d+',left);b=re.findall(r'\d+',right)
+                return not a or not b or a==b
+            name_scores[normalized]=max((.82 if normalized==name else .76 if any(normalized==name+language for language in ('ch','chs','cht','cn','sc','tc','en','eng','jp','ja')) else .70 if min(len(name),len(normalized))>=5 and same_series(normalized,name) and (name in normalized or normalized in name) else .62 if same_series(normalized,name) and SequenceMatcher(None,normalized,name).ratio()>.86 else 0 for name in names),default=0)
         return name_scores[normalized]
     with ThreadPoolExecutor(max_workers=min(6,max(1,len(roots)))) as pool:
         indexed=list(pool.map(lambda item:(item[0],item[1],directories(item[1],cancel=cancel)),roots.items()))
@@ -94,6 +124,7 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         for child in paths:
             if cancel and cancel.is_set():break
             parts=child.relative_to(root).parts
+            if version and any(version_base in normalize(part) and (number:=re.search(r'(\d{1,2})$',part)) and number.group(1)!=version.group(1) for part in parts):continue
             if any(part.casefold() in ('unity','shadervariantanalytics','monobleedingedge','managed','d3d12') or part.casefold().endswith('_data') for part in parts):continue
             normalized_parts=[normalize(part) for part in parts]
             confidence=max((name_score(normalized) for normalized in normalized_parts),default=0)

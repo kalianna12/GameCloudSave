@@ -2,7 +2,7 @@
 from pathlib import Path
 import json
 
-STRONG={'.sav','.save','.sl2','.lsv','.rpgsave','.rvdata2','.celeste','.ksd','.es3'}
+STRONG={'.sav','.save','.sl2','.lsv','.rpgsave','.rvdata2','.celeste','.ksd','.es3','.nson'}
 GENERIC={'renpy','documents','my games','saved games','appdata','local','roaming','locallow','packages'}
 
 def evidence(candidate):
@@ -26,7 +26,7 @@ def evidence(candidate):
         file=(path/name).resolve()
         if not file.is_relative_to(path.resolve()) or not file.is_file(): continue
         if file.suffix.casefold() in STRONG: return True
-        if file.suffix.casefold()=='.dat' and any(word in file.stem.casefold() for word in ('save','slot','progress')): return True
+        if file.suffix.casefold()=='.dat' and any(word in file.stem.casefold() for word in ('save','slot','progress','persistentgamedata')): return True
         if file.suffix.casefold()=='.json' and file.stat().st_size<512000:
             try:
                 data=json.loads(file.read_text(encoding='utf-8-sig'))

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "rules": [
+    {"aliases":["CODE VEIN 噬血代码 II","CODE VEIN II","CodeVein2"],"root":"local","relative":"CodeVein2/Saved/SaveGames"},
+    {"aliases":["DJMAX RESPECT V","DJMAX"],"root":"locallow","relative":"Neowiz/DJMAX RESPECT V/Saves"},
+    {"aliases":["Dark Souls III","DarkSoulsIII","Dark Souls 3"],"root":"roaming","relative":"DarkSoulsIII"},
+    {"aliases":["ENDER MAGNOLIA: Bloom in the Mist","EnderMagnolia","ENDER MAGNOLIA"],"root":"local","relative":"EnderMagnolia/Saved/SaveGames"},
+    {"aliases":["Slay the Spire 2","SlayTheSpire2","Slay The Spire2"],"root":"roaming","relative":"SlayTheSpire2/steam"},
+    {"aliases":["Silent Hill f","寂静岭f","寂静岭 f","SHf"],"root":"local","relative":"SHf/Saved/SaveGames"},
+    {"aliases":["Stellar Blade","剑星"],"root":"local","relative":"SB/Saved/SaveGames"}
+  ]
+}

@@ -7,10 +7,16 @@ SHARED={'appdata','local','locallow','roaming','documents','my games','saved gam
 def slot_name(name):
     return bool(re.fullmatch(r'(?:backup[_ -]?)?(?:save(?:game|data)?|slot|profile|challenge(?:save)?)[_ -]*\d*',name,re.I))
 
+def account_name(name):return bool(re.fullmatch(r'(?:\d{15,20}|[0-9a-fA-F]{16})',name))
+
 def complete_directory(path):
     selected=Path(path)
-    if not selected.is_dir() or not slot_name(selected.name): return selected
+    if not selected.is_dir() or not (slot_name(selected.name) or account_name(selected.name)): return selected
     parent=selected.parent
+    if account_name(selected.name):
+        per_game_steam=parent.name.casefold()=='steam' and parent.parent.parent.name.casefold() in ('roaming','local','locallow','saved games')
+        if parent.name.casefold() not in SHARED or per_game_steam:return parent
+        return selected
     if parent.name.casefold() in SHARED or parent==parent.parent: return selected
     try:
         children=list(parent.iterdir())[:200]

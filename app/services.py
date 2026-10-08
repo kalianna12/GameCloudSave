@@ -393,11 +393,11 @@ class Store:
                 metadata=json.loads(archive.read(info))
         # Historical single-slot archives must not replace the newly configured parent folder.
         from pathlib import PureWindowsPath
-        from save_groups import slot_name
+        from save_groups import slot_name,account_name
         current=Path(self.local[ident]['save_dir'])
         original=PureWindowsPath(metadata.get('save_dir',''))
         target=current
-        if slot_name(original.name) and not slot_name(current.name):
+        if (slot_name(original.name) or account_name(original.name)) and not (slot_name(current.name) or account_name(current.name)):
             if original.parent.name.casefold()!=current.name.casefold():
                 raise ValueError('这是旧版单存档备份，请选择对应存档槽目录后恢复')
             target=current/original.name
