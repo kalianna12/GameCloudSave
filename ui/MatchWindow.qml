@@ -12,7 +12,7 @@ ApplicationWindow {
     property bool showConnection: !backend.settings.has_ai_key
     property bool showDetails: false
     signal cloudSetupRequested()
-    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text} }
+    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_ai_review:reviewSwitch.checked,match_workers:matchWorkers.value} }
     property var currentResult: backend.matchResults.find(function(r) { return r.id===matcher.selectedId }) || ({})
     function manualStartDirectory() {
         var candidates=currentResult.candidates || []
@@ -23,6 +23,7 @@ ApplicationWindow {
     function openMatcher(ident) {
         var s=backend.settings
         enabledSwitch.checked=s.ai_enabled; modelName.text=s.ai_model; apiKey.text=""
+        networkSwitch.checked=s.match_network;reviewSwitch.checked=s.match_ai_review;matchWorkers.value=s.match_workers
         if(ident) { selectedId=ident; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===ident }) }
         else if(!selectedId && backend.games.length) { selectedId=backend.matchResults.length ? backend.matchResults[0].id : backend.games[0].id; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===matcher.selectedId }) }
         show(); raise(); requestActivate()
@@ -38,14 +39,21 @@ ApplicationWindow {
         }
         Rectangle {
             visible: matcher.showConnection
-            Layout.fillWidth: true; Layout.preferredHeight: 126; color: "#27292c"; radius: 6
+            Layout.fillWidth: true; Layout.preferredHeight: 178; color: "#27292c"; radius: 6
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 5
                 RowLayout {
                     Switch { id: enabledSwitch; text: "DeepSeek"; checked: backend.settings.ai_enabled }
                     AppTextField { id: modelName; Layout.preferredWidth: 175; placeholderText: "模型名称" }
                     AppTextField { id: apiKey; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: backend.settings.has_ai_key ? "Key 已加密保存，留空保持" : "填写 API Key" }
-                    AppButton { text: "保存并测试连接"; enabled: !backend.busy; onClicked: backend.testAi({ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text}) }
+                    AppButton { text: "保存并测试连接"; enabled: !backend.busy; onClicked: backend.testAi(matcher.aiValues()) }
+                }
+                RowLayout {
+                    CheckBox { id: networkSwitch; text: "联网查询开发商"; checked: backend.settings.match_network }
+                    CheckBox { id: reviewSwitch; text: "DeepSeek 辅助比较目录"; checked: backend.settings.match_ai_review }
+                    Label { text: "并行游戏数" }
+                    CompactSpinBox { id: matchWorkers; from: 1; to: 3; value: backend.settings.match_workers }
+                    AppButton { text: "保存查找设置"; enabled: !backend.busy; onClicked: backend.saveSettings(matcher.aiValues()) }
                 }
                 Label { text: backend.aiConnection; color: "#a6a9ae" }
                 Label { text: "找到存档后可批量备份；无法确定的目录请手动选择。"; color: "#a6a9ae"; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -60,8 +68,8 @@ ApplicationWindow {
         }
         RowLayout {
             ComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: matcher.selectedId=currentValue }
-            AppButton { text: "匹配当前游戏"; enabled: !backend.busy && !!matcher.selectedId; onClicked: backend.matchGames([matcher.selectedId]) }
-            AppButton { text: "匹配已安装游戏"; enabled: !backend.busy; onClicked: backend.matchGames(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id })) }
+            AppButton { text: "匹配当前游戏"; enabled: !backend.busy && !!matcher.selectedId; onClicked: backend.matchGames([matcher.selectedId],matcher.aiValues()) }
+            AppButton { text: "匹配已安装游戏"; enabled: !backend.busy; onClicked: backend.matchGames(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),matcher.aiValues()) }
             AppButton { text: "停止"; enabled: backend.matching; onClicked: backend.cancelMatching() }
         }
         RowLayout {
@@ -97,6 +105,9 @@ ApplicationWindow {
                     Label { text: matcher.label(matcher.currentResult.status); color: Theme.secondary }
                     Label { visible: ["failed","notfound","local_only"].indexOf(matcher.currentResult.status)>=0; text: matcher.currentResult.message || "未找到存档，请手动选择目录。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: matcher.currentResult.status==="failed" ? "#f4a092" : Theme.secondary }
                     Label { text: matcher.currentResult.ai_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#e3c893" }
+                    Label { text: matcher.currentResult.network_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                    Label { text: "开发商："+(matcher.currentResult.developers || []).join(" / "); visible: !!(matcher.currentResult.developers || []).length; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                    Label { text: (matcher.currentResult.scan_modes || []).map(function(mode) { return (mode.mode==="local" ? "本地" : mode.mode==="network" ? "联网资料" : "DeepSeek")+"："+(mode.state==="done" ? "完成" : "暂不可用") }).join("   "); visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                     Label { visible: matcher.showDetails; text: "游戏名称："+(matcher.currentResult.english_name || "—"); Layout.fillWidth: true; wrapMode: Text.Wrap }
                     Label { visible: matcher.showDetails; text: "别名："+(matcher.currentResult.aliases || []).join(" / "); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                     Label { text: matcher.currentResult.note || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; visible: matcher.showDetails && !!text }
@@ -110,8 +121,10 @@ ApplicationWindow {
                                 id: candidateDetails
                                 anchors.fill: parent; anchors.margins: 12; spacing: 8
                                 Label { text: modelData.path; Layout.fillWidth: true; wrapMode: Text.Wrap; font.bold: true }
-                                Label { visible: matcher.showDetails; text: "匹配度 "+Math.round(modelData.confidence*100)+"%"; color: Theme.secondary; font.pixelSize: 12 }
+                                Label { visible: matcher.showDetails; text: "匹配评分 "+Math.round(modelData.confidence*100)+" / 100"; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { visible: matcher.showDetails; text: modelData.reason || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                                Label { visible: matcher.showDetails && modelData.ai_confidence!==undefined; text: "本地 "+Math.round((modelData.local_confidence || modelData.confidence)*100)+"% / DeepSeek "+Math.round((modelData.ai_confidence || 0)*100)+"%  "+(modelData.ai_reason || ""); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                                Label { visible: matcher.showDetails && !!modelData.score_details; text: modelData.score_details ? "开发商目录："+(modelData.score_details.developer_match ? "匹配" : "未确认")+" / 存档文件："+(modelData.verified ? "存在" : "未确认") : ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { text: "文件："+modelData.fileSummary; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae"; font.pixelSize: 11 }
                                 AppButton { text: "使用此目录"; enabled: !backend.busy; onClicked: backend.applyMatch(matcher.selectedId,modelData.path) }
                             }
@@ -124,6 +137,10 @@ ApplicationWindow {
                     }
                     AppButton { text: "手动选择目录"; enabled: !backend.busy && !!matcher.selectedId; onClicked: { var p=backend.pickSaveFolder(matcher.manualStartDirectory()); if(p) backend.saveGame(matcher.selectedId,{save_dir:p}) } }
                     AppButton { text: matcher.showDetails ? "收起详情" : "匹配详情"; checkable: true; checked: matcher.showDetails; onToggled: matcher.showDetails=checked }
+                    Repeater {
+                        model: matcher.showDetails ? matcher.currentResult.sources || [] : []
+                        Label { required property var modelData; text: "资料来源："+modelData.title; color: Theme.secondary; Layout.fillWidth: true; elide: Text.ElideRight; TapHandler { onTapped: { if(modelData.url.startsWith("https://store.steampowered.com/app/")) Qt.openUrlExternally(modelData.url) } } HoverHandler { cursorShape: Qt.PointingHandCursor } }
+                    }
                 }
             }
         }

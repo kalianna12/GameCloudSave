@@ -72,7 +72,8 @@ class Store:
                     'dav_url': 'http://10.208.190.125:5244/dav/', 'dav_user': 'admin', 'cloud_folder': '',
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
-                    'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True}
+                    'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
+                    'match_network':True,'match_workers':2,'match_ai_review':True}
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         self.games = read_json(self.root / 'library.json', [])
         self.local = read_json(self.profile / 'games.json', {})
@@ -80,6 +81,9 @@ class Store:
         self.thumbnails = read_json(self.root/'thumbnail-index.json',{})
         self.high_thumbnails = read_json(self.root/'thumbnail-hd-index.json',{})
         self.identities = read_json(self.profile/'ai-identities.json',{})
+        self.network_cache=read_json(self.root/'network-identities.json',{})
+        import threading
+        self.match_lock=threading.RLock()
 
     def save_settings(self, values):
         values = dict(values)
@@ -143,6 +147,10 @@ class Store:
                     cover = str(target)
             existing[ident] = {**existing.get(ident, {}), 'id': ident, 'name': row.get('Name', '未命名'),
                                'cover': cover, 'installed': bool(row.get('IsInstalled')), 'source': 'Playnite'}
+            import re
+            for link in row.get('Links') or []:
+                match=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
+                if match:existing[ident]['steam_appid']=match.group(1);break
             # Installation paths are specific to the importing computer.
             self.local[ident] = {**self.local.get(ident, {}), 'install_dir': row.get('InstallDirectory') or '', 'installed':bool(row.get('IsInstalled'))}
             self.update_launch_actions(row,ident)
@@ -433,34 +441,9 @@ class Store:
                 raise ValueError('本机 Playnite 路径不存在，请重新设置')
             subprocess.Popen([str(exe), '--start', str(uuid.UUID(ident))], cwd=base)
 
-    def match_game(self,ident):
-        from matching import scan
-        from ai_match import identify_game
-        import time
-        item=next(g for g in self.games if g['id']==ident)
-        local=dict(self.local.get(ident,{}))
-        if not local.get('install_dir') and local.get('exe'):local['install_dir']=str(Path(local['exe']).parent)
-        started=time.monotonic()
-        identity={'english_name':'','aliases':[],'hints':[],'note':''}
-        ai_error=''
-        key_path=self.profile/'ai-key.dpapi'
-        if self.settings.get('ai_enabled'):
-            if key_path.exists():
-                try:
-                    cache_key=hashlib.sha256((item['name']+local.get('install_dir','')+self.settings['ai_model']+'v2').encode()).hexdigest()
-                    if cache_key in self.identities: identity=self.identities[cache_key]
-                    else:
-                        identity=identify_game(item['name'],Path(local.get('install_dir','')).name,protect(key_path.read_bytes(),True).decode(),self.settings['ai_model'])
-                        self.identities[cache_key]=identity; write_json(self.profile/'ai-identities.json',self.identities)
-                except ValueError as error: ai_error=str(error)
-            else: ai_error='未配置 DeepSeek API Key，已使用本地规则'
-        candidates,checked=scan(item['name'],local,identity)
-        status='review' if candidates else 'failed' if ai_error else 'notfound'
-        message=(f'找到 {len(candidates)} 个本地候选；'+('AI 暂不可用，仍可按本地证据自动处理' if ai_error else '可批量自动配置并备份')) if candidates else ai_error or '未找到可确认的存档目录'
-        return {'id':ident,'name':item['name'],'status':status,'message':message,'candidates':candidates,'checked':checked,
-                'english_name':identity['english_name'],'aliases':identity['aliases'],'note':identity['note'],
-                'ai_warning':ai_error,
-                'elapsed':round(time.monotonic()-started,2),'model':self.settings['ai_model'] if self.settings.get('ai_enabled') else '本地规则'}
+    def match_game(self,ident,progress=None,cancel=None):
+        from match_engine import match
+        return match(self,ident,progress,cancel)
 
     def save_match_report(self,results):
         self.match_report=results

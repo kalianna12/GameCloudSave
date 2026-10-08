@@ -8,6 +8,20 @@ GENERIC={'renpy','documents','my games','saved games','appdata','local','roaming
 def evidence(candidate):
     path=Path(candidate['path'])
     if not path.is_dir() or path.name.casefold() in GENERIC: return False
+    from save_groups import slot_name
+    try:
+        slots=[child for child in path.iterdir() if child.is_dir() and slot_name(child.name) and not child.name.casefold().startswith('backup')]
+        if len(slots)>=2:
+            for child in slots:
+                for name in ('GameData.json','Flags.json','SaveData.json'):
+                    file=child/name
+                    if file.is_file() and file.stat().st_size<512000:
+                        if (child/'GameData.json').is_file() and (child/'Flags.json').is_file():
+                            with file.open('rb') as stream:
+                                if stream.read(5)==b'ENC1:':return True
+                        data=json.loads(file.read_text(encoding='utf-8-sig'))
+                        if isinstance(data,(dict,list)) and data:return True
+    except (OSError,ValueError):pass
     for name in candidate.get('files',[]):
         file=(path/name).resolve()
         if not file.is_relative_to(path.resolve()) or not file.is_file(): continue
@@ -22,8 +36,14 @@ def evidence(candidate):
 
 def select_candidate(result):
     eligible=[c for c in result.get('candidates',[]) if c.get('confidence',0)>=.78 and evidence(c)]
-    # Keep the verified parent: choosing a child can silently omit sibling save slots.
-    eligible=[c for c in eligible if not any(Path(c['path']).resolve().is_relative_to(Path(other['path']).resolve()) and other['path']!=c['path'] for other in eligible)]
+    from save_groups import complete_directory
+    original=eligible
+    # Combine sibling slots, but avoid selecting a game root containing Demo and Release together.
+    eligible=[c for c in original if not any(
+        other['path']!=c['path'] and (
+            Path(c['path']).resolve().is_relative_to(Path(other['path']).resolve()) and complete_directory(other['path']).resolve()==complete_directory(c['path']).resolve()
+            or Path(other['path']).resolve().is_relative_to(Path(c['path']).resolve()) and complete_directory(other['path']).resolve()!=Path(c['path']).resolve()
+        ) for other in original)]
     if not eligible: return None
     eligible.sort(key=lambda c:-c['confidence'])
     if len(eligible)>1 and eligible[0]['confidence']-eligible[1]['confidence']<.12: return None

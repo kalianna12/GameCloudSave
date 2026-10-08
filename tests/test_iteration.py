@@ -22,6 +22,7 @@ class Iteration(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(dir=ROOT/'test-data')
         self.store=Store(Path(self.temp.name),'iteration-test')
+        self.store.settings['match_network']=False
         self.ident=str(uuid.uuid4())
         self.store.games=[{'id':self.ident,'name':'中文游戏','installed':True,'cover':''}]
         self.save=Path(self.temp.name)/'save'; self.save.mkdir()

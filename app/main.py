@@ -1,6 +1,6 @@
 from __future__ import annotations
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor,as_completed
 import threading
 import os
 from pathlib import Path
@@ -156,7 +156,7 @@ class Bridge(QObject):
         if action in ('import', 'remove', 'game-settings','apply-match','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
-        if action in ('settings','ai-test','cloud-config','workflow') and not error:
+        if action in ('settings','ai-test','cloud-config','workflow','match') and not error:
             self.settingsChanged.emit()
         if action=='ai-test' and error:
             self._ai_connection=error
@@ -340,26 +340,35 @@ class Bridge(QObject):
         self.matchesChanged.emit()
 
     @Slot('QVariantList')
-    def matchGames(self,idents):
+    @Slot('QVariantList','QVariantMap')
+    def matchGames(self,idents,values=None):
         if self._busy: return
         idents=list(dict.fromkeys(idents))
         self._cancel_match.clear()
         self._matching=True
         def match():
+            if values:self.store.save_settings(values)
+            from local_index import clear
+            clear()
             count=0
             results={row['id']:row for row in self.store.match_report}
-            for ident in idents:
-                if self._cancel_match.is_set(): break
-                game=next((g for g in self.store.games if g['id']==ident),None)
-                if game is None: continue
-                self.matchReady.emit({'id':ident,'name':game['name'],'status':'running','message':'正在识别名称、查询存档规则并验证本地目录…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''})
-                try: result=self.store.match_game(ident)
-                except Exception as error:
-                    result={'id':ident,'name':game['name'],'status':'failed','message':str(error) if isinstance(error,ValueError) else '本地扫描失败，请检查目录权限','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
-                self.matchReady.emit(result)
-                results[ident]=result
-                self.store.save_match_report(list(results.values()))
-                count+=1
+            games={game['id']:game for game in self.store.games if game['id'] in idents}
+            def one(ident):
+                if self._cancel_match.is_set():return None
+                game=games[ident]
+                self.matchReady.emit({'id':ident,'name':game['name'],'status':'running','message':'本地、联网资料和 DeepSeek 并行查找…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''})
+                try:return self.store.match_game(ident,self.matchReady.emit,self._cancel_match)
+                except Exception as error:return {'id':ident,'name':game['name'],'status':'failed','message':str(error) if isinstance(error,ValueError) else '本地扫描失败，请检查目录权限','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
+            with ThreadPoolExecutor(max_workers=max(1,min(3,int(self.store.settings.get('match_workers',2))))) as workers:
+                pending={workers.submit(one,ident):ident for ident in games}
+                for future in as_completed(pending):
+                    if self._cancel_match.is_set():
+                        for queued in pending:queued.cancel()
+                    if future.cancelled():continue
+                    result=future.result()
+                    if result is None:continue
+                    self.matchReady.emit(result);results[result['id']]=result
+                    self.store.save_match_report(list(results.values()));count+=1
             return f'匹配已停止，已完成 {count} 个游戏' if self._cancel_match.is_set() else f'匹配完成：{count} 个游戏，结果已保存'
         self.job('match',match)
 
