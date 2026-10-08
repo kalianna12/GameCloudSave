@@ -98,6 +98,10 @@ class Store:
         return protect(path.read_bytes(), True).decode('utf-8') if path.exists() else ''
 
     def save_game(self, ident, values):
+        values=dict(values)
+        if values.get('save_dir'):
+            from save_groups import complete_directory
+            values['save_dir']=str(complete_directory(values['save_dir']))
         self.local[ident] = {**self.local.get(ident, {}), **values}
         write_json(self.profile / 'games.json', self.local)
 
@@ -280,6 +284,11 @@ class Store:
         save = Path(local.get('save_dir', ''))
         if not local.get('save_dir') or not save.is_dir():
             raise ValueError('先在该游戏的本机设置中选择存档目录')
+        from save_groups import complete_directory
+        complete=complete_directory(save)
+        if complete!=save:
+            self.save_game(ident,{'save_dir':str(complete)})
+            save=complete
         core = self.core()
         with closing(core.connect_db()) as conn:
             # Core uses name as key; stable Playnite IDs preserve history across renames.
@@ -369,8 +378,32 @@ class Store:
             from pathlib import PurePosixPath
             if any('..' in PurePosixPath(name.replace('\\', '/')).parts or name.startswith(('/', '\\')) or ':' in name for name in archive.namelist()):
                 raise ValueError('快照包含无效路径')
+            metadata={}
+            if '_snapshot_meta.json' in archive.namelist():
+                info=archive.getinfo('_snapshot_meta.json')
+                if info.file_size>65536: raise ValueError('备份元数据过大')
+                metadata=json.loads(archive.read(info))
+        # Historical single-slot archives must not replace the newly configured parent folder.
+        from pathlib import PureWindowsPath
+        from save_groups import slot_name
+        current=Path(self.local[ident]['save_dir'])
+        original=PureWindowsPath(metadata.get('save_dir',''))
+        target=current
+        if slot_name(original.name) and not slot_name(current.name):
+            if original.parent.name.casefold()!=current.name.casefold():
+                raise ValueError('这是旧版单存档备份，请选择对应存档槽目录后恢复')
+            target=current/original.name
+            if not target.resolve().is_relative_to(current.resolve()):
+                raise ValueError('存档槽目录不在当前游戏存档目录中')
         from argparse import Namespace
-        self.core().cmd_restore(Namespace(snapshot_id=snapshot))
+        core=self.core()
+        try:
+            if target!=current:
+                with closing(core.connect_db()) as conn:
+                    conn.execute('UPDATE games SET save_dir=? WHERE name=?',(str(target),ident)); conn.commit()
+            core.cmd_restore(Namespace(snapshot_id=snapshot))
+        finally:
+            if target!=current: self.game(ident)
 
     def retry(self, ident):
         count = 0

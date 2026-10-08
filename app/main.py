@@ -380,7 +380,8 @@ class Bridge(QObject):
         def apply():
             self.store.save_game(ident,{'save_dir':path})
             row=next(row for row in self._matches if row['id']==ident)
-            result={**row,'status':'applied','message':'已确认并设置本机存档目录：'+path,'applied_path':path}
+            applied=self.store.local[ident]['save_dir']
+            result={**row,'status':'applied','message':'已确认并设置本机存档目录：'+applied,'applied_path':applied}
             reports={row['id']:row for row in self.store.match_report}
             reports[ident]=result
             self.store.save_match_report(list(reports.values()))
@@ -406,6 +407,16 @@ class Bridge(QObject):
         self.job('ai-test',test)
     @Slot(str, result=str)
     def pickFolder(self, current): return QFileDialog.getExistingDirectory(None, '选择本机目录', current)
+    @Slot(str,result=str)
+    def pickSaveFolder(self,current):
+        chosen=QFileDialog.getExistingDirectory(None,'选择游戏存档目录（包含所有存档槽）',current)
+        if not chosen:return ''
+        from save_groups import complete_directory
+        complete=str(complete_directory(chosen))
+        if complete!=chosen:
+            self._status='检测到多个存档槽，已选择完整存档目录：'+complete
+            self.changed.emit()
+        return complete
     @Slot(str, result=str)
     def pickFile(self, kind):
         return QFileDialog.getOpenFileName(None, '选择文件', '', '图片 (*.jpg *.png *.webp *.jpeg)' if kind == 'cover' else '程序 (*.exe)')[0]

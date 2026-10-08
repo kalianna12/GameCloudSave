@@ -48,6 +48,11 @@ def scan(title, local, identity=None, root_override=None):
         try:
             if not path.is_dir(): return
         except OSError: return
+        from save_groups import complete_directory
+        complete=complete_directory(path)
+        if complete!=path:
+            reason+='；包含多个存档槽，备份整个父目录'
+            path=complete
         value=str(path.resolve())
         files=inspect_directory(path)
         confidence=min(.97,confidence+(0.08 if any(Path(f).suffix.casefold() in ('.sav','.save','.lsv','.rpgsave','.sl2','.celeste','.ksd','.es3') for f in files) else 0))

@@ -22,17 +22,18 @@ def evidence(candidate):
 
 def select_candidate(result):
     eligible=[c for c in result.get('candidates',[]) if c.get('confidence',0)>=.78 and evidence(c)]
-    # Parent and child candidates referring to the same saves represent one location.
-    eligible=[c for c in eligible if not any(Path(other['path']).resolve().is_relative_to(Path(c['path']).resolve()) and other['path']!=c['path'] for other in eligible)]
+    # Keep the verified parent: choosing a child can silently omit sibling save slots.
+    eligible=[c for c in eligible if not any(Path(c['path']).resolve().is_relative_to(Path(other['path']).resolve()) and other['path']!=c['path'] for other in eligible)]
     if not eligible: return None
     eligible.sort(key=lambda c:-c['confidence'])
     if len(eligible)>1 and eligible[0]['confidence']-eligible[1]['confidence']<.12: return None
     return eligible[0]
 
 def run_workflow(store,idents,progress,cancel,upload=True):
+    from save_groups import complete_directory
     if upload and not store.settings.get('cloud_folder','').strip(): raise ValueError('请先在云端存储窗口验证并保存统一存储文件夹')
     reports={r['id']:r for r in store.match_report}
-    occupied={str(Path(v['save_dir']).resolve()).casefold():ident for ident,v in store.local.items() if v.get('save_dir')}
+    occupied={str(complete_directory(v['save_dir']).resolve()).casefold():ident for ident,v in store.local.items() if v.get('save_dir')}
     totals={'uploaded':0,'local_only':0,'review':0,'failed':0}
     prepared=[]
     for ident in dict.fromkeys(idents):
@@ -46,7 +47,8 @@ def run_workflow(store,idents,progress,cancel,upload=True):
             result['upload_requested']=upload
             candidate=select_candidate(result)
             manual=store.local.get(ident,{}).get('save_dir','')
-            path=str(Path(manual).resolve()) if manual and Path(manual).is_dir() else candidate['path'] if candidate else ''
+            from save_groups import complete_directory
+            path=str(complete_directory(manual).resolve()) if manual and Path(manual).is_dir() else str(complete_directory(candidate['path']).resolve()) if candidate else ''
             if not path or path.casefold() in occupied and occupied[path.casefold()]!=ident:
                 row={**result,'status':'review','message':'需要集中核对：目录证据不足、存在多个候选或与其他游戏共用目录'}
                 totals['review']+=1

@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V1.4"
+    title: "GameCloudSave · V1.5"
     color: "#1b1c1e"
     Material.theme: Material.Dark
     Material.accent: "#80c942"
@@ -185,8 +185,8 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
             Label { text: "这些路径只用于 " + backend.settings.computer; color: "#80c942" }
-            Label { text: "存档目录" }
-            RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(gameSave.text); if(p) gameSave.text=p } } }
+            Label { text: "存档目录（包含所有存档槽）" }
+            RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickSaveFolder(gameSave.text); if(p) gameSave.text=p } } }
             AppButton { text: "打开 查找存档窗口 · 完整结果与失败原因"; onClicked: win.openMatch(activeId) }
             Label { text: "启动方式" }
             ComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动"] }
