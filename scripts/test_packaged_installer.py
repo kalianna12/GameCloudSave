@@ -1,7 +1,7 @@
 """Install/run/uninstall the real EXEs under an isolated workspace test folder."""
 from pathlib import Path
 import os,json,subprocess,time,sys,zipfile,uuid,argparse
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.1');version=parser.parse_args().version
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.2');version=parser.parse_args().version
 ROOT=Path(__file__).resolve().parents[1]
 test=ROOT/'test-data'/('installer-v22-'+uuid.uuid4().hex[:8]);test.mkdir()
 target=test/'installed';desktop=test/'desktop';menu=test/'menu';profile=test/'localappdata';profile.mkdir()

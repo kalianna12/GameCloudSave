@@ -27,6 +27,7 @@ ApplicationWindow {
             AppButton { text: "跟随主题"; onClicked: backend.saveSettings({accent_color:""}) }
         }
         CheckBox { text: "界面动效"; checked: backend.settings.animations; enabled: !backend.busy; onToggled: backend.saveSettings({animations:checked}) }
+        CheckBox { text: "手柄导航（XInput）"; checked: backend.settings.gamepad_enabled; enabled: !backend.busy; onToggled: backend.saveSettings({gamepad_enabled:checked}) }
         CheckBox { text: "自动备份时显示托盘通知"; checked: backend.settings.tray_notifications; enabled: !backend.busy; onToggled: backend.saveSettings({tray_notifications:checked}) }
         Label { text: "自定义封面来源"; font.pixelSize: 18; font.bold: true }
         AppTextField { id: customUrl; Layout.fillWidth: true; placeholderText: "https://服务/search?q={query}" }

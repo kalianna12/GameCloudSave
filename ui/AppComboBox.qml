@@ -3,6 +3,23 @@ import QtQuick.Controls as C
 
 C.ComboBox {
     id: control
+    property int controllerIndex: 0
+    property bool controllerBrowsing: false
+    function controllerInput(command) {
+        if(command!=="activate" && command!=="back" && command!=="up" && command!=="down") return false
+        if(!popup.visible) {
+            if(command!=="activate") return false
+            controllerIndex=Math.max(0,currentIndex);controllerBrowsing=true;popup.open();return true
+        }
+        if(!controllerBrowsing) controllerIndex=Math.max(0,highlightedIndex>=0 ? highlightedIndex : currentIndex)
+        controllerBrowsing=true
+        if(command==="up" || command==="down") {
+            controllerIndex=Math.max(0,Math.min(count-1,controllerIndex+(command==="up" ? -1 : 1)))
+            items.positionViewAtIndex(controllerIndex,ListView.Contain)
+        } else if(command==="activate") { currentIndex=controllerIndex;activated(currentIndex);popup.close();forceActiveFocus() }
+        else { popup.close();forceActiveFocus() }
+        return true
+    }
     implicitWidth: 180
     implicitHeight: 38
     leftPadding: 11; rightPadding: 32; topPadding: 6; bottomPadding: 6
@@ -26,7 +43,8 @@ C.ComboBox {
     delegate: C.ItemDelegate {
         required property int index
         width: control.width; implicitHeight: 38; font: control.font
-        text: control.textAt(index); highlighted: control.highlightedIndex===index
+        text: control.textAt(index); highlighted: (control.controllerBrowsing ? control.controllerIndex : control.highlightedIndex)===index
+        onHoveredChanged: if(hovered) control.controllerBrowsing=false
         contentItem: Text {
             text: parent.text; font: control.font; color: Theme.text
             verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
@@ -34,13 +52,17 @@ C.ComboBox {
         background: Rectangle { color: parent.highlighted || parent.hovered ? Theme.hover : Theme.surface }
     }
     popup: C.Popup {
+        focus: true
+        onClosed: control.controllerBrowsing=false
+        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motion ? 100 : 0 } }
+        exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.motion ? 100 : 0 } }
         y: control.height+4; width: control.width; padding: 4
         implicitHeight: Math.min(320, items.contentHeight+8)
         background: Rectangle { color: Theme.surface; radius: 5; border.color: Theme.border }
         contentItem: ListView {
             id: items; clip: true; implicitHeight: contentHeight
             model: control.popup.visible ? control.delegateModel : null
-            currentIndex: control.highlightedIndex
+            currentIndex: control.controllerBrowsing ? control.controllerIndex : control.highlightedIndex
             C.ScrollBar.vertical: C.ScrollBar {}
         }
     }

@@ -12,7 +12,7 @@ from urllib.request import urlopen
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.1');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.2');args=parser.parse_args()
 import re
 if not re.fullmatch(r'\d+(\.\d+){0,2}',args.version):raise ValueError('Invalid version')
 release=ROOT/'dist/GameCloudSave';output=ROOT/'build/installer-payload';output.mkdir(parents=True,exist_ok=True)

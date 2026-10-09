@@ -6,6 +6,7 @@ Rectangle {
     id: card
     property var game
     property bool scrolling: false
+    property bool selected: false
     property string transferState: "idle"
     signal launchRequested()
     signal settingsRequested()
@@ -14,7 +15,9 @@ Rectangle {
     signal favoriteRequested()
     radius: 6
     color: hover.hovered && !scrolling ? Theme.hover : Theme.surface
-    border.color: hover.hovered && !scrolling ? Theme.secondary : Theme.border
+    border.color: selected ? Theme.accent : hover.hovered && !scrolling ? Theme.secondary : Theme.border
+    border.width: selected ? 3 : 1
+    Behavior on border.color { ColorAnimation { duration: Theme.motion ? 120 : 0 } }
     Behavior on color { ColorAnimation { duration: Theme.motion && !card.scrolling ? 120 : 0 } }
     HoverHandler { id: hover }
     Rectangle {

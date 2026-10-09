@@ -79,7 +79,7 @@ class Store:
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':10}
-        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True})
+        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True})
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         if self.settings.get('cover_source')=='igdb':self.settings['cover_source']='steam'
         self.games = read_json(self.root / 'library.json', [])
@@ -158,6 +158,15 @@ class Store:
         new_games=[known[game['id']] for game in self.games]
         write_json(self.root/'library.json',new_games);self.games=new_games
         self.groups=sorted(group_names);write_json(self.root/'groups.json',self.groups)
+
+    def apply_classification(self,updates,allow_existing=False):
+        from tag_catalog import classified
+        known={game['id']:game for game in self.games}
+        for item in updates:
+            if item.get('id') not in known:raise ValueError('游戏条目已不存在')
+            if classified(known[item['id']]) and not allow_existing:
+                raise ValueError('所选游戏已有分类或标签，请确认后再重新分类')
+        self.update_library([{key:item[key] for key in ('id','category','tags','series') if key in item} for item in updates])
 
     def migrate_library(self):
         if read_json(self.root/'library-schema.json',{}).get('version',0)>=3:return

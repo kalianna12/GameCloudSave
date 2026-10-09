@@ -3,6 +3,7 @@ import QtQuick.Controls
 AbstractButton {
     id: tile
     property var record: ({})
+    property bool selected: false
     hoverEnabled: true; padding: 0
     implicitWidth: 236; implicitHeight: 148
     Accessible.name: (record.name || "")+" "+record.count+" 款游戏"
@@ -26,6 +27,6 @@ AbstractButton {
                 Label { text: tile.record.count+" 款游戏"; font.pixelSize: 11; color: "#d1d6db" }
             }
         }
-        Rectangle { anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.hovered || tile.activeFocus ? 2 : 0; border.color: Theme.accent }
+        Rectangle { anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected || tile.activeFocus ? 3 : tile.hovered ? 2 : 0; border.color: Theme.accent; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
     }
 }

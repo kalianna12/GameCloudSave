@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V2.3.1"
+    title: "GameCloudSave · V2.3.2"
     color: Theme.background
     Material.theme: Theme.dark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
@@ -29,6 +29,42 @@ ApplicationWindow {
     property string seriesFilter: ""
     property string librarySort: "name"
     property bool libraryReady: false
+    property var navigationHistory: []
+    function goBack() {
+        var previous=navigationHistory.length ? navigationHistory[navigationHistory.length-1] : {mode:"home",category:"",series:"",search:"",y:0,gridY:0,gridIndex:0}
+        navigationHistory=navigationHistory.slice(0,-1)
+        searchDelay.stop();search.text=previous.search;searchQuery=previous.search;searchDelay.stop()
+        libraryMode=previous.mode;groupFilter=previous.category;seriesFilter=previous.series
+        Qt.callLater(function() { if(win.homeVisible) home.restorePosition(previous.y);else { grid.currentIndex=Math.min(grid.count-1,previous.gridIndex || 0);grid.contentY=previous.gridY || 0;grid.forceActiveFocus() } })
+    }
+    function libraryFocus() {
+        var item=activeFocusItem
+        while(item) { if(item===home || item===grid) return true;item=item.parent }
+        return !activeFocusItem || activeFocusItem===contentItem
+    }
+    function controllerInput(command) {
+        if(!win.active || backend.popupActive()) return false
+        if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else home.forceActiveFocus();return true }
+        if(command==="next" || command==="previous") return false
+        if(!libraryFocus()) return false
+        if(["up","down","left","right"].indexOf(command)>=0) {
+            if(homeVisible) home.navigateFocus(command)
+            else if(grid.count) {
+                var index=Math.max(0,grid.currentIndex),step=command==="left" ? -1 : command==="right" ? 1 : command==="up" ? -grid.effectiveColumns : grid.effectiveColumns
+                grid.currentIndex=Math.max(0,Math.min(grid.count-1,index+step));grid.positionViewAtIndex(grid.currentIndex,GridView.Contain);grid.forceActiveFocus()
+            }
+            return true
+        }
+        if(homeVisible && command==="activate") { home.activateSelected();return true }
+        var game=homeVisible ? home.selectedGame() : grid.count ? libraryModel.get(Math.max(0,grid.currentIndex)).record : null
+        if(!game || !game.id) return false
+        if(command==="activate") win.openGame(game)
+        else if(command==="favorite") backend.toggleFavorite(game.id)
+        else if(command==="launch") backend.launch(game.id)
+        else if(command==="history") { selectGame(game);historyTabs.currentIndex=0;backend.history(game.id);historyDialog.open() }
+        else return false
+        return true
+    }
     ListModel { id: libraryModel; dynamicRoles: true }
     Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
     property var seriesNames: ((backend.librarySections.find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name })
@@ -37,9 +73,11 @@ ApplicationWindow {
     property var homeRows: { var revision=backend.games;return backend.homeSections(installedOnly,platformFilter,importSourceFilter) }
     property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
     function navigate(mode,value) {
+        navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex}])
         search.text="";searchQuery="";groupFilter="";seriesFilter=""
         if(mode==="tag") { libraryMode="all";search.text="#"+value;searchQuery=search.text.toLowerCase() }
         else { libraryMode=mode;if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
+        Qt.callLater(function() { if(win.homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() })
     }
     onShownGamesChanged: if(libraryReady) syncLibrary()
     function syncLibrary() {
@@ -126,6 +164,7 @@ ApplicationWindow {
         spacing: 18
         RowLayout {
             Layout.fillWidth: true
+            AppButton { objectName: "libraryBack"; text: "返回"; visible: libraryMode!=="home" || searchTokens.length>0; onClicked: win.goBack() }
             ColumnLayout {
                 spacing: 4
                 Label { text: searchTokens.length ? "搜索结果" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: 30; font.bold: true; color: Theme.text }
@@ -166,6 +205,11 @@ ApplicationWindow {
         GridView {
             id: grid
             objectName: "gameGrid"
+            activeFocusOnTab: true
+            Keys.onPressed: function(event) {
+                var commands={};commands[Qt.Key_Left]="left";commands[Qt.Key_Right]="right";commands[Qt.Key_Up]="up";commands[Qt.Key_Down]="down";commands[Qt.Key_Return]="activate";commands[Qt.Key_Enter]="activate";commands[Qt.Key_Escape]="back"
+                if(commands[event.key]) event.accepted=win.controllerInput(commands[event.key])
+            }
             visible: !homeVisible
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
@@ -181,12 +225,14 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar { }
             delegate: Item {
                 required property var record
+                required property int index
                 property var modelData: record
                 width: grid.cellWidth; height: grid.cellHeight
                 GameCard {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: grid.cardWidth; height: grid.cellHeight-gridGap
                     game: modelData; scrolling: grid.moving
+                    selected: grid.activeFocus && index===grid.currentIndex
                     transferState: backend.transferStates[modelData.id] || "idle"
                     onLaunchRequested: backend.launch(modelData.id)
                     onSettingsRequested: win.openGame(modelData)
@@ -210,6 +256,7 @@ ApplicationWindow {
             AppButton { visible: backend.matching; text: backend.matchProgress.cancelled ? "正在停止" : "停止查找"; enabled: !backend.matchProgress.cancelled; onClicked: backend.cancelMatching() }
             Rectangle { visible: !backend.busy; width: 6; height: 6; radius: 3; color: Theme.accent }
             Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
+            Label { visible: backend.gamepadConnected; text: "A 查看  B 返回  X 收藏  Y 存档  Menu 启动"; color: Theme.secondary; font.pixelSize: 11 }
         }
     }
 

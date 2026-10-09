@@ -6,6 +6,12 @@ Item {
     property var game: ({})
     property bool featured: false
     property bool scrolling: false
+    property bool selected: false
+    property bool selectOnly: false
+    property string lastGameId: ""
+    signal selectionRequested()
+    onGameChanged: { if(featured && Theme.motion && !scrolling && game.id!==lastGameId) reveal.restart();lastGameId=game.id || "" }
+    NumberAnimation { id: reveal; target: poster; property: "opacity"; from: .55; to: 1; duration: 140 }
     activeFocusOnTab: true
     Keys.onReturnPressed: detailsRequested(game)
     signal detailsRequested(var game)
@@ -22,8 +28,8 @@ Item {
             sourceSize: Qt.size(tile.featured ? Math.min(1440,Math.ceil(tile.width*Screen.devicePixelRatio)) : Math.min(720,Math.ceil(tile.width*Screen.devicePixelRatio)),0)
         }
         Label { visible: !cover.source.toString() || cover.status===Image.Error; anchors.centerIn: parent; width: parent.width-20; text: tile.game.name || ""; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: Theme.secondary }
-        Rectangle { anchors.fill: parent; color: "transparent"; radius: 6; border.width: hover.hovered && !tile.scrolling ? 2 : 0; border.color: Theme.accent }
-        TapHandler { onTapped: { tile.forceActiveFocus();tile.detailsRequested(tile.game) } }
+        Rectangle { anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected || tile.activeFocus ? 3 : hover.hovered && !tile.scrolling ? 2 : 0; border.color: Theme.accent; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
+        TapHandler { onTapped: { tile.forceActiveFocus();if(tile.selectOnly) tile.selectionRequested();else tile.detailsRequested(tile.game) } }
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: 48

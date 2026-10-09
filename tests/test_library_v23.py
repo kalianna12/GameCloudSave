@@ -50,7 +50,7 @@ class LibraryV23(unittest.TestCase):
     def test_ai_classifies_into_one_category_with_rich_tags_and_prunes_singletons(self):
         store=Store(self.root,'test');store.games=[{'id':'a','name':'Solo RPG','tags':['开放世界']}];store.save_settings({'ai_key':'dummy'})
         response={'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'items':[{'id':'a','category':'角色扮演','tags':['动作','魂类'],'series':'Solo'}]})}}]}
-        with patch('library_organizer.urlopen',return_value=io.BytesIO(json.dumps(response).encode())):rows=suggestions(store,True)
+        with patch('library_organizer.urlopen',return_value=io.BytesIO(json.dumps(response).encode())):rows=suggestions(store,True,['a'],True)
         self.assertEqual(rows[0]['groups'],['角色扮演']);self.assertEqual(rows[0]['series'],'');self.assertIn('开放世界',rows[0]['tags']);self.assertNotIn('category',store.games[0])
     def test_real_litedb_export_resolves_genre_and_tag_ids(self):
         from services import run_process

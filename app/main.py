@@ -37,6 +37,7 @@ class Bridge(QObject):
         store.reweight_matches()
         self.pool = ThreadPoolExecutor(max_workers=1)
         self._busy = False
+        self._gamepad_connected=False
         self._status = '就绪'
         self._dirs = []
         self._history = []
@@ -136,6 +137,27 @@ class Bridge(QObject):
     def matchProgress(self): return self._progress
     @Property(str,notify=changed)
     def playniteConnection(self): return self._playnite_connection
+    @Property(bool,notify=changed)
+    def gamepadConnected(self):return self._gamepad_connected
+    @Slot(result=bool)
+    def popupActive(self):
+        return self.active_popup() is not None
+
+    def active_popup(self):
+        window=QApplication.focusWindow()
+        item=window.activeFocusItem() if window is not None and hasattr(window,'activeFocusItem') else None
+        owner=item
+        while owner is not None:
+            if owner.inherits('QQuickPopup') and owner.property('visible'):return owner
+            owner=owner.parent()
+        candidates=[]
+        if window is not None:
+            for popup in window.findChildren(QObject):
+                if not popup.inherits('QQuickPopup') or popup.inherits('QQuickToolTip') or not popup.property('visible'):continue
+                owner=popup.parent()
+                while owner is not None and not owner.inherits('QQuickWindow'):owner=owner.parent()
+                if owner==window:candidates.append(popup)
+        return candidates[-1] if candidates else None
 
     @Slot(str,result='QVariantMap')
     def matchResult(self,ident): return next((row for row in self._matches if row['id']==ident),{})
@@ -161,6 +183,10 @@ class Bridge(QObject):
     def groups(self):return self.store.groups
     @Property('QVariantList',notify=changed)
     def organizerResults(self):return self._organizer
+    @Property('QVariantList',notify=gamesChanged)
+    def tagVocabulary(self):
+        from tag_catalog import vocabulary
+        return vocabulary(self.store.games)
     @Property(str,constant=True)
     def openSourceNotice(self):
         file=RESOURCES/'ui/OPEN_SOURCE_NOTICE.txt'
@@ -260,7 +286,7 @@ class Bridge(QObject):
             self._progress['phase']='已停止' if self._cancel_match.is_set() else '失败' if error else '已完成'
             self.progressChanged.emit()
             self.matchesChanged.emit()
-        if action in ('import','import-selected','library-edit','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
+        if action in ('import','import-selected','library-edit','classification-apply','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
             if action=='import-selected':
@@ -432,9 +458,17 @@ class Bridge(QObject):
     @Slot(str,str)
     def editGroup(self,old,new):self.job('group-edit',lambda:(self.store.edit_group(old,new),'分类已更新')[1])
     @Slot(bool)
-    def previewOrganizer(self,use_ai):
+    @Slot(bool,'QVariantList',bool)
+    def previewOrganizer(self,use_ai,idents=None,force=False):
         from library_organizer import suggestions
-        self.job('organizer-preview',lambda:suggestions(self.store,use_ai))
+        self.job('organizer-preview',lambda:suggestions(self.store,use_ai,idents,force))
+
+    @Slot('QVariantList',bool)
+    def applyOrganizer(self,updates,force=False):
+        def apply():
+            self.store.apply_classification(updates,force)
+            return f'已更新 {len(updates)} 款游戏的分类'
+        self.job('classification-apply',apply)
 
     @Slot()
     def refreshPlayniteMetadata(self):
@@ -973,6 +1007,12 @@ def main():
     root_window = engine.rootObjects()[0]
     def activate_window():root_window.show();root_window.raise_();root_window.requestActivate()
     instance.activated.connect(activate_window)
+    from gamepad import Gamepad,dispatch
+    controller=Gamepad(app,lambda:bridge.store.settings.get('gamepad_enabled',True))
+    bridge.settingsChanged.connect(controller.sync)
+    def connected(value):bridge._gamepad_connected=value;bridge.changed.emit()
+    controller.connectedChanged.connect(connected)
+    controller.command.connect(lambda command:dispatch(app,root_window,bridge,command))
     if args.startup_report:
         def ready():
             Path(args.startup_report).write_text(str(round(time.perf_counter()-_PROCESS_START,3)),encoding='utf-8')
@@ -1016,6 +1056,7 @@ def main():
     if args.quit_after: QTimer.singleShot(args.quit_after, app.quit)
     result = app.exec()
     tray.hide()
+    controller.timer.stop()
     bridge.timer.stop()
     bridge.cancelMatching()
     bridge.pool.shutdown(wait=True)
