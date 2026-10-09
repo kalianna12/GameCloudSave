@@ -33,7 +33,11 @@ Rectangle {
         x: 10; y: poster.height+10; width: parent.width-20
         spacing: 6
         Label { text: card.game.name; Layout.fillWidth: true; Layout.preferredHeight: 34; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 13; font.bold: true; ToolTip.visible: hover.hovered && !card.scrolling; ToolTip.delay: 1000; ToolTip.text: text }
-        Label { text: (card.game.installed ? "已安装" : "未安装") + (card.game.saveSet ? "  /  可备份" : ""); font.pixelSize: 11; color: Theme.secondary; Layout.fillWidth: true; elide: Text.ElideRight }
+        RowLayout {
+            Layout.fillWidth: true; spacing: 5
+            Image { source: "icons/"+(card.game.platform || "local")+".svg"; Layout.preferredWidth: 15; Layout.preferredHeight: 15; sourceSize: Qt.size(45,45) }
+            Label { text: (card.game.platform==="steam" ? "Steam" : card.game.platform==="epic" ? "Epic" : card.game.platform==="ubisoft" ? "Ubisoft" : "本地")+" / "+(card.game.installed ? "已安装" : "未安装") + (card.game.saveSet ? " / 可备份" : ""); font.pixelSize: 10; color: Theme.secondary; Layout.fillWidth: true; elide: Text.ElideRight }
+        }
         RowLayout {
             objectName: "gameActions"
             Layout.fillWidth: true; spacing: 0

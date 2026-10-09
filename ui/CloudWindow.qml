@@ -9,6 +9,19 @@ ApplicationWindow {
     color: "#1b1c1e"; Material.theme: Material.Dark; Material.accent: "#80c942"
     font.family: "Microsoft YaHei UI"
     property string selectedName: ""
+    Dialog {
+        id: baiduDialog; title: "百度网盘独立连接"; anchors.centerIn: parent; width: Math.min(600,cloud.width-60); modal: true
+        Overlay.modal: Rectangle { color: "#bb000000" }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label { text: "需要百度开放平台应用授权"; font.bold: true }
+            Label { text: "独立连接尚未启用，需要应用 Client ID、Client Secret 和用户授权。百度账号密码不能代替这些凭据。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+            Label { text: "当前可继续通过 AList 的百度网盘挂载使用备份、云端版本和恢复功能。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+            AppButton { text: "查看百度开放平台"; onClicked: Qt.openUrlExternally("https://pan.baidu.com/union") }
+            AppButton { text: "继续设置 AList / DAV"; onClicked: { baiduDialog.close(); configTabs.currentIndex=1 } }
+        }
+        standardButtons: Dialog.Close
+    }
     property var selectedEntry: ({})
     Connections { target: backend; function onDirectoriesChanged() { if(cloud.visible && configTabs.currentIndex===1) configTabs.currentIndex=0 } }
     property var visibleEntries: backend.directories.filter(function(entry) {
@@ -45,6 +58,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Label { text: backend.settings.computer; color: "#a6a9ae" }
             AppButton { text: "DAV 连接设置"; onClicked: configTabs.currentIndex=1 }
+            AppButton { text: "百度网盘独立连接"; onClicked: baiduDialog.open() }
             AppButton { text: "传输选项"; onClicked: configTabs.currentIndex=2 }
         }
         Rectangle {

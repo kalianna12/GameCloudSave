@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V1.9"
+    title: "GameCloudSave · V2.0"
     color: "#1b1c1e"
     Material.theme: Material.Dark
     Material.accent: "#80c942"
@@ -22,15 +22,18 @@ ApplicationWindow {
     property int gridGap: backend.settings.gap
     property bool installedOnly: backend.settings.installed_only
     property string searchQuery: ""
+    property string platformFilter: "all"
     Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
-    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && g.name.toLowerCase().indexOf(searchQuery) >= 0 })
+    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter) && g.name.toLowerCase().indexOf(searchQuery) >= 0 })
+    onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
     function openGame(g) {
         selectGame(g)
         var v = backend.gameSettings(g.id)
         gameSave.text = v.save_dir || ""
         gameExe.text = v.exe || ""
-        launchMode.currentIndex = (v.launch_mode || (v.exe ? "direct" : "playnite")) === "direct" ? 0 : 1
+        monitorExe.text=v.monitor_exe || ""
+        launchMode.currentIndex = ["direct","playnite","platform"].indexOf(v.launch_mode || (v.exe ? "direct" : "playnite"))
         gameArguments.text = v.arguments || ""
         gameWorking.text = v.working_dir || ""
         gameCover.text = ""
@@ -43,13 +46,16 @@ ApplicationWindow {
         snapshotPath.text = s.snapshots
         watchSwitch.checked=s.watch
         autoUpload.checked=s.watch_upload
+        traySwitch.checked=s.close_to_tray; watchInterval.value=s.watch_interval
         settingsTabs.currentIndex=0
         settingsDialog.open()
     }
     function openCloud() { guideDialog.close(); cloudWindow.openBrowser() }
     function openMatch(ident) { guideDialog.close(); matchWindow.openMatcher(ident || "") }
+    function openImport() { guideDialog.close(); importWindow.openImporter() }
     function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly}) }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
+    ImportWindow { id: importWindow; objectName: "importWindow" }
     MatchWindow { id: matchWindow; objectName: "matchWindow"; onCloudSetupRequested: win.openCloud() }
     Component.onCompleted: if(!backend.settings.guide_dismissed) guideDialog.open()
 
@@ -83,7 +89,8 @@ ApplicationWindow {
             }
             Item { Layout.fillWidth: true }
             AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索游戏…"; Layout.preferredWidth: win.width<1100 ? 130 : 200; selectByMouse: true }
-            AppButton { text: "导入 Playnite"; enabled: !backend.busy; onClicked: backend.importGames() }
+            Switch { text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy; onToggled: backend.saveSettings({watch:checked}) }
+            AppButton { text: "导入游戏"; enabled: !backend.busy; onClicked: win.openImport() }
         }
         GridLayout {
             Layout.fillWidth: true; columns: win.width<1200 ? 1 : 2
@@ -93,6 +100,7 @@ ApplicationWindow {
                 Label { text: "全部游戏"; font.pixelSize: 17; font.bold: true }
                 Label { text: shownGames.length+" 个"; color: "#a6a9ae" }
                 CheckBox { text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
+                ComboBox { model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 150; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
                 Item { Layout.fillWidth: true }
             }
             RowLayout {
@@ -131,7 +139,7 @@ ApplicationWindow {
                     transferState: backend.transferStates[modelData.id] || "idle"
                     onLaunchRequested: backend.launch(modelData.id)
                     onSettingsRequested: win.openGame(modelData)
-                    onCloudRequested: { selectGame(modelData); backend.history(activeId); historyDialog.open() }
+                    onCloudRequested: { selectGame(modelData); historyTabs.currentIndex=0; backend.history(activeId); historyDialog.open() }
                     onRemoveRequested: { selectGame(modelData); deleteDialog.open() }
                 }
             }
@@ -159,12 +167,12 @@ ApplicationWindow {
             ColumnLayout {
                 width: guideDialog.availableWidth-20; spacing: 16
                 Label { text: "先导入游戏，再备份存档"; font.pixelSize: 22; font.bold: true }
-                Label { text: "管理 Windows 游戏存档。封面和名称来自 Playnite，存档路径按当前电脑设置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                Label { text: "管理 Windows 游戏存档。可从 Playnite、游戏平台或本地文件夹导入，存档路径按当前电脑设置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 Label { text: "1. 导入游戏"; font.bold: true }
                 Label { text: backend.games.length ? "已导入 "+backend.games.length+" 款游戏。新增游戏后可再次导入。" : "在设置里选择 Playnite 程序和 library 目录，保存后导入。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 RowLayout {
                     AppButton { text: "设置 Playnite 路径"; onClicked: { guideDialog.close(); win.openSettings() } }
-                    AppButton { text: "导入游戏"; enabled: !backend.busy; onClicked: backend.importGames() }
+                    AppButton { text: "导入游戏"; enabled: !backend.busy; onClicked: { guideDialog.close(); win.openImport() } }
                 }
                 Label { text: "2. 确认存档目录"; font.bold: true }
                 Label { text: "先选一款玩过的游戏查找。核对候选目录，也可手动选择。多份存档应选择包含全部槽位的目录。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
@@ -173,7 +181,7 @@ ApplicationWindow {
                 Label { text: "游戏卡片的云朵按钮打开备份记录，可仅备份到本地。需要上传时，先设置 DAV 连接并选择云端文件夹；所有游戏共用这个位置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 AppButton { text: "设置云端存储（可选）"; onClicked: { guideDialog.close(); win.openCloud() } }
                 Label { text: "4. 恢复存档"; font.bold: true }
-                Label { text: "关闭游戏后，在备份记录中选择“恢复”。恢复前会先备份当前存档。记录列表显示本机快照，云端文件可在云端窗口浏览与下载。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                Label { text: "关闭游戏后，在存档记录中选择版本恢复。恢复前先备份当前存档。“云端 / 其他设备”页可刷新、下载并恢复其他设备的版本。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 CheckBox { id: dismissGuide; text: "下次启动不再显示"; checked: backend.settings.guide_dismissed }
             }
         }
@@ -213,7 +221,9 @@ ApplicationWindow {
                 visible: settingsTabs.currentIndex===1; Layout.fillWidth: true; spacing: 10
                 Label { text: "本地备份目录" }
                 RowLayout { AppTextField { id: snapshotPath; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(snapshotPath.text); if(p) snapshotPath.text=p } } }
-                Switch { id: watchSwitch; text: "游戏退出后自动备份" }
+                Switch { id: watchSwitch; text: "监听游戏启动与退出并备份" }
+                CheckBox { id: traySwitch; text: "关闭主窗口时留在托盘"; checked: backend.settings.close_to_tray }
+                RowLayout { Label { text: "监听间隔（秒）"; Layout.fillWidth: true } CompactSpinBox { id: watchInterval; from: 5; to: 60; stepSize: 5; value: backend.settings.watch_interval } }
                 CheckBox { id: autoUpload; text: "自动备份后上传云端"; enabled: watchSwitch.checked }
                 Label { text: "自动备份需要在游戏设置中配置启动 EXE 和存档目录。上传失败会保留本地备份。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 AppButton { text: "设置云端连接与备份文件夹"; Layout.fillWidth: true; onClicked: win.openCloud() }
@@ -245,7 +255,7 @@ ApplicationWindow {
             AppButton { text: "保存本机设置"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
             onRejected: { coverSize=backend.settings.cover_size; columnCount=backend.settings.columns; gridGap=backend.settings.gap; installedOnly=backend.settings.installed_only; settingsDialog.close() }
             onAccepted: {
-                backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked}); saveLayout(); settingsDialog.close()
+                backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked,close_to_tray:traySwitch.checked,watch_interval:watchInterval.value}); saveLayout(); settingsDialog.close()
             }
         }
     }
@@ -264,9 +274,11 @@ ApplicationWindow {
             RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickSaveFolder(gameSave.text); if(p) gameSave.text=p } } }
             AppButton { text: "查找此游戏的存档"; onClicked: win.openMatch(activeId) }
             Label { text: "启动方式" }
-            ComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动"] }
-            Label { text: "启动 EXE（直接启动时必须选择）"; font.pixelSize: 12 }
+            ComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动", "通过游戏平台启动"] }
+            Label { text: "启动文件 EXE / BAT / CMD（直接启动时必填）"; font.pixelSize: 12 }
             RowLayout { AppTextField { id: gameExe; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFile("exe"); if(p) gameExe.text=p } } }
+            Label { text: "监听进程 EXE（BAT 或平台启动时填写实际游戏 EXE）"; font.pixelSize: 12 }
+            RowLayout { AppTextField { id: monitorExe; Layout.fillWidth: true; placeholderText: "直接启动 EXE 可留空" } AppButton { text: "选择"; onClicked: { var path=backend.pickFile("exe"); if(path) monitorExe.text=path } } }
             AppTextField { id: gameArguments; Layout.fillWidth: true; placeholderText: "启动参数（可选）"; selectByMouse: true }
             RowLayout { AppTextField { id: gameWorking; Layout.fillWidth: true; placeholderText: "工作目录（留空使用 EXE 所在目录）"; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(gameWorking.text); if(p) gameWorking.text=p } } }
             Label { text: "自定义封面（留空保持现有封面）" }
@@ -278,7 +290,7 @@ ApplicationWindow {
             AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
             AppButton { text: "保存"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
             onRejected: gameDialog.close()
-            onAccepted: { backend.saveGame(activeId, {save_dir:gameSave.text, exe:gameExe.text, cover:gameCover.text, launch_mode:launchMode.currentIndex===0 ? "direct" : "playnite", arguments:gameArguments.text, working_dir:gameWorking.text}); gameDialog.close() }
+            onAccepted: { backend.saveGame(activeId, {save_dir:gameSave.text, exe:gameExe.text, monitor_exe:monitorExe.text, cover:gameCover.text, launch_mode:["direct","playnite","platform"][launchMode.currentIndex], arguments:gameArguments.text, working_dir:gameWorking.text}); gameDialog.close() }
         }
     }
     Dialog {
@@ -289,7 +301,7 @@ ApplicationWindow {
         onAccepted: backend.remove(activeId)
     }
     Dialog {
-        id: historyDialog; objectName: "historyDialog"; title: activeName + " · 云存档"; anchors.centerIn: parent; width: 780; height: 530; modal: true
+        id: historyDialog; objectName: "historyDialog"; title: activeName + " · 存档记录"; anchors.centerIn: parent; width: Math.min(900,win.width-60); height: Math.min(650,win.height-60); modal: true
         Overlay.modal: Rectangle { color: "#bb000000" }
         contentItem: ColumnLayout {
             RowLayout {
@@ -301,35 +313,44 @@ ApplicationWindow {
                 AppButton { text: "保存本地 + 上传"; onClicked: backend.cloudSave(activeId) }
                 AppButton { text: "仅本地备份"; onClicked: backend.localSave(activeId) }
                 AppButton { text: "重试上传"; onClicked: backend.retry(activeId) }
-                AppButton { text: "刷新历史"; onClicked: backend.history(activeId) }
+                AppButton { text: "刷新记录"; onClicked: { if(historyTabs.currentIndex===0) backend.history(activeId); else backend.refreshCloudHistory(activeId) } }
             }
-            Label { text: "本机备份记录 · 恢复前会先备份当前存档"; color: "#a6a9ae" }
+            TabBar { id: historyTabs; Layout.fillWidth: true; TabButton { text: "本机版本" } TabButton { text: "云端 / 其他设备" } }
+            Label { text: historyTabs.currentIndex===0 ? "按时间从新到旧排列，恢复前先备份当前存档。" : "点击刷新读取云端版本；选择恢复时下载并校验，不自动覆盖本机。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
             ListView {
-                Layout.fillWidth: true; Layout.fillHeight: true; model: backend.snapshots; clip: true
+                Layout.fillWidth: true; Layout.fillHeight: true; model: historyTabs.currentIndex===0 ? backend.snapshots : backend.cloudSnapshots; clip: true
                 delegate: ItemDelegate {
                     required property var modelData
-                    width: ListView.view.width; height: 72
+                    width: ListView.view.width; height: 84
                     contentItem: RowLayout {
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: modelData.created_at + "   #" + modelData.id }
-                            Label { text: (modelData.uploaded ? "已上传" : "本地保存 / 待上传") + "  ·  " + modelData.note; color: "#a6a9ae"; font.pixelSize: 12 }
+                            Label { text: modelData.created_at; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Label { text: (historyTabs.currentIndex===0 ? (modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: "#a6a9ae"; font.pixelSize: 12 }
                         }
-                        AppButton { text: "恢复"; enabled: !backend.busy; onClicked: { restoreDialog.snapshotId = modelData.id; restoreDialog.open() } }
+                        AppButton { text: "备注"; visible: historyTabs.currentIndex===0; enabled: !backend.busy; onClicked: { noteDialog.snapshotId=modelData.id; snapshotNote.text=modelData.note || ""; noteDialog.open() } }
+                        AppButton { text: historyTabs.currentIndex===0 ? "恢复" : "下载并恢复"; enabled: !backend.busy; onClicked: { restoreDialog.snapshotId=modelData.id || 0; restoreDialog.cloudRecord=historyTabs.currentIndex===1 ? modelData : ({}); restoreDialog.open() } }
                     }
                 }
                 ScrollBar.vertical: ScrollBar {}
-                Label { visible: parent.count===0; anchors.centerIn: parent; text: "尚无本机备份，点击“仅本地备份”创建第一份。"; color: Theme.secondary }
+                Label { visible: parent.count===0; anchors.centerIn: parent; text: historyTabs.currentIndex===0 ? "暂无本机记录，先创建一份备份。" : "点击刷新记录，查看云端版本。"; color: Theme.secondary }
             }
             Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
         }
         standardButtons: Dialog.Close
     }
     Dialog {
-        id: restoreDialog; property int snapshotId: 0; anchors.centerIn: parent; modal: true
+        id: noteDialog; property int snapshotId: 0; title: "存档备注"; anchors.centerIn: parent; width: Math.min(560,win.width-60); modal: true
         Overlay.modal: Rectangle { color: "#bb000000" }
-        title: "恢复快照 #" + snapshotId; standardButtons: Dialog.Ok | Dialog.Cancel
+        contentItem: AppTextField { id: snapshotNote; placeholderText: "例如：第三章结束，困难模式"; maximumLength: 1000 }
+        standardButtons: Dialog.Save | Dialog.Cancel
+        onAccepted: backend.setSnapshotNote(activeId,snapshotId,snapshotNote.text)
+    }
+    Dialog {
+        id: restoreDialog; property int snapshotId: 0; property var cloudRecord: ({}); anchors.centerIn: parent; modal: true
+        Overlay.modal: Rectangle { color: "#bb000000" }
+        title: cloudRecord.remote ? "下载并恢复云端版本" : "恢复快照 #" + snapshotId; standardButtons: Dialog.Ok | Dialog.Cancel
         Label { text: "将替换本机已配置目录中的存档。当前存档会先另行备份。" }
-        onAccepted: backend.restore(activeId, snapshotId)
+        onAccepted: { if(cloudRecord.remote) backend.restoreCloudSnapshot(activeId,cloudRecord); else backend.restore(activeId, snapshotId) }
     }
 }

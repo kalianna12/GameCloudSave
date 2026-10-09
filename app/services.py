@@ -73,7 +73,8 @@ class Store:
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
-                    'match_network':True,'match_workers':2,'match_ai_review':True,'guide_dismissed':False}
+                    'match_network':True,'match_workers':2,'match_ai_review':True,'guide_dismissed':False,
+                    'close_to_tray':True,'watch_interval':10}
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         self.games = read_json(self.root / 'library.json', [])
         self.local = read_json(self.profile / 'games.json', {})
@@ -113,7 +114,7 @@ class Store:
         self.games = [g for g in self.games if g['id'] != ident]
         write_json(self.root / 'library.json', self.games)
 
-    def import_playnite(self):
+    def import_playnite(self,platforms=None):
         base = Path(self.settings['playnite'])
         if not (base / 'LiteDB.dll').exists():
             base = base / 'Playnite'
@@ -136,6 +137,9 @@ class Store:
         covers.mkdir(parents=True, exist_ok=True)
         count = 0
         for row in rows:
+            from library_sources import platform_for
+            platform=platform_for(row)
+            if platforms is not None and platform not in platforms:continue
             ident = str(uuid.UUID(row['_id']['$guid']))
             cover = ''
             relative = row.get('CoverImage') or ''
@@ -143,10 +147,13 @@ class Store:
                 source = safe_child(library / 'files', relative.replace('\\', '/'))
                 if source.is_file():
                     target = covers / (ident + source.suffix.lower())
-                    shutil.copy2(source, target)
+                    if not target.exists() or target.stat().st_mtime_ns!=source.stat().st_mtime_ns or target.stat().st_size!=source.stat().st_size:
+                        shutil.copy2(source, target)
                     cover = str(target)
             existing[ident] = {**existing.get(ident, {}), 'id': ident, 'name': row.get('Name', '未命名'),
-                               'cover': cover, 'installed': bool(row.get('IsInstalled')), 'source': 'Playnite'}
+                               'cover': cover, 'installed': bool(row.get('IsInstalled')), 'source': 'Playnite',
+                               'platform':platform,'external_id':str(row.get('GameId',''))}
+            if platform=='steam' and str(row.get('GameId','')).isdigit():existing[ident]['steam_appid']=str(row['GameId'])
             import re
             for link in row.get('Links') or []:
                 match=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
@@ -275,7 +282,8 @@ class Store:
             module.DB_PATH = module.APP_ROOT / 'state.db'
             module.CONFIG_PATH = module.APP_ROOT / 'config.json'
             import datetime
-            module.now_file_ts = lambda: datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+            module.now_file_ts = lambda: datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d-%H%M%S-%f')+'-'+self.identity[:8]
+            module.now_iso = lambda: datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
             # Stable suffix prevents collisions between Chinese names in the legacy slugifier.
             module.slugify = lambda name: 'game-' + hashlib.sha256(name.encode('utf-8')).hexdigest()[:16]
             self._core = module
@@ -333,7 +341,9 @@ class Store:
             except KeyError: pass
         if not save_dir: raise ValueError('备份中缺少存档目录信息')
         target = 'gamecloud:' + self.cloud_directory(ident,save_dir) + '/' + archive.name
-        self.rclone(['copyto', str(archive), target, '--transfers', '1', '--checkers', '2'])
+        self.rclone(['copyto', str(archive), target, '--transfers', '1', '--checkers', '2','--immutable'])
+        from cloud_history import publish
+        publish(self,ident,archive,target)
         core = self.core()
         with closing(core.connect_db()) as conn:
             conn.execute('UPDATE snapshots SET uploaded=1,cloud_ref=? WHERE archive_path=?', (target, str(archive)))
@@ -368,8 +378,31 @@ class Store:
     def history(self, ident):
         core = self.core()
         with closing(core.connect_db()) as conn:
-            rows = conn.execute('SELECT s.* FROM snapshots s JOIN games g ON s.game_id=g.id WHERE g.name=? ORDER BY s.id DESC', (ident,)).fetchall()
-        return [dict(row) for row in rows]
+            rows = conn.execute('SELECT s.* FROM snapshots s JOIN games g ON s.game_id=g.id WHERE g.name=?', (ident,)).fetchall()
+        from datetime import datetime
+        def timestamp(row):
+            try:return datetime.fromisoformat(row['created_at'].replace('Z','+00:00')).timestamp()
+            except ValueError:return 0
+        return sorted([dict(row) for row in rows],key=lambda row:(timestamp(row),row['id']),reverse=True)
+
+    def set_snapshot_note(self,ident,snapshot,note):
+        if len(note)>1000:raise ValueError('备注最多 1000 字')
+        row=next((row for row in self.history(ident) if row['id']==snapshot),None)
+        if row is None:raise ValueError('备份不属于所选游戏')
+        with closing(self.core().connect_db()) as connection:
+            connection.execute('UPDATE snapshots SET note=? WHERE id=?',(note,snapshot));connection.commit()
+        if row['uploaded'] and row['cloud_ref']:
+            from cloud_history import publish
+            try:publish(self,ident,Path(row['archive_path']),row['cloud_ref'])
+            except Exception:raise ValueError('备注已保存在本机，云端备注更新失败，请重试') from None
+
+    def cloud_history(self,ident):
+        from cloud_history import listing
+        return listing(self,ident)
+
+    def receive_cloud_snapshot(self,ident,record):
+        from cloud_history import receive
+        return receive(self,ident,record)
 
     def restore(self, ident, snapshot):
         self.game(ident)  # Refresh this computer's save path.
@@ -424,14 +457,22 @@ class Store:
     def launch(self, ident):
         local = self.local.get(ident, {})
         mode=local.get('launch_mode','direct' if local.get('exe') else 'playnite')
-        if mode=='direct':
+        if mode=='platform':
+            uri=local.get('launch_uri','')
+            if not uri.startswith(('steam://rungameid/','com.epicgames.launcher://apps/','uplay://launch/')):
+                raise ValueError('平台启动地址无效，请重新导入')
+            os.startfile(uri)
+        elif mode=='direct':
             if not local.get('exe'): raise ValueError('直接启动需要在游戏设置中选择 EXE')
             exe = Path(local['exe'])
             if not exe.is_file():
                 raise ValueError('本机启动文件不存在，请重新设置')
             arguments=local.get('arguments','').strip()
             command=subprocess.list2cmdline([str(exe)])+(' '+arguments if arguments else '')
-            subprocess.Popen(command,cwd=local.get('working_dir') or exe.parent)
+            if exe.suffix.casefold() in ('.bat','.cmd'):
+                if arguments:raise ValueError('批处理启动暂不支持额外参数，请在 BAT 中设置')
+                subprocess.Popen([os.environ.get('COMSPEC',r'C:\Windows\System32\cmd.exe'),'/d','/c',str(exe)],cwd=local.get('working_dir') or exe.parent,creationflags=subprocess.CREATE_NO_WINDOW)
+            else:subprocess.Popen(command,cwd=local.get('working_dir') or exe.parent)
         else:
             base = Path(self.settings['playnite'])
             if not (base / 'Playnite.DesktopApp.exe').exists():

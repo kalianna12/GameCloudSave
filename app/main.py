@@ -1,4 +1,6 @@
 from __future__ import annotations
+import time
+_PROCESS_START=time.perf_counter()
 import argparse
 from concurrent.futures import ThreadPoolExecutor,as_completed
 import threading
@@ -7,7 +9,7 @@ from pathlib import Path
 import sys
 from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl, QTimer, qInstallMessageHandler, QMetaObject, Q_ARG
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QMenu
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from services import Store, ROOT, RESOURCES
@@ -22,6 +24,7 @@ class Bridge(QObject):
     transfersChanged = Signal()
     matchReady = Signal(object)
     transferReady = Signal(str,str)
+    watchReady = Signal(object)
     finished = Signal(str, object, str)
 
     def __init__(self, store):
@@ -32,8 +35,11 @@ class Bridge(QObject):
         self._status = '就绪'
         self._dirs = []
         self._history = []
+        self._cloud_history = []
+        self._imports = []
         self._candidates = []
         self._running = {}
+        self._watch_pending=False
         self._games_cache = None
         self._cloud_path = ''
         self._preview = {}
@@ -49,10 +55,11 @@ class Bridge(QObject):
         self.layoutTimer.timeout.connect(self.flushLayout)
         self.matchReady.connect(self.receiveMatch)
         self.transferReady.connect(self.setTransfer)
+        self.watchReady.connect(self.receiveWatch)
         self.finished.connect(self.complete)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
-        self.timer.start(5000)
+        if store.settings.get('watch'):self.timer.start(max(5,int(store.settings.get('watch_interval',10)))*1000)
 
     @Property('QVariantList', notify=gamesChanged)
     def games(self):
@@ -88,6 +95,10 @@ class Bridge(QObject):
     def transferStates(self): return self._transfers
     @Property('QVariantList', notify=changed)
     def snapshots(self): return self._history
+    @Property('QVariantList', notify=changed)
+    def cloudSnapshots(self):return self._cloud_history
+    @Property('QVariantList', notify=changed)
+    def importCandidates(self):return self._imports
     @Property('QVariantList', notify=changed)
     def candidates(self): return self._candidates
 
@@ -145,22 +156,30 @@ class Bridge(QObject):
         elif action == 'history':
             self._history = result
             self._status = f'本机共 {len(result)} 条快照'
+        elif action in ('scan-import','platform-preview','ai-launchers'):
+            self._imports=result['rows']
+            self._status=f"找到 {len(self._imports)} 个候选，请选择启动文件后导入"+('；扫描达到数量限制，请缩小范围' if result.get('truncated') else '')
+        elif action=='cloud-history':
+            self._cloud_history=result
+            self._status=f'云端共 {len(result)} 份备份，选择后下载并恢复'
         elif action == 'candidates':
             self._candidates = result
             self._status = f'发现 {len(result)} 个候选目录，请核对后选择'
         else:
             self._status = str(result or '已完成')
-        if action in ('backup','restore') and not error and getattr(self,'_history_ident',''):
+        if action in ('backup','restore','snapshot-note','cloud-restore') and not error and getattr(self,'_history_ident',''):
             self._history=self.store.history(self._history_ident)
         if action == 'cloud' and error:
             self.setTransfer(self._transfer_ident,'failed')
         if action == 'match': self._matching=False
         if action=='workflow': self._matching=False
-        if action in ('import', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
+        if action in ('import','import-selected', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
         if action in ('settings','ai-test','cloud-config','workflow','match') and not error:
             self.settingsChanged.emit()
+            if self.store.settings.get('watch'):self.timer.start(max(5,min(60,int(self.store.settings.get('watch_interval',10))))*1000)
+            else:self.timer.stop()
         if action=='ai-test' and error:
             self._ai_connection=error
             self.matchesChanged.emit()
@@ -187,6 +206,39 @@ class Bridge(QObject):
 
     @Slot()
     def importGames(self): self.job('import', self.store.import_playnite)
+
+    @Slot('QVariantList')
+    def importPlaynitePlatforms(self,platforms):self.job('import',lambda:self.store.import_playnite(platforms))
+
+    @Slot('QVariantList')
+    def previewPlatforms(self,platforms):
+        from library_sources import installed
+        self.job('platform-preview',lambda:{'rows':installed(platforms)})
+
+    @Slot(str,int)
+    def scanImports(self,folder,depth):
+        from library_sources import scan
+        self.job('scan-import',lambda:scan(folder,max(1,min(10,depth))))
+
+    @Slot()
+    def reviewImportLaunchers(self):
+        from library_sources import review_launchers
+        self.job('ai-launchers',lambda:{'rows':review_launchers(self.store,self._imports)})
+
+    @Slot('QVariantList')
+    def importSelected(self,selected):
+        def run():
+            from library_sources import import_rows
+            allowed={row['id']:row for row in self._imports}
+            if any(ident not in allowed for ident in selected):raise ValueError('候选已更新，请重新选择')
+            rows=[allowed[ident] for ident in dict.fromkeys(selected)]
+            directories=[row['install_dir'].casefold() for row in rows]
+            if len(set(directories))!=len(directories):raise ValueError('同一游戏请选择一个启动文件')
+            return f'已导入 {import_rows(self.store,rows)} 款游戏'
+        self.job('import-selected',run)
+
+    @Slot(result=bool)
+    def closeToTray(self):return self.store.settings.get('close_to_tray',True) and QSystemTrayIcon.isSystemTrayAvailable()
 
     @Slot('QVariantMap')
     def saveSettings(self, values):
@@ -309,9 +361,25 @@ class Bridge(QObject):
     @Slot(str)
     def history(self, ident):
         self._history_ident=ident
+        self._cloud_history=[]
         self._history = []
         self.changed.emit()
         self.job('history', lambda: self.store.history(ident))
+    @Slot(str)
+    def refreshCloudHistory(self,ident):
+        self._cloud_history=[]
+        self.job('cloud-history',lambda:self.store.cloud_history(ident))
+    @Slot(str,int,str)
+    def setSnapshotNote(self,ident,snapshot,note):self.job('snapshot-note',lambda:(self.store.set_snapshot_note(ident,snapshot,note),'备注已保存')[1])
+    @Slot(str,'QVariantMap')
+    def restoreCloudSnapshot(self,ident,record):
+        def restore():
+            allowed=next((row for row in self._cloud_history if row['remote']==record.get('remote')),None)
+            if allowed is None:raise ValueError('云端记录已更新，请重新刷新')
+            snapshot=self.store.receive_cloud_snapshot(ident,allowed)
+            self.store.restore(ident,snapshot)
+            return '云端备份已下载并恢复，原存档已另行备份'
+        self.job('cloud-restore',restore)
     @Slot(str)
     def retry(self, ident):
         if self._busy: return
@@ -460,35 +528,53 @@ class Bridge(QObject):
         return complete
     @Slot(str, result=str)
     def pickFile(self, kind):
-        return QFileDialog.getOpenFileName(None, '选择文件', '', '图片 (*.jpg *.png *.webp *.jpeg)' if kind == 'cover' else '程序 (*.exe)')[0]
+        return QFileDialog.getOpenFileName(None, '选择文件', '', '图片 (*.jpg *.png *.webp *.jpeg)' if kind == 'cover' else '启动文件 (*.exe *.bat *.cmd)')[0]
 
     def poll(self):
-        if self._busy or not self.store.settings.get('watch'): return
+        if self._busy or self._watch_pending or not self.store.settings.get('watch'): return
+        configured={ident:local for ident,local in self.store.local.items() if local.get('save_dir') and Path(local.get('monitor_exe') or local.get('exe','')).suffix.casefold()=='.exe' and any(game['id']==ident for game in self.store.games)}
+        if not configured:return
+        self._watch_pending=True
         def check():
             import psutil
-            names = {p.info['name'].casefold() for p in psutil.process_iter(['name']) if p.info.get('name')}
-            count = 0
-            for ident, local in list(self.store.local.items()):
-                if not local.get('exe') or not local.get('save_dir') or not any(g['id'] == ident for g in self.store.games): continue
-                running = Path(local['exe']).name.casefold() in names
-                previous = self._running.get(ident, False)
-                self._running[ident] = running
-                if running != previous:
-                    archive = self.store.backup(ident, 'game_start' if running else 'game_stop')
-                    try:
-                        if self.store.settings.get('watch_upload',True): self.store.upload(ident, archive)
-                    except Exception: pass
-                    count += 1
-            return f'监听中 · 本次完成 {count} 个自动快照' if count else '监听中 · 本地备份优先'
-        self.job('watch', check)
+            try:
+                processes=[p.info for p in psutil.process_iter(['name','exe'])]
+                paths={str(Path(p['exe']).resolve()).casefold() for p in processes if p.get('exe')}
+                names={p['name'].casefold() for p in processes if p.get('name') and not p.get('exe')}
+                configured_names=[Path(local.get('monitor_exe') or local.get('exe','')).name.casefold() for local in configured.values()]
+                states={}
+                for ident,local in configured.items():
+                    file=Path(local.get('monitor_exe') or local['exe']);name=file.name.casefold()
+                    states[ident]=str(file.resolve()).casefold() in paths or (configured_names.count(name)==1 and name in names)
+                self.watchReady.emit(states)
+            except Exception:self.watchReady.emit(None)
+        self.pool.submit(check)
+
+    @Slot(object)
+    def receiveWatch(self,states):
+        self._watch_pending=False
+        if states is None or self._busy or not self.store.settings.get('watch'):return
+        transitions=[(ident,running) for ident,running in states.items() if running!=self._running.get(ident,False)]
+        self._running.update(states)
+        if not transitions:return
+        def backup():
+            failed=0
+            for ident,running in transitions:
+                archive=self.store.backup(ident,'game_start' if running else 'game_stop')
+                if self.store.settings.get('watch_upload',True):
+                    try:self.store.upload(ident,archive)
+                    except Exception:failed+=1
+            return f'自动备份完成：{len(transitions)} 份'+(f'，{failed} 份上传失败，已保留本地' if failed else '')
+        self.job('watch',backup)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--screenshot')
+    parser.add_argument('--startup-report')
     parser.add_argument('--quit-after', type=int, default=0)
     parser.add_argument('--self-test')
     parser.add_argument('--self-test-online')
-    parser.add_argument('--show',choices=('library','cloud','match','settings'),default='library')
+    parser.add_argument('--show',choices=('library','cloud','match','settings','import'),default='library')
     args = parser.parse_args()
     if args.self_test_online:
         import json
@@ -528,8 +614,13 @@ def main():
             fixture.save_settings({'password':'packaged-dummy'})
             assert fixture.password() == 'packaged-dummy'
             assert run_process([fixture.settings['rclone'],'version'], timeout=10).returncode == 0
+            from library_sources import scan
+            from cloud_history import digest
+            launch_folder=Path(temporary)/'ScanFixture';launch_folder.mkdir()
+            (launch_folder/'ScanFixture.exe').write_bytes(b'not executable fixture')
+            assert len(scan(launch_folder)['rows'])==1 and len(digest(archive))==64
             gc.collect()
-        Path(args.self_test).write_text('PASS: packaged core backup, restore, SQLite, Chinese JSON, DPAPI, bundled rclone',encoding='utf-8')
+        Path(args.self_test).write_text('PASS: packaged backup/restore, SQLite, Chinese JSON, DPAPI, rclone, launcher scan, cloud hash module',encoding='utf-8')
         return 0
     qInstallMessageHandler(lambda kind, context, message: print(message, file=sys.stderr, flush=True))
     app = QApplication(sys.argv)
@@ -540,7 +631,6 @@ def main():
     QQuickStyle.setStyle('Material')
     app.setStyleSheet('QWidget { background: #242629; color: #f0f1f2; } QPushButton { padding: 8px; }')
     bridge = Bridge(Store())
-    bridge.store.prepare_thumbnails()
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty('backend', bridge)
     engine.load(QUrl.fromLocalFile(str(RESOURCES / 'ui/Main.qml')))
@@ -548,8 +638,26 @@ def main():
         bridge.pool.shutdown(wait=False)
         return 1
     root_window = engine.rootObjects()[0]
+    if args.startup_report:
+        def ready():
+            Path(args.startup_report).write_text(str(round(time.perf_counter()-_PROCESS_START,3)),encoding='utf-8')
+        QTimer.singleShot(0,ready)
+    tray = QSystemTrayIcon(app.windowIcon(),app)
+    if tray.isSystemTrayAvailable():
+        app.setQuitOnLastWindowClosed(False)
+        menu=QMenu()
+        def show_window():root_window.show();root_window.raise_();root_window.requestActivate()
+        menu.addAction('打开游戏库',show_window)
+        def toggle_watch():bridge.saveSettings({'watch':not bridge.store.settings.get('watch')})
+        menu.addAction('开启 / 暂停监听',toggle_watch)
+        menu.addSeparator();menu.addAction('退出',app.quit)
+        tray.setContextMenu(menu);tray.setToolTip('GameCloudSave');tray.show()
+        tray.activated.connect(lambda reason:show_window() if reason==QSystemTrayIcon.Trigger else None)
     window = root_window
-    if args.show=='settings':
+    if args.show=='import':
+        QMetaObject.invokeMethod(window,'openImport')
+        window=window.findChild(QObject,'importWindow')
+    elif args.show=='settings':
         QMetaObject.invokeMethod(window,'openSettings')
     elif args.show=='cloud':
         QMetaObject.invokeMethod(window,'openCloud')
@@ -566,6 +674,7 @@ def main():
         QTimer.singleShot(3000, capture)
     if args.quit_after: QTimer.singleShot(args.quit_after, app.quit)
     result = app.exec()
+    tray.hide()
     bridge.timer.stop()
     bridge.flushLayout()
     bridge.pool.shutdown(wait=True)

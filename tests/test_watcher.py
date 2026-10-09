@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as temporary:
         with patch('psutil.process_iter', return_value=processes):
             bridge.poll()
             deadline = time.monotonic() + 5
-            while bridge.busy and time.monotonic() < deadline:
+            while (bridge.busy or bridge._watch_pending) and time.monotonic() < deadline:
                 app.processEvents()
                 time.sleep(.01)
             assert not bridge.busy, 'Worker did not complete'
