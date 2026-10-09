@@ -2,9 +2,12 @@ import QtQuick
 import QtQuick.Controls
 AbstractButton {
     id: tile
+    readonly property bool libraryTile: true
     property var record: ({})
     property bool selected: false
-    hoverEnabled: true; padding: 0
+    signal focusRequested()
+    onActiveFocusChanged: if(activeFocus) focusRequested()
+    hoverEnabled: !backend.controllerMode; padding: 0
     implicitWidth: 236; implicitHeight: 148
     Accessible.name: (record.name || "")+" "+record.count+" 款游戏"
     background: Rectangle { radius: 6; color: Theme.surface; border.color: tile.hovered ? Theme.accent : Theme.border }
@@ -27,6 +30,6 @@ AbstractButton {
                 Label { text: tile.record.count+" 款游戏"; font.pixelSize: 11; color: "#d1d6db" }
             }
         }
-        Rectangle { anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected || tile.activeFocus ? 3 : tile.hovered ? 2 : 0; border.color: Theme.accent; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
+        Rectangle { objectName: "tileFocusRing"; readonly property real focusWidth: border.width; anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected ? 3 : tile.hovered ? 2 : 0; border.color: tile.selected ? Theme.accent : Theme.secondary; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
     }
 }

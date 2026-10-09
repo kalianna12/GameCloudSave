@@ -14,7 +14,9 @@ C.ComboBox {
         if(!controllerBrowsing) controllerIndex=Math.max(0,highlightedIndex>=0 ? highlightedIndex : currentIndex)
         controllerBrowsing=true
         if(command==="up" || command==="down") {
+            var previous=controllerIndex
             controllerIndex=Math.max(0,Math.min(count-1,controllerIndex+(command==="up" ? -1 : 1)))
+            if(previous!==controllerIndex) backend.navigationMoved()
             items.positionViewAtIndex(controllerIndex,ListView.Contain)
         } else if(command==="activate") { currentIndex=controllerIndex;activated(currentIndex);popup.close();forceActiveFocus() }
         else { popup.close();forceActiveFocus() }
@@ -25,7 +27,7 @@ C.ComboBox {
     leftPadding: 11; rightPadding: 32; topPadding: 6; bottomPadding: 6
     topInset: 0; bottomInset: 0
     font.family: "Microsoft YaHei UI"; font.pixelSize: 13
-    hoverEnabled: true
+    hoverEnabled: !backend.controllerMode
     contentItem: Text {
         text: control.displayText; font: control.font; color: Theme.text
         verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
@@ -42,6 +44,7 @@ C.ComboBox {
     }
     delegate: C.ItemDelegate {
         required property int index
+        hoverEnabled: !backend.controllerMode
         width: control.width; implicitHeight: 38; font: control.font
         text: control.textAt(index); highlighted: (control.controllerBrowsing ? control.controllerIndex : control.highlightedIndex)===index
         onHoveredChanged: if(hovered) control.controllerBrowsing=false

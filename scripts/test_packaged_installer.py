@@ -1,7 +1,7 @@
 """Install/run/uninstall the real EXEs under an isolated workspace test folder."""
 from pathlib import Path
 import os,json,subprocess,time,sys,zipfile,uuid,argparse
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.2');version=parser.parse_args().version
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.3');version=parser.parse_args().version
 ROOT=Path(__file__).resolve().parents[1]
 test=ROOT/'test-data'/('installer-v22-'+uuid.uuid4().hex[:8]);test.mkdir()
 target=test/'installed';desktop=test/'desktop';menu=test/'menu';profile=test/'localappdata';profile.mkdir()
@@ -24,6 +24,8 @@ data=profile/'GameCloudSave/data';assert data.exists(),'Installed app did not us
 (data/'retain-test.txt').write_text('keep');(target/'user-note.txt').write_text('keep')
 with zipfile.ZipFile(target/'source.zip') as zipped:
     names=zipped.namelist();assert 'app/themes.py' in names and 'installer/setup.py' in names and 'docs/theme.schema.json' in names
+    assert zipped.read('ui/sounds/navigation.wav') == (ROOT/'ui/sounds/navigation.wav').read_bytes()
+    assert zipped.read('app/input_feedback.py') == (ROOT/'app/input_feedback.py').read_bytes()
     assert not any(name.startswith(('data/','test-data/','.venv/','dist/','build/')) or name.endswith('.dpapi') for name in names)
 report['uninstall_seconds']=run([target/'Uninstall.exe','--silent','--report',test/'uninstall.json'])
 assert json.loads((test/'uninstall.json').read_text(encoding='utf-8'))['passed']

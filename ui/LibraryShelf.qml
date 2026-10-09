@@ -48,7 +48,9 @@ Item {
     function activateSelected() { if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else detailsRequested(selectedRecord) }
     function moveSelection(direction) {
         if(!items.count) return
+        var previousIndex=list.currentIndex
         list.currentIndex=Math.max(0,Math.min(items.count-1,list.currentIndex+direction));shelf.selectedId=items.get(list.currentIndex).record.id
+        if(previousIndex!==list.currentIndex) backend.navigationMoved()
         var previousX=list.contentX
         list.positionViewAtIndex(list.currentIndex,ListView.Contain)
         horizontal.to=list.contentX;list.contentX=previousX;horizontal.restart()
@@ -60,7 +62,7 @@ Item {
     GameTile {
         objectName: "recentHero"; visible: shelf.section.kind==="recent" && items.count>0
         anchors { left: parent.left; top: parent.top; topMargin: shelf.section.subtitle ? 66 : 48; bottom: parent.bottom; bottomMargin: 18 }
-        width: Math.min(470,shelf.width*.45); game: shelf.selectedRecord; featured: true; selected: shelf.keyboardFocused
+        width: Math.min(470,shelf.width*.45); game: shelf.selectedRecord; featured: true; selected: false
         onDetailsRequested: function(game) { shelf.selectionFocused();shelf.detailsRequested(game) }
         onLaunchRequested: function(game) { shelf.launchRequested(game) }
         onCloudRequested: function(game) { shelf.cloudRequested(game) }
@@ -80,10 +82,11 @@ Item {
             height: list.height
             Loader {
                 anchors.fill: parent; sourceComponent: shelf.section.kind==="tiles" ? browseTile : gameTile
-                Component { id: browseTile; BrowseTile { record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex; onClicked: { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.browseRequested(record.target,record.value) } } }
+                Component { id: browseTile; BrowseTile { record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex; onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() } onClicked: { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.browseRequested(record.target,record.value) } } }
                 Component { id: gameTile; GameTile {
                     game: parent.parent.record; featured: false; scrolling: shelf.outerMoving || list.moving
-                    selectOnly: shelf.section.kind==="recent"; selected: parent.parent.index===list.currentIndex && (shelf.keyboardFocused || selectOnly)
+                    selectOnly: shelf.section.kind==="recent"; selected: parent.parent.index===list.currentIndex && shelf.keyboardFocused
+                    onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }
                     onSelectionRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }
                     onDetailsRequested: function(game) { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.detailsRequested(game) }
                     onLaunchRequested: function(game) { shelf.launchRequested(game) }

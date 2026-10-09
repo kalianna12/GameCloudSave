@@ -1,5 +1,5 @@
 ﻿# Run only after the stable executable and installer have passed their checks.
-param([string]$KeepVersion='2.3.2')
+param([string]$KeepVersion='2.3.3')
 $ErrorActionPreference='Stop'
 $taskWorkspace=(Resolve-Path -LiteralPath (Split-Path $PSScriptRoot -Parent)).Path
 $taskDist=(Resolve-Path -LiteralPath (Join-Path $taskWorkspace 'dist')).Path

@@ -6,6 +6,7 @@ from PySide6.QtGui import QKeyEvent
 def dispatch(app,root,bridge,command):
     window=app.focusWindow()
     if window is None:return
+    bridge.setControllerMode(True)
     popup=bridge.active_popup()
     target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
     while target is not None and not target.inherits('QQuickWindow'):
@@ -25,7 +26,10 @@ def dispatch(app,root,bridge,command):
     focused=window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
     if focused is not None and focused.inherits('QQuickAbstractButton') and command in ('left','up','right','down'):
         key=Qt.Key_Backtab if command in ('left','up') else Qt.Key_Tab
+    before=window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
     for kind in (QEvent.KeyPress,QEvent.KeyRelease):app.sendEvent(window,QKeyEvent(kind,key,Qt.NoModifier))
+    if command in ('up','down','left','right','next','previous') and hasattr(window,'activeFocusItem') and window.activeFocusItem()!=before:
+        bridge.navigationMoved()
 
 class Pad(ctypes.Structure):
     _fields_=[('buttons',ctypes.c_uint16),('left_trigger',ctypes.c_uint8),('right_trigger',ctypes.c_uint8),

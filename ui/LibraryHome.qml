@@ -1,9 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 FocusScope {
     id: home
     property var sections: []
     property int focusedSection: 0
+    readonly property var currentFocus: Window.window ? Window.window.activeFocusItem : null
+    readonly property bool cardFocus: activeFocus && (currentFocus===home || !!currentFocus && currentFocus.libraryTile===true)
     activeFocusOnTab: true
     Keys.onPressed: function(event) {
         var directions={};directions[Qt.Key_Left]="left";directions[Qt.Key_Right]="right";directions[Qt.Key_Up]="up";directions[Qt.Key_Down]="down"
@@ -19,10 +22,19 @@ FocusScope {
     function selectedGame() { var shelf=currentShelf();return shelf ? shelf.selectedGame() : null }
     function activateSelected() { var shelf=currentShelf();if(shelf) shelf.activateSelected() }
     function navigateFocus(direction) {
+        var previousSection=focusedSection
+        if(currentFocus && currentFocus!==home) currentFocus.focus=false
         home.forceActiveFocus()
         if(direction==="up" || direction==="down") focusedSection=Math.max(0,Math.min(rows.count-1,focusedSection+(direction==="up" ? -1 : 1)))
-        list.currentIndex=focusedSection;list.positionViewAtIndex(focusedSection,ListView.Contain)
-        Qt.callLater(function() { var shelf=home.currentShelf();if(shelf) { shelf.keyboardFocused=true;if(direction==="left" || direction==="right") shelf.moveSelection(direction==="left" ? -1 : 1) } })
+        list.forceLayout()
+        var previousY=list.contentY
+        vertical.stop();list.currentIndex=focusedSection;list.positionViewAtIndex(focusedSection,ListView.Contain)
+        var destination=list.contentY
+        list.contentY=previousY
+        vertical.duration=Theme.motion ? 190 : 0;vertical.to=destination;vertical.restart()
+        if(previousSection!==focusedSection) backend.navigationMoved()
+        var shelf=home.currentShelf()
+        if(shelf && (direction==="left" || direction==="right")) shelf.moveSelection(direction==="left" ? -1 : 1)
     }
     signal browseRequested(string mode,string value)
     signal detailsRequested(var game)
@@ -41,9 +53,10 @@ FocusScope {
     onSectionsChanged: sync()
     Component.onCompleted: sync()
     function scrollBy(delta) {
+        vertical.duration=Theme.motion ? 110 : 0
         vertical.to=Math.max(0,Math.min(Math.max(0,list.contentHeight-list.height), (vertical.running ? vertical.to : list.contentY)+delta));vertical.restart()
     }
-    NumberAnimation { id: vertical; target: list; property: "contentY"; duration: Theme.motion ? 110 : 0; easing.type: Easing.OutCubic }
+    NumberAnimation { id: vertical; target: list; property: "contentY"; duration: Theme.motion ? 190 : 0; easing.type: Easing.OutCubic }
     ListView {
         id: list; objectName: "libraryHomeList"; anchors.fill: parent; model: rows
         clip: true; reuseItems: true; cacheBuffer: 240; spacing: 14; flickDeceleration: 2300; maximumFlickVelocity: 3500
@@ -51,7 +64,7 @@ FocusScope {
             required property var record
             required property int index
             width: ListView.view.width; height: implicitHeight; section: record; outerMoving: list.moving || vertical.running
-            keyboardFocused: home.activeFocus && home.focusedSection===index
+            keyboardFocused: home.cardFocus && home.focusedSection===index
             onSelectionFocused: { home.focusedSection=index;home.forceActiveFocus() }
             onBrowseRequested: function(mode,value) { home.browseRequested(mode,value) }
             onDetailsRequested: function(game) { home.detailsRequested(game) }

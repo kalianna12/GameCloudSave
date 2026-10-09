@@ -29,6 +29,7 @@ class Bridge(QObject):
     watchReady = Signal(object)
     notificationReady = Signal(str,str,bool)
     operationCompleted = Signal(str,bool)
+    inputModeChanged = Signal()
     finished = Signal(str, object, str)
 
     def __init__(self, store):
@@ -38,6 +39,8 @@ class Bridge(QObject):
         self.pool = ThreadPoolExecutor(max_workers=1)
         self._busy = False
         self._gamepad_connected=False
+        self._controller_mode=False
+        self.input_feedback=None
         self._status = '就绪'
         self._dirs = []
         self._history = []
@@ -139,6 +142,16 @@ class Bridge(QObject):
     def playniteConnection(self): return self._playnite_connection
     @Property(bool,notify=changed)
     def gamepadConnected(self):return self._gamepad_connected
+    @Property(bool, notify=inputModeChanged)
+    def controllerMode(self):return self._controller_mode
+    @Slot(bool)
+    def setControllerMode(self, value):
+        if self._controller_mode != value:
+            self._controller_mode=value
+            self.inputModeChanged.emit()
+    @Slot()
+    def navigationMoved(self):
+        if self.input_feedback:self.input_feedback.play()
     @Slot(result=bool)
     def popupActive(self):
         return self.active_popup() is not None
@@ -996,6 +1009,8 @@ def main():
     logger=configure(DATA)
     qInstallMessageHandler(lambda kind,context,message:logger.warning('%s',message))
     bridge = Bridge(Store())
+    from input_feedback import InputFeedback
+    bridge.input_feedback=InputFeedback(app,bridge,RESOURCES)
     app.aboutToQuit.connect(bridge.cancelMatching)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty('backend', bridge)
@@ -1010,7 +1025,10 @@ def main():
     from gamepad import Gamepad,dispatch
     controller=Gamepad(app,lambda:bridge.store.settings.get('gamepad_enabled',True))
     bridge.settingsChanged.connect(controller.sync)
-    def connected(value):bridge._gamepad_connected=value;bridge.changed.emit()
+    def connected(value):
+        bridge._gamepad_connected=value
+        if not value:bridge.setControllerMode(False)
+        bridge.changed.emit()
     controller.connectedChanged.connect(connected)
     controller.command.connect(lambda command:dispatch(app,root_window,bridge,command))
     if args.startup_report:

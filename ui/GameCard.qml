@@ -19,7 +19,7 @@ Rectangle {
     border.width: selected ? 3 : 1
     Behavior on border.color { ColorAnimation { duration: Theme.motion ? 120 : 0 } }
     Behavior on color { ColorAnimation { duration: Theme.motion && !card.scrolling ? 120 : 0 } }
-    HoverHandler { id: hover }
+    HoverHandler { id: hover; enabled: !backend.controllerMode }
     Rectangle {
         id: poster
         width: parent.width; height: card.width * 1.38; color: Theme.sidebar; clip: true

@@ -6,7 +6,7 @@ AbstractButton {
     property string iconName: "grid"
     property bool selected: false
     width: 152; height: 42
-    hoverEnabled: true
+    hoverEnabled: !backend.controllerMode
     Accessible.name: text
     background: Rectangle {
         radius: 5

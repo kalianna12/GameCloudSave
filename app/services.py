@@ -79,7 +79,7 @@ class Store:
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':10}
-        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True})
+        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True})
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         if self.settings.get('cover_source')=='igdb':self.settings['cover_source']='steam'
         self.games = read_json(self.root / 'library.json', [])

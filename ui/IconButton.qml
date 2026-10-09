@@ -11,7 +11,7 @@ AbstractButton {
     implicitWidth: 42
     implicitHeight: 42
     padding: 0
-    hoverEnabled: true
+    hoverEnabled: !backend.controllerMode
     leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
     topInset: 0; bottomInset: 0; leftInset: 0; rightInset: 0
     ToolTip.visible: hovered

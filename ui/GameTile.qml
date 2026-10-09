@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Controls
 Item {
     id: tile
+    readonly property bool libraryTile: true
     property var game: ({})
     property bool featured: false
     property bool scrolling: false
@@ -10,15 +11,17 @@ Item {
     property bool selectOnly: false
     property string lastGameId: ""
     signal selectionRequested()
+    signal focusRequested()
     onGameChanged: { if(featured && Theme.motion && !scrolling && game.id!==lastGameId) reveal.restart();lastGameId=game.id || "" }
     NumberAnimation { id: reveal; target: poster; property: "opacity"; from: .55; to: 1; duration: 140 }
-    activeFocusOnTab: true
+    activeFocusOnTab: !featured
+    onActiveFocusChanged: if(activeFocus && !featured) focusRequested()
     Keys.onReturnPressed: detailsRequested(game)
     signal detailsRequested(var game)
     signal launchRequested(var game)
     signal cloudRequested(var game)
     property string platformName: game.platform==="steam" ? "Steam" : game.platform==="epic" ? "Epic" : game.platform==="ubisoft" ? "Ubisoft" : "本地"
-    HoverHandler { id: hover }
+    HoverHandler { id: hover; enabled: !backend.controllerMode }
     Rectangle {
         id: poster; width: parent.width; height: parent.height-48; radius: 6; color: Theme.surface; clip: true
         Image {
@@ -28,7 +31,7 @@ Item {
             sourceSize: Qt.size(tile.featured ? Math.min(1440,Math.ceil(tile.width*Screen.devicePixelRatio)) : Math.min(720,Math.ceil(tile.width*Screen.devicePixelRatio)),0)
         }
         Label { visible: !cover.source.toString() || cover.status===Image.Error; anchors.centerIn: parent; width: parent.width-20; text: tile.game.name || ""; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: Theme.secondary }
-        Rectangle { anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected || tile.activeFocus ? 3 : hover.hovered && !tile.scrolling ? 2 : 0; border.color: Theme.accent; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
+        Rectangle { objectName: "tileFocusRing"; readonly property real focusWidth: border.width; anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected ? 3 : hover.hovered && !tile.scrolling && !tile.featured ? 2 : 0; border.color: tile.selected ? Theme.accent : Theme.secondary; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
         TapHandler { onTapped: { tile.forceActiveFocus();if(tile.selectOnly) tile.selectionRequested();else tile.detailsRequested(tile.game) } }
         Rectangle {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

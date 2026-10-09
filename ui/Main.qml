@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V2.3.2"
+    title: "GameCloudSave · V2.3.3"
     color: Theme.background
     Material.theme: Theme.dark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
@@ -51,7 +51,7 @@ ApplicationWindow {
             if(homeVisible) home.navigateFocus(command)
             else if(grid.count) {
                 var index=Math.max(0,grid.currentIndex),step=command==="left" ? -1 : command==="right" ? 1 : command==="up" ? -grid.effectiveColumns : grid.effectiveColumns
-                grid.currentIndex=Math.max(0,Math.min(grid.count-1,index+step));grid.positionViewAtIndex(grid.currentIndex,GridView.Contain);grid.forceActiveFocus()
+                grid.navigateFocus(Math.max(0,Math.min(grid.count-1,index+step)))
             }
             return true
         }
@@ -206,6 +206,16 @@ ApplicationWindow {
             id: grid
             objectName: "gameGrid"
             activeFocusOnTab: true
+            function navigateFocus(index) {
+                var previousIndex=currentIndex,previousY=contentY
+                gridScroll.stop();currentIndex=index
+                positionViewAtIndex(currentIndex,GridView.Contain)
+                var destination=contentY
+                forceActiveFocus();contentY=previousY
+                gridScroll.to=destination;gridScroll.restart()
+                if(previousIndex!==currentIndex) backend.navigationMoved()
+            }
+            NumberAnimation { id: gridScroll; target: grid; property: "contentY"; duration: Theme.motion ? 190 : 0; easing.type: Easing.OutCubic }
             Keys.onPressed: function(event) {
                 var commands={};commands[Qt.Key_Left]="left";commands[Qt.Key_Right]="right";commands[Qt.Key_Up]="up";commands[Qt.Key_Down]="down";commands[Qt.Key_Return]="activate";commands[Qt.Key_Enter]="activate";commands[Qt.Key_Escape]="back"
                 if(commands[event.key]) event.accepted=win.controllerInput(commands[event.key])
@@ -231,7 +241,7 @@ ApplicationWindow {
                 GameCard {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: grid.cardWidth; height: grid.cellHeight-gridGap
-                    game: modelData; scrolling: grid.moving
+                    game: modelData; scrolling: grid.moving || gridScroll.running
                     selected: grid.activeFocus && index===grid.currentIndex
                     transferState: backend.transferStates[modelData.id] || "idle"
                     onLaunchRequested: backend.launch(modelData.id)

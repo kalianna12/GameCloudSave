@@ -6,7 +6,7 @@ Button {
     implicitWidth: Math.max(80, contentItem.implicitWidth + 28)
     leftPadding: 14; rightPadding: 14; topPadding: 8; bottomPadding: 8
     topInset: 0; bottomInset: 0
-    hoverEnabled: true
+    hoverEnabled: !backend.controllerMode
     font.pixelSize: 13
     contentItem: Text {
         text: control.text; font: control.font
