@@ -23,6 +23,7 @@ def walk(item):
     for child in item.childItems(): yield from walk(child)
 checked=[]
 for item in walk(window.contentItem()):
+    if not item.isVisible():continue
     if item.metaObject().indexOfProperty('iconName')<0:continue
     if item.metaObject().indexOfProperty('selected')>=0:continue
     point=item.mapToScene(QPointF(item.width()/2,item.height()/2));cx=point.x()*ratio;cy=point.y()*ratio

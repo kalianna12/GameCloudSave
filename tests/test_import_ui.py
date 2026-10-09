@@ -15,7 +15,7 @@ import shiboken6
 
 QQuickStyle.setStyle('Material');app=QApplication([]);app.setQuitOnLastWindowClosed(False)
 with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as temporary:
-    store=Store(temporary,'UI-test');store.settings['guide_dismissed']=True
+    store=Store(temporary,'UI-test');store.settings.update(guide_dismissed=True,setup_completed=True,library='')
     backend=Bridge(store)
     assert not backend.timer.isActive(), 'Idle watcher should not wake up'
     engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend)

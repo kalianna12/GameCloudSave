@@ -1,12 +1,16 @@
 pragma Singleton
 import QtQuick
 QtObject {
-    readonly property color background: "#1b1c1e"
-    readonly property color sidebar: "#242629"
-    readonly property color surface: "#27292c"
-    readonly property color hover: "#34373b"
-    readonly property color border: "#45494e"
-    readonly property color text: "#f0f1f2"
-    readonly property color secondary: "#a6a9ae"
-    readonly property color accent: "#80c942"
+    property var palette: backend.theme || ({})
+    readonly property color background: palette.background || "#181a1c"
+    readonly property color sidebar: palette.sidebar || "#202326"
+    readonly property color surface: palette.surface || "#282c30"
+    readonly property color hover: palette.hover || "#353b41"
+    readonly property color border: palette.border || "#454d56"
+    readonly property color text: palette.text || "#f3f5f7"
+    readonly property color secondary: palette.secondary || "#a9b4bf"
+    readonly property color accent: palette.accent || "#80c942"
+    readonly property color onAccent: palette.onAccent || "#10200a"
+    readonly property bool dark: palette.dark !== false
+    readonly property bool motion: palette.motion !== false
 }

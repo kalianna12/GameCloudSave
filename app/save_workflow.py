@@ -49,7 +49,7 @@ def select_candidate(result):
     if len(eligible)>1 and eligible[0]['confidence']-eligible[1]['confidence']<.12: return None
     return eligible[0]
 
-def run_workflow(store,idents,progress,cancel,upload=True):
+def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
     from save_groups import complete_directory
     if upload and not store.settings.get('cloud_folder','').strip(): raise ValueError('请先在云端存储窗口验证并保存统一存储文件夹')
     reports={r['id']:r for r in store.match_report}
@@ -63,7 +63,7 @@ def run_workflow(store,idents,progress,cancel,upload=True):
         row={'id':ident,'name':game['name'],'status':'running','message':'查找并验证存档目录…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
         progress(row)
         try:
-            result=store.match_game(ident)
+            result=store.match_game(ident) if recheck else reports.get(ident,{'id':ident,'name':game['name'],'candidates':[],'checked':[]})
             result['upload_requested']=upload
             candidate=select_candidate(result)
             manual=store.local.get(ident,{}).get('save_dir','')

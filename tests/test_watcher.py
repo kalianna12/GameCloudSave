@@ -21,6 +21,8 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as temporary:
     store.save_game(ident, {'save_dir':str(save), 'exe':str(Path(temporary) / 'FixtureGame.exe')})
     store.save_settings({'watch':True})
     bridge = Bridge(store)
+    notifications=[]
+    bridge.notificationReady.connect(lambda title,message,error:notifications.append((title,message,error)))
     bridge.timer.stop()
     def poll(processes):
         with patch('psutil.process_iter', return_value=processes):
@@ -36,6 +38,11 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as temporary:
     rows = store.history(ident)
     assert [r['event'] for r in rows] == ['game_stop','game_start']
     assert all(Path(row['archive_path']).exists() for row in rows)
+    assert len(notifications)==4 and sum('完成' in title for title,_,_ in notifications)==2
+    assert all(error for title,_,error in notifications if '完成' in title), 'Offline uploads should report local retention'
+    assert store.games[0]['play_count']==1
+    store.settings['tray_notifications']=False
+    poll([SimpleNamespace(info={'name':'FixtureGame.exe'})]);assert len(notifications)==4
     bridge.pool.shutdown(wait=True)
     gc.collect()
 print('PASS: background watcher start/stop, no duplicate while running, offline local retention')

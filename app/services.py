@@ -17,7 +17,8 @@ from contextlib import closing
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[1]
 RESOURCES = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else ROOT
-DATA = Path(os.environ.get('GAMECLOUD_DATA', str(ROOT / 'data')))
+DEFAULT_DATA=Path(os.environ['LOCALAPPDATA'])/'GameCloudSave/data' if (ROOT/'gamecloud-install.json').exists() else ROOT/'data'
+DATA = Path(os.environ.get('GAMECLOUD_DATA', str(DEFAULT_DATA)))
 
 def read_json(path, default):
     return json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else default
@@ -66,17 +67,22 @@ class Store:
         self.identity = identity or machine_id()
         self.profile = self.root / 'machines' / self.identity
         self.profile.mkdir(parents=True, exist_ok=True)
-        defaults = {'computer': platform.node(), 'playnite': r'D:\GAMES\PLAYNITE',
-                    'library': str(Path(os.environ['APPDATA']) / 'Playnite/library'),
+        detected_playnite=Path(os.environ['LOCALAPPDATA'])/'Playnite'
+        detected_library=Path(os.environ['APPDATA'])/'Playnite/library'
+        defaults = {'computer': platform.node(), 'playnite': str(detected_playnite) if (detected_playnite/'LiteDB.dll').is_file() else '',
+                    'library': str(detected_library) if (detected_library/'games.db').is_file() else '',
                     'snapshots': str(self.profile / 'snapshots'), 'rclone': str(RESOURCES / 'tools/rclone.exe') if (RESOURCES / 'tools/rclone.exe').exists() else shutil.which('rclone') or 'rclone',
-                    'dav_url': 'http://10.208.190.125:5244/dav/', 'dav_user': 'admin', 'cloud_folder': '',
+                    'dav_url': '', 'dav_user': '', 'cloud_folder': '',
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_workers':2,'match_ai_review':True,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':10}
+        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True})
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
+        if self.settings.get('cover_source')=='igdb':self.settings['cover_source']='steam'
         self.games = read_json(self.root / 'library.json', [])
+        self.groups=read_json(self.root/'groups.json',[])
         self.local = read_json(self.profile / 'games.json', {})
         self.match_report = read_json(self.profile / 'match-report.json', [])
         self.thumbnails = read_json(self.root/'thumbnail-index.json',{})
@@ -90,6 +96,7 @@ class Store:
         values = dict(values)
         password = values.pop('password', '')
         ai_key = values.pop('ai_key', '')
+        values.pop('igdb_secret',None)
         if ai_key:
             (self.profile / 'ai-key.dpapi').write_bytes(protect(ai_key.encode('utf-8')))
         if password:
@@ -110,11 +117,48 @@ class Store:
         self.local[ident] = {**self.local.get(ident, {}), **values}
         write_json(self.profile / 'games.json', self.local)
 
+    def update_library(self,updates):
+        known={game['id']:dict(game) for game in self.games}
+        group_names=set(self.groups)
+        for item in updates:
+            if item['id'] not in known:raise ValueError('游戏条目已不存在')
+            game=known[item['id']]
+            if 'favorite' in item:game['favorite']=bool(item['favorite'])
+            if 'series' in item:
+                value=item['series']
+                if not isinstance(value,str) or len(value)>80:raise ValueError('系列名最多 80 字')
+                game['series']=value.strip()
+            if 'groups' in item:
+                groups=item['groups']
+                if not isinstance(groups,list) or len(groups)>20 or not all(isinstance(value,str) and 0<len(value.strip())<=32 for value in groups):raise ValueError('分类名称最多 32 字，每款游戏最多 20 个分类')
+                game['groups']=list(dict.fromkeys(value.strip() for value in groups));group_names.update(game['groups'])
+        new_games=[known[game['id']] for game in self.games]
+        write_json(self.root/'library.json',new_games);self.games=new_games
+        self.groups=sorted(group_names);write_json(self.root/'groups.json',self.groups)
+
+    def edit_group(self,old,new):
+        new=new.strip()
+        if len(new)>32:raise ValueError('分类名称最多 32 字')
+        if old and old not in self.groups:raise ValueError('分类已不存在')
+        if new and new!=old and new in self.groups:raise ValueError('已有同名分类')
+        names=[name for name in self.groups if name!=old]
+        if new:names.append(new)
+        for game in self.games:
+            if old in game.get('groups',[]):game['groups']=[new if name==old else name for name in game['groups'] if name!=old or new]
+        write_json(self.root/'library.json',self.games);self.groups=sorted(names);write_json(self.root/'groups.json',self.groups)
+
+    def mark_played(self,ident):
+        from datetime import datetime,timezone
+        game=next((game for game in self.games if game['id']==ident),None)
+        if game is None:return
+        game['last_played']=datetime.now(timezone.utc).isoformat(timespec='seconds');game['play_count']=game.get('play_count',0)+1
+        write_json(self.root/'library.json',self.games)
+
     def remove(self, ident):
         self.games = [g for g in self.games if g['id'] != ident]
         write_json(self.root / 'library.json', self.games)
 
-    def import_playnite(self,platforms=None):
+    def read_playnite(self):
         base = Path(self.settings['playnite'])
         if not (base / 'LiteDB.dll').exists():
             base = base / 'Playnite'
@@ -132,6 +176,27 @@ class Store:
             if result.returncode:
                 raise ValueError('Playnite 只读导出失败；请关闭 Playnite 后重试，或检查程序与库版本')
             rows = read_json(temporary / 'games.json', [])
+        return rows
+
+    def playnite_candidates(self):
+        from library_sources import platform_for,candidate
+        rows=[]
+        library=Path(self.settings['library'])
+        for raw in self.read_playnite():
+            platform=platform_for(raw); external=str(raw.get('GameId',''))
+            row=candidate(raw.get('Name','未命名'),platform,external,raw.get('InstallDirectory') or '')
+            row.update(id=str(uuid.UUID(raw['_id']['$guid'])),playnite=True,installed=bool(raw.get('IsInstalled')),raw=raw)
+            relative=raw.get('CoverImage') or ''
+            if relative:
+                cover=safe_child(library/'files',relative.replace('\\','/'))
+                if cover.is_file():row['cover']=str(cover)
+            rows.append(row)
+        write_json(self.profile/'playnite-reference.json',[{key:value for key,value in row.items() if key not in ('raw','cover')} for row in rows])
+        return rows
+
+    def import_playnite(self,platforms=None):
+        rows=self.read_playnite()
+        library=Path(self.settings['library'])
         existing = {g['id']: g for g in self.games}
         covers = self.root / 'covers'
         covers.mkdir(parents=True, exist_ok=True)
@@ -481,6 +546,7 @@ class Store:
             if not exe.is_file():
                 raise ValueError('本机 Playnite 路径不存在，请重新设置')
             subprocess.Popen([str(exe), '--start', str(uuid.UUID(ident))], cwd=base)
+        self.mark_played(ident)
 
     def match_game(self,ident,progress=None,cancel=None):
         from match_engine import match

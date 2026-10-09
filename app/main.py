@@ -25,6 +25,7 @@ class Bridge(QObject):
     matchReady = Signal(object)
     transferReady = Signal(str,str)
     watchReady = Signal(object)
+    notificationReady = Signal(str,str,bool)
     finished = Signal(str, object, str)
 
     def __init__(self, store):
@@ -37,6 +38,12 @@ class Bridge(QObject):
         self._history = []
         self._cloud_history = []
         self._imports = []
+        self._import_mode=''
+        self._cover_results=[]
+        self._import_reference=[]
+        self._picked_save_folders=set()
+        self._organizer=[]
+        self._icon_cache={}
         self._candidates = []
         self._running = {}
         self._watch_pending=False
@@ -99,6 +106,24 @@ class Bridge(QObject):
     def cloudSnapshots(self):return self._cloud_history
     @Property('QVariantList', notify=changed)
     def importCandidates(self):return self._imports
+    @Property('QVariantList',notify=changed)
+    def coverResults(self):return self._cover_results
+    @Property('QVariantList',constant=True)
+    def coverProviders(self):
+        from cover_sources import PROVIDERS
+        return PROVIDERS
+    @Property('QVariantMap',notify=settingsChanged)
+    def theme(self):
+        from themes import resolve
+        return resolve(self.store.settings)
+    @Property('QVariantList',notify=gamesChanged)
+    def groups(self):return self.store.groups
+    @Property('QVariantList',notify=changed)
+    def organizerResults(self):return self._organizer
+    @Property(str,constant=True)
+    def openSourceNotice(self):
+        file=RESOURCES/'ui/OPEN_SOURCE_NOTICE.txt'
+        return file.read_text(encoding='utf-8') if file.exists() else 'GameCloudSave：MIT 开源许可。'
     @Property('QVariantList', notify=changed)
     def candidates(self): return self._candidates
 
@@ -156,9 +181,20 @@ class Bridge(QObject):
         elif action == 'history':
             self._history = result
             self._status = f'本机共 {len(result)} 条快照'
-        elif action in ('scan-import','platform-preview','ai-launchers'):
+        elif action in ('scan-import','platform-preview','playnite-preview','ai-launchers','auto-covers'):
             self._imports=result['rows']
-            self._status=f"找到 {len(self._imports)} 个候选，请选择启动文件后导入"+('；扫描达到数量限制，请缩小范围' if result.get('truncated') else '')
+            duplicates=sum(bool(row.get('duplicate_id')) for row in self._imports)
+            self._status=f"预览 {len(self._imports)} 项，已排除 {duplicates} 个重复项"+('；扫描达到数量限制，请缩小范围' if result.get('truncated') else '')+result.get('warning','')
+        elif action=='cover-search':
+            self._cover_results=result
+            self._status=f'找到 {len(result)} 个封面结果，请选择'
+        elif action=='cover-apply':
+            if result['scope']=='import':
+                self._imports=result['rows']
+            else:self._games_cache=None;self.gamesChanged.emit()
+            self._status='封面已设置'
+        elif action=='organizer-preview':
+            self._organizer=result;self._status='分类建议已生成，请核对后应用'
         elif action=='cloud-history':
             self._cloud_history=result
             self._status=f'云端共 {len(result)} 份备份，选择后下载并恢复'
@@ -173,9 +209,13 @@ class Bridge(QObject):
             self.setTransfer(self._transfer_ident,'failed')
         if action == 'match': self._matching=False
         if action=='workflow': self._matching=False
-        if action in ('import','import-selected', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
+        if action in ('import','import-selected','library-edit','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
+            if action=='import-selected':
+                from library_sources import annotate_duplicates
+                self._imports=annotate_duplicates(self.store,self._imports,self._import_reference)
+        if action=='watch' and error and self.store.settings.get('tray_notifications',True):self.notificationReady.emit('自动备份失败',error,True)
         if action in ('settings','ai-test','cloud-config','workflow','match') and not error:
             self.settingsChanged.emit()
             if self.store.settings.get('watch'):self.timer.start(max(5,min(60,int(self.store.settings.get('watch_interval',10))))*1000)
@@ -213,17 +253,52 @@ class Bridge(QObject):
     @Slot('QVariantList')
     def previewPlatforms(self,platforms):
         from library_sources import installed
-        self.job('platform-preview',lambda:{'rows':installed(platforms)})
+        self._import_mode='platform'
+        self.job('platform-preview',lambda:self.prepareImportPreview(installed(platforms)))
+
+    def prepareImportPreview(self,rows,truncated=False):
+        from library_sources import annotate_duplicates
+        from services import read_json
+        warning=''
+        if self._import_mode=='playnite':self._import_reference=[]
+        elif (Path(self.store.settings['library'])/'games.db').is_file():
+            try:self._import_reference=self.store.playnite_candidates()
+            except ValueError:
+                self._import_reference=read_json(self.store.profile/'playnite-reference.json',[])
+                warning='；Playnite 正在占用或不可读取，仅核对缓存和现有库，新条目可能未检出'
+        else:self._import_reference=[]
+        return {'rows':annotate_duplicates(self.store,rows,self._import_reference),'truncated':truncated,'warning':warning}
+
+    @Slot(bool)
+    def previewPlaynite(self,installed_only=True):
+        self._import_mode='playnite'
+        def preview():
+            rows=self.store.playnite_candidates()
+            return self.prepareImportPreview([row for row in rows if not installed_only or row['installed']])
+        self.job('playnite-preview',preview)
+
+    @Slot()
+    def clearImportPreview(self):
+        if self._busy:return
+        self._imports=[];self._cover_results=[];self.changed.emit()
+
+    @Slot()
+    def clearCoverSearch(self):
+        if not self._busy:self._cover_results=[];self.changed.emit()
 
     @Slot(str,int)
     def scanImports(self,folder,depth):
         from library_sources import scan
-        self.job('scan-import',lambda:scan(folder,max(1,min(10,depth))))
+        self._import_mode='scan'
+        def preview():
+            result=scan(folder,max(1,min(10,depth)))
+            return self.prepareImportPreview(result['rows'],result['truncated'])
+        self.job('scan-import',preview)
 
     @Slot()
     def reviewImportLaunchers(self):
         from library_sources import review_launchers
-        self.job('ai-launchers',lambda:{'rows':review_launchers(self.store,self._imports)})
+        self.job('ai-launchers',lambda:self.prepareImportPreview(review_launchers(self.store,self._imports,self._import_reference)))
 
     @Slot('QVariantList')
     def importSelected(self,selected):
@@ -232,10 +307,122 @@ class Bridge(QObject):
             allowed={row['id']:row for row in self._imports}
             if any(ident not in allowed for ident in selected):raise ValueError('候选已更新，请重新选择')
             rows=[allowed[ident] for ident in dict.fromkeys(selected)]
+            from library_sources import annotate_duplicates
+            rows=annotate_duplicates(self.store,rows,self._import_reference)
+            skipped=sum(bool(row.get('duplicate_id')) for row in rows)
+            rows=[row for row in rows if not row.get('duplicate_id')]
             directories=[row['install_dir'].casefold() for row in rows]
             if len(set(directories))!=len(directories):raise ValueError('同一游戏请选择一个启动文件')
-            return f'已导入 {import_rows(self.store,rows)} 款游戏'
+            count=import_rows(self.store,rows,skip_duplicates=True)
+            return f'已导入 {count} 款游戏；排除 {skipped+len(rows)-count} 个重复或失效条目'
         self.job('import-selected',run)
+
+    @Slot(str,str,bool)
+    def searchCovers(self,query,provider,use_ai=False):
+        from cover_sources import search
+        self._cover_results=[]
+        self.job('cover-search',lambda:search(self.store,query,provider,use_ai))
+
+    @Slot(str,str,result=str)
+    def coverBrowserUrl(self,query,provider):
+        from cover_sources import PROVIDERS
+        from urllib.parse import quote
+        source=next((row for row in PROVIDERS if row['id']==provider),{})
+        return source.get('url','').replace('{query}',quote(query[:200]+' game cover'))
+
+    @Slot(str,str,str)
+    def useCoverUrl(self,scope,ident,url):
+        import hashlib
+        record={'id':'manual:'+hashlib.sha256(url.encode()).hexdigest(),'image':url,'fallback':'','user_authorized':True}
+        self._cover_results=[record];self.applyCover(scope,ident,record['id'])
+
+    @Slot(str,str)
+    def useLocalCover(self,scope,ident):
+        if self._busy:return
+        path=self.pickFile('cover')
+        if not path:return
+        if scope=='game':self.saveGame(ident,{'cover':path})
+        else:
+            rows=[dict(row) for row in self._imports]
+            for row in rows:
+                if row['id']==ident:row.update(cover=path,cover_state='本地图片');row.pop('metadata_steam_appid',None)
+            self._imports=rows;self.changed.emit()
+
+    @Slot(str,str,result=str)
+    def iconSource(self,name,color):
+        import re,base64
+        if not re.fullmatch(r'[a-z0-9_-]+',name) or not re.fullmatch(r'#[0-9a-fA-F]{6}',color):return ''
+        cache_key=name+color
+        if cache_key not in self._icon_cache:
+            file=RESOURCES/'ui/icons'/(name+'.svg')
+            if not file.is_file():return ''
+            content=file.read_text(encoding='utf-8')
+            content=re.sub(r'((?:fill|stroke)=")#[0-9a-fA-F]{6}("\s*)',lambda match:match.group(1)+color+match.group(2),content)
+            self._icon_cache[cache_key]='data:image/svg+xml;base64,'+base64.b64encode(content.encode()).decode()
+        return self._icon_cache[cache_key]
+
+    @Slot()
+    def importTheme(self):
+        file=QFileDialog.getOpenFileName(None,'导入主题 JSON','','主题 (*.json)')[0]
+        if not file:return
+        def read():
+            import json
+            from themes import validate
+            path=Path(file)
+            if path.stat().st_size>65536:raise ValueError('主题文件过大')
+            palette=validate(json.loads(path.read_text(encoding='utf-8-sig')))
+            self.store.save_settings({'custom_theme':palette,'theme':'custom','accent_color':''});return '主题已导入'
+        self.job('settings',read)
+
+    @Slot('QVariantList')
+    def updateLibrary(self,updates):self.job('library-edit',lambda:(self.store.update_library(updates),'游戏库分类已更新')[1])
+    @Slot(str)
+    def toggleFavorite(self,ident):
+        game=next(game for game in self.store.games if game['id']==ident)
+        self.updateLibrary([{'id':ident,'favorite':not game.get('favorite',False)}])
+    @Slot(str,str)
+    def editGroup(self,old,new):self.job('group-edit',lambda:(self.store.edit_group(old,new),'分类已更新')[1])
+    @Slot(bool)
+    def previewOrganizer(self,use_ai):
+        from library_organizer import suggestions
+        self.job('organizer-preview',lambda:suggestions(self.store,use_ai))
+
+    @Slot(str,str,str)
+    def applyCover(self,scope,ident,result_id):
+        def apply():
+            from cover_sources import download
+            record=next((row for row in self._cover_results if row['id']==result_id),None)
+            if record is None:raise ValueError('封面结果已改变，请重新搜索')
+            path=download(self.store,record)
+            if scope=='import':
+                rows=[dict(row) for row in self._imports]
+                row=next(row for row in rows if row['id']==ident);row.update(cover=path,cover_state='已选择',cover_confirmed=True)
+                if record.get('appid'):row['metadata_steam_appid']=record['appid']
+                else:row.pop('metadata_steam_appid',None)
+                return {'scope':scope,**self.prepareImportPreview(rows)}
+            game=next(game for game in self.store.games if game['id']==ident);game['cover']=path
+            from services import write_json
+            write_json(self.store.root/'library.json',self.store.games);self.store.prepare_thumbnails()
+            return {'scope':'game'}
+        self.job('cover-apply',apply)
+
+    @Slot('QVariantList',str,bool)
+    def autoImportCovers(self,selected,provider,use_ai):
+        def apply():
+            from cover_sources import search,download
+            rows=[dict(row) for row in self._imports];allowed=set(selected)
+            for row in rows:
+                if row['id'] not in allowed or row.get('duplicate_id') or row.get('playnite'):continue
+                try:
+                    results=search(self.store,row['name'],provider,use_ai)
+                    if results and results[0]['score']>=.93 and (len(results)==1 or results[0]['score']-results[1]['score']>=.12):
+                        record=results[0];row.update(cover=download(self.store,record),cover_state='已自动匹配',cover_confirmed=False)
+                        if record.get('appid'):row['metadata_steam_appid']=record['appid']
+                        else:row.pop('metadata_steam_appid',None)
+                    else:row['cover_state']='需手动搜索'
+                except ValueError as error:row['cover_state']=str(error)
+            return self.prepareImportPreview(rows)
+        self.job('auto-covers',apply)
 
     @Slot(result=bool)
     def closeToTray(self):return self.store.settings.get('close_to_tray',True) and QSystemTrayIcon.isSystemTrayAvailable()
@@ -246,6 +433,16 @@ class Bridge(QObject):
             self.store.save_settings(values)
             return '本机设置已保存 · 其他电脑使用独立设置'
         self.job('settings', save)
+
+    @Slot('QVariantMap')
+    def saveSetup(self,values):
+        def save():
+            snapshots=values.get('snapshots',self.store.settings['snapshots'])
+            if not snapshots or not Path(snapshots).is_absolute():raise ValueError('请填写完整的本地备份目录')
+            Path(snapshots).mkdir(parents=True,exist_ok=True)
+            self.store.save_settings(values)
+            return '基础设置已完成，可以导入游戏'
+        self.job('settings',save)
 
     @Slot(str, 'QVariantMap')
     def browseCloud(self, folder, values):
@@ -299,6 +496,16 @@ class Bridge(QObject):
             if values:self.store.save_settings(values)
             totals=run_workflow(self.store,idents,self.matchReady.emit,self._cancel_match,upload)
             return f"批量完成：云端成功 {totals['uploaded']}，本地保留 {totals['local_only']}，待核对 {totals['review']}，失败 {totals['failed']}"
+        self.job('workflow',run)
+
+    @Slot('QVariantList',bool)
+    def backupConfigured(self,idents,upload):
+        if self._busy:return
+        self._cancel_match.clear();self._matching=True
+        def run():
+            from save_workflow import run_workflow
+            totals=run_workflow(self.store,idents,self.matchReady.emit,self._cancel_match,upload,recheck=False)
+            return f"批量备份完成：上传 {totals['uploaded']}，本地 {totals['local_only']}，核对 {totals['review']}，失败 {totals['failed']}"
         self.job('workflow',run)
 
     @Slot(str,'QVariantMap','QVariantMap')
@@ -480,22 +687,40 @@ class Bridge(QObject):
                     occupied[str(complete_directory(local['save_dir']).resolve()).casefold()]=ident
             for item in selections:
                 ident=item['id']; path=item['path']; row=reports.get(ident,{})
-                if path not in [c['path'] for c in row.get('candidates',[])]:
+                if not any(game['id']==ident for game in self.store.games):raise ValueError('游戏条目已不存在')
+                row={**next(game for game in self.store.games if game['id']==ident),**row}
+                row.setdefault('candidates',[]);row.setdefault('checked',[])
+                if path not in [c['path'] for c in row.get('candidates',[])] and path not in self._picked_save_folders and path!=self.store.local.get(ident,{}).get('save_dir'):
                     raise ValueError('选中的目录已不在候选结果中，请重新选择')
                 if not Path(path).is_dir():raise ValueError('选中的目录已不存在，请重新查找')
                 complete=str(complete_directory(path).resolve())
                 key=complete.casefold()
                 if key in occupied and occupied[key]!=ident:
                     raise ValueError('多个游戏使用同一存档目录，请分别核对后确认')
+                if any(other!=ident and (Path(complete).is_relative_to(Path(other_path)) or Path(other_path).is_relative_to(Path(complete))) for other_path,other in occupied.items()):
+                    raise ValueError('所选存档目录有包含关系，请分别核对后确认')
                 occupied[key]=ident; prepared.append((ident,complete,row))
             rows=[]
+            updated_local={ident:dict(value) for ident,value in self.store.local.items()}
             for ident,path,row in prepared:
-                self.store.save_game(ident,{'save_dir':path})
+                updated_local[ident]={**updated_local.get(ident,{}),'save_dir':path}
                 updated={**row,'status':'applied','applied_path':path,'message':'已设置存档目录：'+path}
                 reports[ident]=updated; rows.append(updated)
+            from services import write_json
+            write_json(self.store.profile/'games.json',updated_local)
+            self.store.local=updated_local
             self.store.save_match_report(list(reports.values()))
             return {'rows':rows,'message':f'已确认 {len(rows)} 款游戏的存档目录'}
         self.job('apply-matches',apply)
+
+    @Slot(str,result=str)
+    def recommendedMatchPath(self,ident):
+        current=self.store.local.get(ident,{}).get('save_dir','')
+        if current and Path(current).is_dir():return current
+        from save_workflow import select_candidate
+        result=next((row for row in self._matches if row['id']==ident),{})
+        candidate=select_candidate(result)
+        return candidate['path'] if candidate else ''
 
     @Slot('QVariantMap')
     def testAi(self,values):
@@ -522,6 +747,7 @@ class Bridge(QObject):
         if not chosen:return ''
         from save_groups import complete_directory
         complete=str(complete_directory(chosen))
+        self._picked_save_folders.add(complete)
         if complete!=chosen:
             self._status='检测到多个存档槽，已选择完整存档目录：'+complete
             self.changed.emit()
@@ -559,12 +785,16 @@ class Bridge(QObject):
         if not transitions:return
         def backup():
             failed=0
+            if self.store.settings.get('tray_notifications',True):self.notificationReady.emit('自动备份','正在备份 '+str(len(transitions))+' 款游戏存档',False)
             for ident,running in transitions:
+                if running:self.store.mark_played(ident)
                 archive=self.store.backup(ident,'game_start' if running else 'game_stop')
                 if self.store.settings.get('watch_upload',True):
                     try:self.store.upload(ident,archive)
                     except Exception:failed+=1
-            return f'自动备份完成：{len(transitions)} 份'+(f'，{failed} 份上传失败，已保留本地' if failed else '')
+            message=f'自动备份完成：{len(transitions)} 份'+(f'，{failed} 份上传失败，已保留本地' if failed else '')
+            if self.store.settings.get('tray_notifications',True):self.notificationReady.emit('自动备份完成',message,bool(failed))
+            return message
         self.job('watch',backup)
 
 def main():
@@ -574,7 +804,7 @@ def main():
     parser.add_argument('--quit-after', type=int, default=0)
     parser.add_argument('--self-test')
     parser.add_argument('--self-test-online')
-    parser.add_argument('--show',choices=('library','cloud','match','settings','import'),default='library')
+    parser.add_argument('--show',choices=('library','cloud','match','settings','import','batch','setup'),default='library')
     args = parser.parse_args()
     if args.self_test_online:
         import json
@@ -652,9 +882,15 @@ def main():
         menu.addAction('开启 / 暂停监听',toggle_watch)
         menu.addSeparator();menu.addAction('退出',app.quit)
         tray.setContextMenu(menu);tray.setToolTip('GameCloudSave');tray.show()
+        bridge.notificationReady.connect(lambda title,message,error:tray.showMessage(title,message,QSystemTrayIcon.Warning if error else QSystemTrayIcon.Information,5000))
         tray.activated.connect(lambda reason:show_window() if reason==QSystemTrayIcon.Trigger else None)
     window = root_window
-    if args.show=='import':
+    if args.show!='library':QMetaObject.invokeMethod(root_window.findChild(QObject,'setupWizard'),'hide')
+    if args.show=='setup':
+        QMetaObject.invokeMethod(window,'openSetup');window=window.findChild(QObject,'setupWizard')
+    elif args.show=='batch':
+        QMetaObject.invokeMethod(window,'openBatch');window=window.findChild(QObject,'batchWindow')
+    elif args.show=='import':
         QMetaObject.invokeMethod(window,'openImport')
         window=window.findChild(QObject,'importWindow')
     elif args.show=='settings':

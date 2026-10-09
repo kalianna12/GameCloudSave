@@ -21,8 +21,8 @@ AbstractButton {
     background: Rectangle {
         radius: 5
         x: 0; y: 0; width: control.width; height: control.height
-        color: control.transferState === "success" ? "#34502a" : control.transferState === "failed" ? "#56302d" : control.accent ? (control.hovered ? "#91d854" : Theme.accent) : (control.hovered ? Theme.hover : "transparent")
-        border.color: control.activeFocus ? "#a6a9ae" : "transparent"
+        color: control.transferState === "success" ? "#34502a" : control.transferState === "failed" ? "#56302d" : control.accent ? (control.hovered ? Qt.lighter(Theme.accent,1.12) : Theme.accent) : (control.hovered ? Theme.hover : "transparent")
+        border.color: control.activeFocus ? Theme.secondary : "transparent"
     }
     contentItem: Item {
         x: 0; y: 0; width: control.width; height: control.height
@@ -31,7 +31,7 @@ AbstractButton {
             anchors.centerIn: parent
             width: 20; height: 20
             visible: !control.loading
-            source: "icons/" + (control.transferState === "success" ? "success" : control.transferState === "failed" ? "failed" : control.iconName) + ".svg"
+            source: backend.iconSource(control.transferState === "success" ? "success" : control.transferState === "failed" ? "failed" : control.iconName,(control.transferState === "success" || control.transferState === "failed" ? "#ffffff" : control.accent ? Theme.onAccent : Theme.text).toString())
             sourceSize: Qt.size(Math.ceil(width*Screen.devicePixelRatio), Math.ceil(height*Screen.devicePixelRatio))
             opacity: control.enabled ? 1 : 0.4
         }

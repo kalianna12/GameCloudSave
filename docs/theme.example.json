@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "海蓝",
+  "dark": true,
+  "colors": {
+    "background": "#15202b",
+    "sidebar": "#1b2a39",
+    "surface": "#243649",
+    "hover": "#344b61",
+    "border": "#52677b",
+    "text": "#f2f7fc",
+    "secondary": "#b3c5d6",
+    "accent": "#72b7ec"
+  }
+}

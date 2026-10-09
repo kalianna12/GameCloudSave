@@ -17,6 +17,7 @@ app=QApplication([])
 with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     store=Store(directory,'match-ui-test')
     store.settings['guide_dismissed']=True
+    store.settings['setup_completed']=True
     for i in range(30):
         ident=str(i); path=Path(directory)/('Game'+ident)/'savedata'; path.mkdir(parents=True)
         (path/'slot1.sav').write_bytes(b'test')

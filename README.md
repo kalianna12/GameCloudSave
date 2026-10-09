@@ -1,37 +1,39 @@
-# GameCloudSave V2.0 工作目录
+# GameCloudSave V2.2
 
-源码从 D:/Playground/06_脚本与生成器 复制迁入 legacy，保留原位置以便回退。当前便携版 EXE 不变。
+Windows 游戏库与存档备份管理器，Python + PySide6 / Qt Quick。支持 Playnite、Steam/Epic/Ubisoft 已安装游戏、本地 EXE/BAT/CMD 扫描；先保存本地快照，再通过 rclone WebDAV 上传到 AList。
 
-- legacy：现有 Python 核心、Tkinter 界面、依赖、旧打包配置。
-- docs：上传操作说明及重构方案。
-- tests：隔离验证脚本。
-- test-data：仅测试数据，不连接真实游戏存档。
+便携版：双击上级目录的 `启动新版.bat`。安装版：运行 `dist/installers/GameCloudSave-Setup-V2.2.exe`。请先从托盘退出旧版。
 
-V2.0 已完成，双击上级目录“启动新版.bat”。优先运行 dist/GameCloudSave-V2.0 下的独立 EXE；旧版本二进制保留，源码运行环境也已配置。
+[使用说明、封面来源及主题接口](docs/V2.2使用说明.md) · [主题示例](docs/theme.example.json) · [主题格式规范](docs/theme.schema.json) · [MIT 许可](LICENSE) · [第三方组件](THIRD_PARTY_NOTICES.md)
 
-V2.0 增加平台选择导入、已安装游戏平台读取、本地 EXE/BAT/CMD 分级扫描、可选 DeepSeek 启动文件识别、平台标识与筛选、版本备注、其他设备云端版本下载校验恢复、托盘与首页监听开关。支持范围和限制见 docs/V2.0导入与多设备存档.md。
+V2.2 增加收藏、最近游玩、自定义分类、系列、规则/DeepSeek 分组预览，四种主题和强调色；导入时预览与重复检查；Steam Store、VNDB 软件内封面搜索与其他网站的浏览器入口；逐页设置向导、独立批量确认页、自动备份托盘通知、安装与卸载程序。
 
-查找窗口在目录右侧显示环形匹配评分，勾选每款游戏的具体候选后可批量确认，再备份所选游戏。确认目录保留左侧滚动位置。DeepSeek/API Key 在查找窗口右上角，系统设置也提供直达入口。DAV 按连接、浏览选择文件夹、验证保存的流程设置。
+云端按游戏名称和原存档目录分级，版本支持备注、校验与跨设备下载恢复。各电脑独立设置本地路径和凭据，不自动覆盖其他设备存档。未运行过的游戏可能没有存档；候选和分数是查找依据，需核对实际文件。
 
-首次启动提供使用指南，可选择不再自动显示，随时从侧栏重新打开。系统设置分为游戏库、备份、显示、存档查找；云端连接和传输选项在云端窗口，DeepSeek 与联网选项在存档查找窗口。游戏设置支持小窗口滚动。
+便携数据位于 `data`；安装版数据位于 `%LOCALAPPDATA%/GameCloudSave/data`。密码和 Key 使用当前 Windows 用户 DPAPI 保存，个人数据不进入 Git 或安装包。`test-data` 为隔离测试输出。真实云端回归只使用独立临时目录和生成的测试存档。
 
-新 UI 在 ui，Python 服务与界面桥接在 app。共享游戏清单和封面在 data，电脑独立设置在 data/machines/<机器与用户标识>。密码/API Key 使用 Windows DPAPI 保存，不在 JSON 中保存明文。启动脚本把共享数据位置指定为 workspace/data。
-
-全量实测见 docs/54款游戏存档查找报告.md，并行查找见 docs/V1.6并行存档查找.md，多存档槽修复见 docs/V1.5多存档槽.md。
-
-开发测试（在 workspace 下执行）：
+## 开发
 
 ```powershell
-.\.venv\Scripts\python.exe tests\test_regression.py
-.\.venv\Scripts\python.exe tests\test_watcher.py
-.\.venv\Scripts\python.exe tests\test_iteration.py
-.\.venv\Scripts\python.exe tests\ui_iteration.py
+python -m venv .venv
+.\.venv\Scripts\pip.exe install -r requirements-dev.txt
+.\.venv\Scripts\python.exe app/main.py
 ```
 
-live_dav.py 使用本机已保存的连接，上传并清理独立测试 ZIP 和 JSON。ui_iteration.py 也会创建、预览、清理一个独立远端 JSON。live_ai.py 使用已保存的 DeepSeek Key 执行真实匹配，消耗 API 配额并保存匹配报告。
+需要 Windows 和 rclone（放入 PATH）。Playnite 读取使用其 LiteDB.dll，只读导出数据库副本，客户端锁库时提示关闭后重试。扫描不执行游戏启动文件。
 
-重新打包：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1`。构建脚本使用 requirements-dev.txt 中的依赖，并从 scripts/launcher.template.bat 更新上级启动脚本。打包目录包含 Qt、Python 运行库与 rclone，不需要在目标电脑安装 Python。
+## 验证与打包
 
-Git 仓库位于 workspace。V1.0 基线标签：v1.0-baseline；本轮版本标签：v1.1。运行旧版二进制可选择 dist/GameCloudSave-V1/GameCloudSave-V1.exe。回溯源码后可运行 `.\.venv\Scripts\python.exe app\main.py` 验证对应代码版本；启动新版.bat 始终优先运行已打包的 V1.1。
+```powershell
+.\.venv\Scripts\python.exe tests/test_regression.py
+.\.venv\Scripts\python.exe tests/test_sources_and_sync.py
+.\.venv\Scripts\python.exe tests/test_library_v22.py
+.\.venv\Scripts\python.exe tests/test_library_ui_v22.py
+.\.venv\Scripts\python.exe tests/test_wizard_batch_v21.py
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.2
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.2
+```
 
-旧 spec 含旧源码绝对路径，不能直接作为新版打包配置。
+构建脚本从当前虚拟环境打包 Qt、Python、rclone、卸载程序、许可证和 source.zip，无需目标电脑安装 Python。安装包按用户安装，默认创建桌面和开始菜单快捷方式，卸载保留个人数据。构建安装包需网络获取第三方许可文本。
+
+历史源码和版本标签保留于 Git，原核心保留于 `legacy`。旧版输出保留在 `dist`，发布标签 `v2.0` 可作为回溯基线；重新运行构建脚本生成当前版本二进制。

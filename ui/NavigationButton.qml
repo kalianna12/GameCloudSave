@@ -10,15 +10,15 @@ AbstractButton {
     Accessible.name: text
     background: Rectangle {
         radius: 5
-        color: control.selected ? "#464a4f" : control.hovered ? Theme.hover : "transparent"
+        color: control.selected ? Theme.hover : control.hovered ? Theme.hover : "transparent"
         border.color: control.activeFocus ? Theme.text : "transparent"
     }
     contentItem: Item {
         Image {
             x: 12; anchors.verticalCenter: parent.verticalCenter
-            width: 20; height: 20; source: "icons/"+control.iconName+".svg"
+            width: 20; height: 20; source: backend.iconSource(control.iconName,Theme.text.toString())
             sourceSize: Qt.size(Math.ceil(width*Screen.devicePixelRatio),Math.ceil(height*Screen.devicePixelRatio))
         }
-        Text { x: 44; anchors.verticalCenter: parent.verticalCenter; text: control.text; color: Theme.text; font.pixelSize: 13 }
+        Text { x: 44; width: control.width-50; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter; text: control.text; color: Theme.text; font.pixelSize: 13 }
     }
 }

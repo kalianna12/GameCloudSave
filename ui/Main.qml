@@ -8,11 +8,11 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V2.0"
-    color: "#1b1c1e"
-    Material.theme: Material.Dark
-    Material.accent: "#80c942"
-    Material.background: "#27292c"
+    title: "GameCloudSave · V2.2"
+    color: Theme.background
+    Material.theme: Theme.dark ? Material.Dark : Material.Light
+    Material.accent: Theme.accent
+    Material.background: Theme.surface
     Overlay.modal: Rectangle { color: "#bb000000" }
     font.family: "Microsoft YaHei UI"
     property string activeId: ""
@@ -23,9 +23,26 @@ ApplicationWindow {
     property bool installedOnly: backend.settings.installed_only
     property string searchQuery: ""
     property string platformFilter: "all"
+    property string libraryMode: "all"
+    property string groupFilter: ""
+    property string seriesFilter: ""
+    property string librarySort: "name"
+    property bool libraryReady: false
+    ListModel { id: libraryModel; dynamicRoles: true }
     Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
-    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter) && g.name.toLowerCase().indexOf(searchQuery) >= 0 })
-    onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); hide() } else Qt.quit() }
+    property var seriesNames: Array.from(new Set(backend.games.map(function(game) { return game.series || "" }).filter(Boolean))).sort()
+    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter) && g.name.toLowerCase().indexOf(searchQuery)>=0 && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="series" || g.series && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
+    onShownGamesChanged: if(libraryReady) syncLibrary()
+    function syncLibrary() {
+        for(var i=0;i<shownGames.length;i++) {
+            var position=-1
+            for(var j=i;j<libraryModel.count;j++) if(libraryModel.get(j).record.id===shownGames[i].id) { position=j;break }
+            if(position<0) libraryModel.insert(i,{record:shownGames[i]})
+            else { if(position!==i) libraryModel.move(position,i,1);libraryModel.set(i,{record:shownGames[i]}) }
+        }
+        while(libraryModel.count>shownGames.length) libraryModel.remove(libraryModel.count-1)
+    }
+    onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();coverWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
     function openGame(g) {
         selectGame(g)
@@ -39,7 +56,8 @@ ApplicationWindow {
         gameCover.text = ""
         gameDialog.open()
     }
-    function openSettings() {
+    function openSettings() { openSettingsPage(0) }
+    function openSettingsPage(page) {
         guideDialog.close()
         var s = backend.settings
         playnitePath.text = s.playnite; libraryPath.text = s.library
@@ -47,45 +65,65 @@ ApplicationWindow {
         watchSwitch.checked=s.watch
         autoUpload.checked=s.watch_upload
         traySwitch.checked=s.close_to_tray; watchInterval.value=s.watch_interval
-        settingsTabs.currentIndex=0
+        settingsTabs.currentIndex=typeof page==="number" ? page : 0
         settingsDialog.open()
     }
     function openCloud() { guideDialog.close(); cloudWindow.openBrowser() }
     function openMatch(ident) { guideDialog.close(); matchWindow.openMatcher(ident || "") }
     function openImport() { guideDialog.close(); importWindow.openImporter() }
+    function openBatch() { guideDialog.close();batchWindow.openBatch() }
+    function openSetup() { guideDialog.close();setupWizard.openWizard() }
     function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly}) }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
     ImportWindow { id: importWindow; objectName: "importWindow" }
-    MatchWindow { id: matchWindow; objectName: "matchWindow"; onCloudSetupRequested: win.openCloud() }
-    Component.onCompleted: if(!backend.settings.guide_dismissed) guideDialog.open()
+    BatchWindow { id: batchWindow; objectName: "batchWindow" }
+    CoverWindow { id: coverWindow }
+    SetupWizard { id: setupWizard; objectName: "setupWizard" }
+    LibraryManager { id: libraryManager; objectName: "libraryManager" }
+    PersonalizationWindow { id: personalization; objectName: "personalization" }
+    MatchWindow { id: matchWindow; objectName: "matchWindow"; onCloudSetupRequested: win.openCloud();onBatchRequested: win.openBatch() }
+    Component.onCompleted: { libraryReady=true;syncLibrary();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
 
     Rectangle {
-        width: 168; anchors.top: parent.top; anchors.bottom: parent.bottom
+        width: 200; anchors.top: parent.top; anchors.bottom: parent.bottom
         color: Theme.sidebar
         Row {
             x: 16; y: 24; spacing: 10
             Image { source: "icons/app.svg"; width: 28; height: 28; sourceSize: Qt.size(84,84) }
             Label { text: "GameCloudSave"; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 12; font.bold: true }
         }
-        Column {
-            x: 8; y: 84; spacing: 6
-            NavigationButton { iconName: "grid"; text: "游戏库"; selected: true }
-            NavigationButton { iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
-            NavigationButton { iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
-            NavigationButton { iconName: "help"; text: "使用指南"; onClicked: guideDialog.open() }
+        ScrollView { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 84; bottom: parent.bottom; bottomMargin: 80 }
+            clip: true
+            Column { x: 8; spacing: 4
+                NavigationButton { width: 184; iconName: "grid"; text: "全部游戏"; selected: libraryMode==="all"; onClicked: libraryMode="all" }
+                NavigationButton { width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: libraryMode="recent" }
+                NavigationButton { width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: libraryMode="favorites" }
+                NavigationButton { width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: libraryMode="series" }
+                Rectangle { width: 184; height: 1; color: Theme.border }
+                NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
+                NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
+                NavigationButton { width: 184; iconName: "grid"; text: "批量确认"; onClicked: win.openBatch() }
+                NavigationButton { width: 184; iconName: "help"; text: "使用指南"; onClicked: guideDialog.open() }
+                Label { visible: backend.groups.length>0; text: "分类"; color: Theme.secondary; leftPadding: 12; topPadding: 12 }
+                Repeater { model: backend.groups
+                    NavigationButton { required property string modelData; width: 184; iconName: "folder"; text: modelData; selected: libraryMode==="group" && groupFilter===modelData; onClicked: { groupFilter=modelData;libraryMode="group" } }
+                }
+                NavigationButton { width: 184; iconName: "settings"; text: "管理分类与系列"; onClicked: libraryManager.openManager() }
+            }
         }
         NavigationButton { x: 8; anchors.bottom: parent.bottom; anchors.bottomMargin: 20; iconName: "settings"; text: "设置"; onClicked: win.openSettings() }
     }
 
     ColumnLayout {
-        anchors { left: parent.left; leftMargin: 200; right: parent.right; rightMargin: 32; top: parent.top; topMargin: 28; bottom: parent.bottom; bottomMargin: 18 }
+        anchors { left: parent.left; leftMargin: 232; right: parent.right; rightMargin: 32; top: parent.top; topMargin: 28; bottom: parent.bottom; bottomMargin: 18 }
         spacing: 18
         RowLayout {
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 4
-                Label { text: "游戏库"; font.pixelSize: 24; font.bold: true; color: "#f0f1f2" }
+                Label { text: libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" ? groupFilter : libraryMode==="series" ? "系列游戏" : "我的游戏"; font.pixelSize: 30; font.bold: true; color: Theme.text }
+                Label { text: shownGames.length+" 款游戏"; color: Theme.secondary; font.pixelSize: 12 }
             }
             Item { Layout.fillWidth: true }
             AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索游戏…"; Layout.preferredWidth: win.width<1100 ? 130 : 200; selectByMouse: true }
@@ -97,20 +135,16 @@ ApplicationWindow {
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "全部游戏"; font.pixelSize: 17; font.bold: true }
-                Label { text: shownGames.length+" 个"; color: "#a6a9ae" }
                 CheckBox { text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
                 ComboBox { model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 150; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
+                ComboBox { visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 160; onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
-                Label { text: "封面"; color: "#a6a9ae" }
-                NodeSlider { objectName: "coverSlider"; value: coverSize; Layout.preferredWidth: win.width<1200 ? 180 : 220; onMoved: { coverSize=Math.round(value); columnCount=0 } onPressedChanged: if(!pressed) saveLayout() }
-                Label { text: "每行"; color: "#a6a9ae" }
-                CompactSpinBox { from: 0; to: 10; value: columnCount; Layout.preferredWidth: 112; Layout.minimumWidth: 112; onValueModified: { columnCount=value; saveLayout() } textFromValue: function(v) { return v===0 ? "自动" : v.toString() } valueFromText: function(t) { return t==="自动" ? 0 : parseInt(t) } }
-                Label { text: "间隔"; color: "#a6a9ae" }
-                CompactSpinBox { from: 8; to: 48; stepSize: 2; value: gridGap; Layout.preferredWidth: 112; Layout.minimumWidth: 112; onValueModified: { gridGap=value; saveLayout() } }
+                ComboBox { model: ["名称排序","最近游玩","最近添加"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added"][currentIndex] }
+                AppButton { text: "布局"; onClicked: win.openSettingsPage(2) }
+                AppButton { text: "个性化"; onClicked: personalization.openPersonalization() }
                 Item { Layout.fillWidth: win.width<1200 }
             }
         }
@@ -123,14 +157,15 @@ ApplicationWindow {
             cellWidth: columnCount>0 ? width / effectiveColumns : Math.min(width,coverSize+gridGap)
             property real cardWidth: cellWidth - gridGap
             cellHeight: cardWidth * 1.38 + 120 + gridGap
-            model: shownGames
+            model: libraryModel
             cacheBuffer: cellHeight*2
             reuseItems: true
             flickDeceleration: 2200
             maximumFlickVelocity: 3500
             ScrollBar.vertical: ScrollBar { }
             delegate: Item {
-                required property var modelData
+                required property var record
+                property var modelData: record
                 width: grid.cellWidth; height: grid.cellHeight
                 GameCard {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -141,20 +176,21 @@ ApplicationWindow {
                     onSettingsRequested: win.openGame(modelData)
                     onCloudRequested: { selectGame(modelData); historyTabs.currentIndex=0; backend.history(activeId); historyDialog.open() }
                     onRemoveRequested: { selectGame(modelData); deleteDialog.open() }
+                    onFavoriteRequested: backend.toggleFavorite(modelData.id)
                 }
             }
             Column {
                 visible: grid.count === 0; anchors.centerIn: parent; spacing: 15
                 Label { text: backend.games.length ? "没有匹配的游戏" : "尚未导入游戏"; font.pixelSize: 25; font.bold: true; anchors.horizontalCenter: parent.horizontalCenter }
-                Label { text: "从 Playnite 导入游戏，再选择需要备份的存档。"; color: "#a6a9ae" }
+                Label { text: libraryMode==="recent" ? "启动游戏后会显示在这里。" : libraryMode==="favorites" ? "点击游戏封面上的星号收藏。" : libraryMode==="series" ? "在分类管理中设置或识别系列。" : "导入游戏后，选择需要备份的存档。"; color: Theme.secondary }
                 AppButton { text: "设置本机路径"; anchors.horizontalCenter: parent.horizontalCenter; onClicked: win.openSettings() }
             }
         }
         RowLayout {
             Layout.fillWidth: true
             BusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
-            Rectangle { visible: !backend.busy; width: 6; height: 6; radius: 3; color: "#80c942" }
-            Label { text: backend.status; color: "#a6a9ae"; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
+            Rectangle { visible: !backend.busy; width: 6; height: 6; radius: 3; color: Theme.accent }
+            Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
         }
     }
 
@@ -215,7 +251,7 @@ ApplicationWindow {
                 RowLayout { AppTextField { id: playnitePath; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(playnitePath.text); if(p) playnitePath.text=p } } }
                 Label { text: "Playnite 游戏库目录（包含 games.db 的 library 文件夹）" }
                 RowLayout { AppTextField { id: libraryPath; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(libraryPath.text); if(p) libraryPath.text=p } } }
-                Label { text: "保存设置后，在游戏库点击“导入 Playnite”。已有备份会保留。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                Label { text: "保存后，打开“导入游戏”的 Playnite 页面读取游戏库。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 }
                 ColumnLayout {
                 visible: settingsTabs.currentIndex===1; Layout.fillWidth: true; spacing: 10
@@ -233,7 +269,7 @@ ApplicationWindow {
                 ColumnLayout {
                 visible: settingsTabs.currentIndex===2; Layout.fillWidth: true; spacing: 12
                 Label { text: "修改后立即预览，点击保存保留布局。"; color: Theme.secondary }
-                RowLayout { Label { text: "封面大小"; Layout.fillWidth: true } NodeSlider { value: coverSize; Layout.preferredWidth: 260; onMoved: { coverSize=Math.round(value); columnCount=0 } } }
+                RowLayout { Label { text: "封面大小"; Layout.fillWidth: true } NodeSlider { objectName: "coverSlider"; value: coverSize; Layout.preferredWidth: 260; onMoved: { coverSize=Math.round(value); columnCount=0 } } }
                 RowLayout { Label { text: "每行游戏数（0 为自动）"; Layout.fillWidth: true } CompactSpinBox { from: 0; to: 10; value: columnCount; onValueModified: columnCount=value } }
                 RowLayout { Label { text: "卡片间距"; Layout.fillWidth: true } CompactSpinBox { from: 8; to: 48; stepSize: 2; value: gridGap; onValueModified: gridGap=value } }
                 CheckBox { text: "仅显示已安装游戏"; checked: installedOnly; onToggled: installedOnly=checked }
@@ -245,9 +281,10 @@ ApplicationWindow {
                 Label { text: "联网查询、DeepSeek 和并行数量在查找窗口的“匹配设置”中调整。不使用 DeepSeek 也可以本地查找或手动选目录。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 AppButton { text: "打开存档查找与匹配设置"; Layout.fillWidth: true; onClicked: win.openMatch("") }
                 AppButton { text: "设置 DeepSeek API Key"; Layout.fillWidth: true; onClicked: { settingsDialog.close(); matchWindow.openAiSettings() } }
+                AppButton { text: "重新运行设置向导"; Layout.fillWidth: true; onClicked: { settingsDialog.close();win.openSetup() } }
                 Label { text: "目录存在不代表已有进度。未玩过的游戏可在首次保存后重新查找；多候选需要核对。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 }
-                Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
+                Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
             }
         }
         footer: DialogButtonBox {
@@ -269,7 +306,7 @@ ApplicationWindow {
             ColumnLayout {
             width: gameDialog.availableWidth-20
             spacing: 12
-            Label { text: "这些路径只用于 " + backend.settings.computer; color: "#80c942" }
+            Label { text: "这些路径只用于 " + backend.settings.computer; color: Theme.accent }
             Label { text: "存档目录（包含所有存档槽）" }
             RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickSaveFolder(gameSave.text); if(p) gameSave.text=p } } }
             AppButton { text: "查找此游戏的存档"; onClicked: win.openMatch(activeId) }
@@ -282,8 +319,9 @@ ApplicationWindow {
             AppTextField { id: gameArguments; Layout.fillWidth: true; placeholderText: "启动参数（可选）"; selectByMouse: true }
             RowLayout { AppTextField { id: gameWorking; Layout.fillWidth: true; placeholderText: "工作目录（留空使用 EXE 所在目录）"; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(gameWorking.text); if(p) gameWorking.text=p } } }
             Label { text: "自定义封面（留空保持现有封面）" }
+            AppButton { text: "搜索并下载封面"; onClicked: coverWindow.openSearch("game",activeId,activeName) }
             RowLayout { AppTextField { id: gameCover; Layout.fillWidth: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFile("cover"); if(p) gameCover.text=p } } }
-            Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
+            Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
         }
         }
         footer: DialogButtonBox {
@@ -306,7 +344,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             RowLayout {
                 IconButton { iconName: "cloud"; transferState: backend.transferStates[activeId] || "idle"; hoverEnabled: false; focusPolicy: Qt.NoFocus }
-                Label { text: (backend.transferStates[activeId] || "idle")==="saving" ? "正在保存本地备份…" : backend.transferStates[activeId]==="uploading" ? "本地已保存，正在上传…" : backend.transferStates[activeId]==="success" ? "云端上传成功" : backend.transferStates[activeId]==="failed" ? "上传失败，本地备份保留，可补传" : "本地备份完成后再上传"; Layout.fillWidth: true; color: "#a6a9ae" }
+                Label { text: (backend.transferStates[activeId] || "idle")==="saving" ? "正在保存本地备份…" : backend.transferStates[activeId]==="uploading" ? "本地已保存，正在上传…" : backend.transferStates[activeId]==="success" ? "云端上传成功" : backend.transferStates[activeId]==="failed" ? "上传失败，本地备份保留，可补传" : "本地备份完成后再上传"; Layout.fillWidth: true; color: Theme.secondary }
             }
             RowLayout {
                 enabled: !backend.busy
@@ -316,7 +354,7 @@ ApplicationWindow {
                 AppButton { text: "刷新记录"; onClicked: { if(historyTabs.currentIndex===0) backend.history(activeId); else backend.refreshCloudHistory(activeId) } }
             }
             TabBar { id: historyTabs; Layout.fillWidth: true; TabButton { text: "本机版本" } TabButton { text: "云端 / 其他设备" } }
-            Label { text: historyTabs.currentIndex===0 ? "按时间从新到旧排列，恢复前先备份当前存档。" : "点击刷新读取云端版本；选择恢复时下载并校验，不自动覆盖本机。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
+            Label { text: historyTabs.currentIndex===0 ? "按时间从新到旧排列，恢复前先备份当前存档。" : "点击刷新读取云端版本；选择恢复时下载并校验，不自动覆盖本机。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
             ListView {
                 Layout.fillWidth: true; Layout.fillHeight: true; model: historyTabs.currentIndex===0 ? backend.snapshots : backend.cloudSnapshots; clip: true
                 delegate: ItemDelegate {
@@ -326,7 +364,7 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Label { text: modelData.created_at; Layout.fillWidth: true; elide: Text.ElideRight }
-                            Label { text: (historyTabs.currentIndex===0 ? (modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: "#a6a9ae"; font.pixelSize: 12 }
+                            Label { text: (historyTabs.currentIndex===0 ? (modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; font.pixelSize: 12 }
                         }
                         AppButton { text: "备注"; visible: historyTabs.currentIndex===0; enabled: !backend.busy; onClicked: { noteDialog.snapshotId=modelData.id; snapshotNote.text=modelData.note || ""; noteDialog.open() } }
                         AppButton { text: historyTabs.currentIndex===0 ? "恢复" : "下载并恢复"; enabled: !backend.busy; onClicked: { restoreDialog.snapshotId=modelData.id || 0; restoreDialog.cloudRecord=historyTabs.currentIndex===1 ? modelData : ({}); restoreDialog.open() } }
@@ -335,7 +373,7 @@ ApplicationWindow {
                 ScrollBar.vertical: ScrollBar {}
                 Label { visible: parent.count===0; anchors.centerIn: parent; text: historyTabs.currentIndex===0 ? "暂无本机记录，先创建一份备份。" : "点击刷新记录，查看云端版本。"; color: Theme.secondary }
             }
-            Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
+            Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
         }
         standardButtons: Dialog.Close
     }

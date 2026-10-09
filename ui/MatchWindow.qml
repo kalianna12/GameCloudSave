@@ -5,14 +5,12 @@ import QtQuick.Controls.Material
 ApplicationWindow {
     id: matcher
     width: 1240; height: 860; minimumWidth: 960; minimumHeight: 700
-    title: "查找存档"; color: "#1b1c1e"
-    Material.theme: Material.Dark; Material.accent: "#80c942"
+    title: "查找存档"; color: Theme.background
+    Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
     font.family: "Microsoft YaHei UI"
     property string selectedId: ""
     property bool showConnection: !backend.settings.has_ai_key
     property bool showDetails: false
-    property var selectedPaths: ({})
-    property var checkedIds: Object.keys(selectedPaths)
     ListModel { id: resultModel; dynamicRoles: true }
     function syncResults() {
         var savedY=results.contentY
@@ -28,14 +26,9 @@ ApplicationWindow {
     }
     Component.onCompleted: syncResults()
     Connections { target: backend; function onMatchesChanged() { matcher.syncResults() } }
-    function choosePath(ident,path,checked) {
-        var next=Object.assign({},selectedPaths)
-        if(checked) next[ident]=path
-        else delete next[ident]
-        selectedPaths=next
-    }
     function openAiSettings() { openMatcher(""); showConnection=true }
     signal cloudSetupRequested()
+    signal batchRequested()
     function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_ai_review:reviewSwitch.checked,match_workers:matchWorkers.value} }
     property var currentResult: backend.matchResults.find(function(r) { return r.id===matcher.selectedId }) || ({})
     function manualStartDirectory() {
@@ -60,11 +53,12 @@ ApplicationWindow {
             Label { text: "查找存档"; font.pixelSize: 28; font.bold: true }
             Item { Layout.fillWidth: true }
             AppButton { text: "DeepSeek / API Key"; checkable: true; checked: matcher.showConnection; onToggled: matcher.showConnection=checked }
+            AppButton { text: "批量确认目录"; enabled: !backend.busy; onClicked: matcher.batchRequested() }
             AppButton { text: "设置 DAV"; onClicked: matcher.cloudSetupRequested() }
         }
         Rectangle {
             visible: matcher.showConnection
-            Layout.fillWidth: true; Layout.preferredHeight: 178; color: "#27292c"; radius: 6
+            Layout.fillWidth: true; Layout.preferredHeight: 178; color: Theme.surface; radius: 6
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 5
                 RowLayout {
@@ -80,8 +74,8 @@ ApplicationWindow {
                     CompactSpinBox { id: matchWorkers; from: 1; to: 3; value: backend.settings.match_workers }
                     AppButton { text: "保存查找设置"; enabled: !backend.busy; onClicked: backend.saveSettings(matcher.aiValues()) }
                 }
-                Label { text: backend.aiConnection; color: "#a6a9ae" }
-                Label { text: "找到存档后可批量备份；无法确定的目录请手动选择。"; color: "#a6a9ae"; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { text: backend.aiConnection; color: Theme.secondary }
+                Label { text: "找到存档后可批量备份；无法确定的目录请手动选择。"; color: Theme.secondary; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
         }
         RowLayout {
@@ -89,7 +83,7 @@ ApplicationWindow {
             AppButton { text: "查找并备份到云端"; highlighted: true; enabled: !backend.busy; onClicked: { if(!backend.settings.cloud_folder) matcher.cloudSetupRequested(); else backend.autoWorkflow(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),true,matcher.aiValues()) } }
             AppButton { text: "查找并备份到本地"; enabled: !backend.busy; onClicked: backend.autoWorkflow(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),false,matcher.aiValues()) }
             AppButton { text: "批量补传"; enabled: !backend.busy; onClicked: backend.retryAll() }
-            Label { text: "云端位置："+(backend.settings.cloud_folder || "点击设置 DAV"); Layout.fillWidth: true; elide: Text.ElideRight; color: "#a6a9ae"; TapHandler { onTapped: matcher.cloudSetupRequested() } HoverHandler { cursorShape: Qt.PointingHandCursor } }
+            Label { text: "云端位置："+(backend.settings.cloud_folder || "点击设置 DAV"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; TapHandler { onTapped: matcher.cloudSetupRequested() } HoverHandler { cursorShape: Qt.PointingHandCursor } }
         }
         RowLayout {
             ComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: matcher.selectedId=currentValue }
@@ -100,7 +94,7 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 16
             Rectangle {
-                Layout.preferredWidth: 270; Layout.fillHeight: true; radius: 6; color: "#242629"
+                Layout.preferredWidth: 270; Layout.fillHeight: true; radius: 6; color: Theme.sidebar
                 ListView {
                     id: results; objectName: "matchResultList"
                     anchors.fill: parent; anchors.margins: 8; clip: true; model: resultModel
@@ -112,13 +106,13 @@ ApplicationWindow {
                             Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
                             RowLayout {
                                 BusyIndicator { implicitWidth: 20; implicitHeight: 20; running: ["running","saving","uploading"].indexOf(modelData.status)>=0; visible: running }
-                                Label { text: matcher.label(modelData.status)+"  ·  "+modelData.candidates.length+" 个候选"; color: modelData.status==="failed" ? "#f29c8e" : "#a6a9ae"; font.pixelSize: 12 }
+                                Label { text: matcher.label(modelData.status)+"  ·  "+modelData.candidates.length+" 个候选"; color: modelData.status==="failed" ? "#f29c8e" : Theme.secondary; font.pixelSize: 12 }
                             }
                         }
                         onClicked: { matcher.selectedId=modelData.id; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===matcher.selectedId }) }
                     }
                     ScrollBar.vertical: ScrollBar {}
-                    Label { visible: results.count===0; anchors.centerIn: parent; text: "还没有匹配记录"; color: "#a6a9ae" }
+                    Label { visible: results.count===0; anchors.centerIn: parent; text: "还没有匹配记录"; color: Theme.secondary }
                 }
             }
             ScrollView {
@@ -142,8 +136,8 @@ ApplicationWindow {
                         model: matcher.currentResult.candidates || []
                         Rectangle {
                             required property var modelData
-                            Layout.fillWidth: true; implicitHeight: Math.max(candidateDetails.implicitHeight+32,128); radius: 6; color: "#27292c"
-                            border.color: matcher.selectedPaths[matcher.selectedId]===modelData.path ? "#80c942" : "#35383c"
+                            Layout.fillWidth: true; implicitHeight: Math.max(candidateDetails.implicitHeight+32,128); radius: 6; color: Theme.surface
+                            border.color: "#35383c"
                             ScoreRing { anchors.right: parent.right; anchors.rightMargin: 16; anchors.top: parent.top; anchors.topMargin: 16; score: modelData.confidence }
                             ColumnLayout {
                                 id: candidateDetails
@@ -154,9 +148,8 @@ ApplicationWindow {
                                 Label { visible: matcher.showDetails; text: modelData.reason || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                                 Label { visible: matcher.showDetails && modelData.ai_confidence!==undefined; text: "本地 "+Math.round((modelData.local_confidence || modelData.confidence)*100)+"% / DeepSeek "+Math.round((modelData.ai_confidence || 0)*100)+"%  "+(modelData.ai_reason || ""); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                                 Label { visible: matcher.showDetails && !!modelData.score_details; text: modelData.score_details ? "开发商目录："+(modelData.score_details.developer_match ? "匹配" : "未确认")+" / 存档文件："+(modelData.verified ? "存在" : "未确认") : ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
-                                Label { text: "文件："+modelData.fileSummary; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae"; font.pixelSize: 11 }
+                                Label { text: "文件："+modelData.fileSummary; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                                 RowLayout {
-                                    CheckBox { text: "加入批量确认"; checked: matcher.selectedPaths[matcher.selectedId]===modelData.path; onToggled: matcher.choosePath(matcher.selectedId,modelData.path,checked) }
                                     AppButton { text: matcher.currentResult.applied_path===modelData.path ? "已使用" : "使用此目录"; enabled: !backend.busy && matcher.currentResult.applied_path!==modelData.path; onClicked: backend.applyMatch(matcher.selectedId,modelData.path) }
                                 }
                             }
@@ -165,7 +158,7 @@ ApplicationWindow {
                     Label { visible: matcher.showDetails; text: "其他可能位置"; font.pixelSize: 17; font.bold: true }
                     Repeater {
                         model: matcher.showDetails ? matcher.currentResult.checked || [] : []
-                        Label { required property var modelData; text: (modelData.exists ? "✓ 存在  " : "× 未找到  ")+modelData.path; Layout.fillWidth: true; wrapMode: Text.Wrap; color: modelData.exists ? "#a6a9ae" : "#a4978c"; font.pixelSize: 12 }
+                        Label { required property var modelData; text: (modelData.exists ? "✓ 存在  " : "× 未找到  ")+modelData.path; Layout.fillWidth: true; wrapMode: Text.Wrap; color: modelData.exists ? Theme.secondary : "#a4978c"; font.pixelSize: 12 }
                     }
                     AppButton { text: "手动选择目录"; enabled: !backend.busy && !!matcher.selectedId; onClicked: { var p=backend.pickSaveFolder(matcher.manualStartDirectory()); if(p) backend.saveGame(matcher.selectedId,{save_dir:p}) } }
                     AppButton { text: matcher.showDetails ? "收起详情" : "匹配详情"; checkable: true; checked: matcher.showDetails; onToggled: matcher.showDetails=checked }
@@ -177,17 +170,8 @@ ApplicationWindow {
             }
         }
         RowLayout {
-            visible: matcher.checkedIds.length>0
-            Label { text: "已选 "+matcher.checkedIds.length+" 款"; color: Theme.secondary }
-            AppButton { text: "确认所选目录"; highlighted: true; enabled: !backend.busy; onClicked: backend.applyMatches(matcher.checkedIds.map(function(id) { return {id:id,path:matcher.selectedPaths[id]} })) }
-            AppButton { text: "备份所选到本地"; enabled: !backend.busy && matcher.checkedIds.every(function(id) { return backend.gameSettings(id).save_dir===matcher.selectedPaths[id] }); onClicked: backend.autoWorkflow(matcher.checkedIds,false,matcher.aiValues()) }
-            AppButton { text: "备份所选到云端"; enabled: !backend.busy && !!backend.settings.cloud_folder && matcher.checkedIds.every(function(id) { return backend.gameSettings(id).save_dir===matcher.selectedPaths[id] }); onClicked: backend.autoWorkflow(matcher.checkedIds,true,matcher.aiValues()) }
-            Item { Layout.fillWidth: true }
-            AppButton { text: "清除选择"; onClicked: matcher.selectedPaths=({}) }
-        }
-        RowLayout {
             BusyIndicator { running: backend.busy; visible: running; implicitWidth: 26; implicitHeight: 26 }
-            Label { text: backend.status; Layout.fillWidth: true; elide: Text.ElideRight; color: "#a6a9ae" }
+            Label { text: backend.status; Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary }
             AppButton { text: "关闭"; onClicked: matcher.close() }
         }
     }

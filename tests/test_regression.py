@@ -78,6 +78,9 @@ class Regression(unittest.TestCase):
         self.assertEqual(len(self.store.history(self.ident)), 1)
 
     def test_launch_uses_playnite_id(self):
+        playnite=self.store.root/'Playnite';playnite.mkdir()
+        (playnite/'Playnite.DesktopApp.exe').write_bytes(b'fixture')
+        self.store.settings['playnite']=str(playnite)
         with patch('services.subprocess.Popen') as start:
             self.store.launch(self.ident)
         self.assertEqual(start.call_args.args[0][-2:], ['--start', self.ident])

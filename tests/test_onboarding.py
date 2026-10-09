@@ -26,7 +26,9 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     settings = window.findChild(QObject, 'settingsDialog')
     tabs = window.findChild(QObject, 'settingsTabs')
     app.processEvents()
-    assert guide.property('visible'), 'First-run guide missing'
+    wizard=window.findChild(QObject,'setupWizard')
+    assert wizard.property('visible'), 'First-run wizard missing'
+    QMetaObject.invokeMethod(wizard,'hide')
     QMetaObject.invokeMethod(window, 'openSettings')
     QTest.qWait(350)
     assert not guide.property('visible') and settings.property('visible')

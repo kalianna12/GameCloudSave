@@ -23,8 +23,10 @@ class CloudPaths(unittest.TestCase):
         archive=self.store.backup(self.ident)
         self.store.save_game(self.ident,{'save_dir':str(self.save/'another-folder')})
         with patch.object(self.store,'rclone',return_value='') as call:self.store.upload(self.ident,archive)
-        target=call.call_args.args[0][2]
+        copies=[entry.args[0] for entry in call.call_args_list if entry.args[0][0]=='copyto']
+        target=next(args[2] for args in copies if args[1]==str(archive))
         self.assertEqual(target,'gamecloud:百度网盘/game-saves/艾尔登法环 ELDEN RING/EldenRing/'+archive.name)
+        self.assertTrue(any(args[2]==target+'.json' for args in copies))
         self.assertEqual(self.store.history(self.ident)[0]['cloud_ref'],target)
     def test_special_characters_preserve_readable_name_without_nested_paths(self):
         self.store.games[0]['name']='Fate/stay night: 中文?'

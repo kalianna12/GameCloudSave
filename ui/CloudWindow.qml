@@ -6,22 +6,9 @@ ApplicationWindow {
     id: cloud
     width: 1180; height: 820; minimumWidth: 920; minimumHeight: 680
     title: "云端存储"
-    color: "#1b1c1e"; Material.theme: Material.Dark; Material.accent: "#80c942"
+    color: Theme.background; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
     font.family: "Microsoft YaHei UI"
     property string selectedName: ""
-    Dialog {
-        id: baiduDialog; title: "百度网盘独立连接"; anchors.centerIn: parent; width: Math.min(600,cloud.width-60); modal: true
-        Overlay.modal: Rectangle { color: "#bb000000" }
-        contentItem: ColumnLayout {
-            spacing: 12
-            Label { text: "需要百度开放平台应用授权"; font.bold: true }
-            Label { text: "独立连接尚未启用，需要应用 Client ID、Client Secret 和用户授权。百度账号密码不能代替这些凭据。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-            Label { text: "当前可继续通过 AList 的百度网盘挂载使用备份、云端版本和恢复功能。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-            AppButton { text: "查看百度开放平台"; onClicked: Qt.openUrlExternally("https://pan.baidu.com/union") }
-            AppButton { text: "继续设置 AList / DAV"; onClicked: { baiduDialog.close(); configTabs.currentIndex=1 } }
-        }
-        standardButtons: Dialog.Close
-    }
     property var selectedEntry: ({})
     Connections { target: backend; function onDirectoriesChanged() { if(cloud.visible && configTabs.currentIndex===1) configTabs.currentIndex=0 } }
     property var visibleEntries: backend.directories.filter(function(entry) {
@@ -39,8 +26,11 @@ ApplicationWindow {
     }
     function values() { return {dav_url:server.text,dav_user:user.text,password:password.text,rclone:rclonePath.text,cloud_folder:storage.text,cloud_separate_computer:separateComputer.checked,cloud_retries:retryCount.value,cloud_timeout:timeoutSeconds.value,watch_upload:watchUpload.checked} }
     function openBrowser() {
-        var s=backend.settings
-        server.text=s.dav_url; user.text=s.dav_user; password.text=""; rclonePath.text=s.rclone
+        openBrowserDraft({})
+    }
+    function openBrowserDraft(draft) {
+        var s=Object.assign({},backend.settings,draft)
+        server.text=s.dav_url; user.text=s.dav_user; password.text=s.password || ""; rclonePath.text=s.rclone
         storage.text=s.cloud_folder; location.text=s.cloud_folder==="/" ? "" : s.cloud_folder
         separateComputer.checked=s.cloud_separate_computer; retryCount.value=s.cloud_retries; timeoutSeconds.value=s.cloud_timeout; watchUpload.checked=s.watch_upload
         var configured=backend.games.findIndex(function(game) { return game.saveSet })
@@ -56,16 +46,15 @@ ApplicationWindow {
         RowLayout {
             Label { text: "云端存储"; font.pixelSize: 28; font.bold: true }
             Item { Layout.fillWidth: true }
-            Label { text: backend.settings.computer; color: "#a6a9ae" }
+            Label { text: backend.settings.computer; color: Theme.secondary }
             AppButton { text: "DAV 连接设置"; onClicked: configTabs.currentIndex=1 }
-            AppButton { text: "百度网盘独立连接"; onClicked: baiduDialog.open() }
             AppButton { text: "传输选项"; onClicked: configTabs.currentIndex=2 }
         }
         Rectangle {
             Layout.fillWidth: true; Layout.preferredHeight: 64; radius: 6; color: Theme.surface
             Column {
                 anchors.fill: parent; anchors.margins: 11; spacing: 5
-                Label { text: "备份位置"; color: "#a6a9ae"; font.pixelSize: 12 }
+                Label { text: "备份位置"; color: Theme.secondary; font.pixelSize: 12 }
                 Label { text: backend.settings.dav_url + "  →  " + (backend.settings.cloud_folder || "尚未选择存储文件夹"); width: parent.width; elide: Text.ElideMiddle; font.pixelSize: 16 }
             }
         }
@@ -113,7 +102,7 @@ ApplicationWindow {
                     AppButton { visible: configTabs.currentIndex===1; id: advanced; text: "高级：rclone 程序位置"; checkable: true; Layout.fillWidth: true }
                     AppTextField { id: rclonePath; visible: configTabs.currentIndex===1 && advanced.checked; Layout.fillWidth: true; selectByMouse: true }
                     AppButton { visible: configTabs.currentIndex===1 && advanced.checked; text: "选择 rclone.exe"; Layout.fillWidth: true; onClicked: { var p=backend.pickFile("exe"); if(p) rclonePath.text=p } }
-                    Label { text: "单击文件夹进入，单击文件预览。AList 请进入实际挂载文件夹后选择保存位置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae"; font.pixelSize: 12 }
+                    Label { text: "单击文件夹进入，单击文件预览。AList 请进入实际挂载文件夹后选择保存位置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                 }
             }
             ColumnLayout {
@@ -141,11 +130,11 @@ ApplicationWindow {
                     AppButton { text: "下载文件"; enabled: !backend.busy && !!cloud.selectedEntry.Name && !cloud.selectedEntry.IsDir; onClicked: backend.downloadCloud(backend.cloudPath,cloud.selectedEntry,cloud.values()) }
                 }
                 RowLayout {
-                    Label { text: "/ " + backend.cloudPath; Layout.fillWidth: true; elide: Text.ElideMiddle; color: "#a6a9ae" }
-                    Label { text: cloud.visibleEntries.length + " 项"; color: "#a6a9ae" }
+                    Label { text: "/ " + backend.cloudPath; Layout.fillWidth: true; elide: Text.ElideMiddle; color: Theme.secondary }
+                    Label { text: cloud.visibleEntries.length + " 项"; color: Theme.secondary }
                 }
                 Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 10; color: "#242629"
+                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 10; color: Theme.sidebar
                     ListView {
                         id: files; objectName: "davFiles"
                         anchors.fill: parent; anchors.margins: 7; clip: true
@@ -157,12 +146,12 @@ ApplicationWindow {
                             contentItem: RowLayout {
                                 Image { source: "icons/"+(modelData.IsDir ? "folder" : "file")+".svg"; Layout.preferredWidth: 20; Layout.preferredHeight: 20; sourceSize: Qt.size(60,60) }
                                 Label { text: cloud.entryLabel(modelData); Layout.fillWidth: true; elide: Text.ElideRight }
-                                Label { text: modelData.IsDir ? "文件夹" : cloud.fileSize(modelData.Size); color: "#a6a9ae"; font.pixelSize: 11 }
+                                Label { text: modelData.IsDir ? "文件夹" : cloud.fileSize(modelData.Size); color: Theme.secondary; font.pixelSize: 11 }
                             }
                             onClicked: { cloud.selectedName=modelData.Name; cloud.selectedEntry=modelData; if(!backend.busy) { if(modelData.IsDir) backend.browseCloud((backend.cloudPath ? backend.cloudPath+"/" : "")+modelData.Name,cloud.values()); else backend.previewCloud(backend.cloudPath,modelData,cloud.values()) } }
                         }
                         ScrollBar.vertical: ScrollBar {}
-                        Label { anchors.centerIn: parent; visible: files.count===0; text: backend.busy ? "正在读取…" : backend.directories.length ? "没有符合筛选条件的文件" : "当前目录为空，或尚未连接"; color: "#a6a9ae" }
+                        Label { anchors.centerIn: parent; visible: files.count===0; text: backend.busy ? "正在读取…" : backend.directories.length ? "没有符合筛选条件的文件" : "当前目录为空，或尚未连接"; color: Theme.secondary }
                     }
                 }
                 Rectangle {
@@ -186,7 +175,7 @@ ApplicationWindow {
         }
         RowLayout {
             BusyIndicator { implicitWidth: 26; implicitHeight: 26; running: backend.busy; visible: running }
-            Label { text: backend.status; Layout.fillWidth: true; elide: Text.ElideRight; color: "#a6a9ae" }
+            Label { text: backend.status; Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary }
             AppButton { text: "关闭"; onClicked: cloud.close() }
         }
     }
