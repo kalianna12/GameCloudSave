@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
-from PySide6.QtCore import QObject,QMetaObject,QUrl,Q_ARG
+from PySide6.QtCore import QObject,QMetaObject,QUrl,Q_ARG,Q_RETURN_ARG
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -30,6 +30,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     root=engine.rootObjects()[0]; window=root.findChild(QObject,'matchWindow')
     QMetaObject.invokeMethod(window,'openMatcher',Q_ARG('QVariant','20'))
     QTest.qWait(350)
+    weight=window.findChild(QObject,'matchAiWeight');assert weight.property('value')==75
+    weight.setProperty('value',90)
+    returned=QMetaObject.invokeMethod(window,'aiValues',Q_RETURN_ARG('QVariant'))
+    assert returned.toVariant()['match_ai_weight']==90
     view=window.findChild(QObject,'matchResultList')
     view.setProperty('contentY',850); QTest.qWait(100)
     before=view.property('contentY')

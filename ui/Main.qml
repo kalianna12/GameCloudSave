@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V2.2"
+    title: "GameCloudSave · V2.2.1"
     color: Theme.background
     Material.theme: Theme.dark ? Material.Dark : Material.Light
     Material.accent: Theme.accent

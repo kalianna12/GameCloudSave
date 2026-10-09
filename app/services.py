@@ -76,7 +76,7 @@ class Store:
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
-                    'match_network':True,'match_workers':2,'match_ai_review':True,'guide_dismissed':False,
+                    'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':10}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True})
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
@@ -104,10 +104,23 @@ class Store:
         self.settings.update(read_json(self.profile/'settings.json',{}))
         self.settings.update(values)
         write_json(self.profile / 'settings.json', self.settings)
+        if 'match_ai_weight' in values:self.reweight_matches()
 
     def password(self):
         path = self.profile / 'credential.dpapi'
         return protect(path.read_bytes(), True).decode('utf-8') if path.exists() else ''
+
+    def reweight_matches(self):
+        from match_engine import score_reviews,ai_weight
+        import copy
+        weight=ai_weight(self.settings);reports=copy.deepcopy(self.match_report);changed=False
+        for report in reports:
+            candidates=report.get('candidates',[])
+            scores={index:{'confidence':candidate['ai_confidence'],'reason':candidate.get('ai_reason','')} for index,candidate in enumerate(candidates[:30]) if type(candidate.get('ai_confidence')) in (int,float) and 0<=candidate['ai_confidence']<=1}
+            if not scores or all(candidates[index].get('ai_weight')==weight for index in scores):continue
+            score_reviews(candidates,scores,weight);changed=True
+        if changed:self.save_match_report(reports)
+        return changed
 
     def save_game(self, ident, values):
         values=dict(values)

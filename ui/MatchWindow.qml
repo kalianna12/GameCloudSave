@@ -29,7 +29,7 @@ ApplicationWindow {
     function openAiSettings() { openMatcher(""); showConnection=true }
     signal cloudSetupRequested()
     signal batchRequested()
-    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_ai_review:reviewSwitch.checked,match_workers:matchWorkers.value} }
+    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_ai_review:reviewSwitch.checked,match_ai_weight:aiWeight.value,match_workers:matchWorkers.value} }
     property var currentResult: backend.matchResults.find(function(r) { return r.id===matcher.selectedId }) || ({})
     function manualStartDirectory() {
         var candidates=currentResult.candidates || []
@@ -41,6 +41,7 @@ ApplicationWindow {
         var s=backend.settings
         enabledSwitch.checked=s.ai_enabled; modelName.text=s.ai_model; apiKey.text=""
         networkSwitch.checked=s.match_network;reviewSwitch.checked=s.match_ai_review;matchWorkers.value=s.match_workers
+        aiWeight.value=s.match_ai_weight
         if(ident) { selectedId=ident; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===ident }) }
         else if(!selectedId && backend.games.length) { selectedId=backend.matchResults.length ? backend.matchResults[0].id : backend.games[0].id; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===matcher.selectedId }) }
         show(); raise(); requestActivate()
@@ -58,7 +59,7 @@ ApplicationWindow {
         }
         Rectangle {
             visible: matcher.showConnection
-            Layout.fillWidth: true; Layout.preferredHeight: 178; color: Theme.surface; radius: 6
+            Layout.fillWidth: true; Layout.preferredHeight: 224; color: Theme.surface; radius: 6
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 12; spacing: 5
                 RowLayout {
@@ -73,6 +74,12 @@ ApplicationWindow {
                     Label { text: "并行游戏数" }
                     CompactSpinBox { id: matchWorkers; from: 1; to: 3; value: backend.settings.match_workers }
                     AppButton { text: "保存查找设置"; enabled: !backend.busy; onClicked: backend.saveSettings(matcher.aiValues()) }
+                }
+                RowLayout {
+                    Label { text: "DeepSeek 权重" }
+                    CompactSpinBox { id: aiWeight; objectName: "matchAiWeight"; from: 50; to: 95; stepSize: 5; value: backend.settings.match_ai_weight; enabled: enabledSwitch.checked && reviewSwitch.checked }
+                    Label { text: "%   本地规则 "+(100-aiWeight.value)+"%"; color: Theme.secondary }
+                    Item { Layout.fillWidth: true }
                 }
                 Label { text: backend.aiConnection; color: Theme.secondary }
                 Label { text: "找到存档后可批量备份；无法确定的目录请手动选择。"; color: Theme.secondary; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -146,7 +153,7 @@ ApplicationWindow {
                                 Label { text: modelData.path; Layout.fillWidth: true; wrapMode: Text.Wrap; font.bold: true }
                                 Label { visible: matcher.showDetails; text: "匹配评分 "+Math.round(modelData.confidence*100)+" / 100"; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { visible: matcher.showDetails; text: modelData.reason || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                                Label { visible: matcher.showDetails && modelData.ai_confidence!==undefined; text: "本地 "+Math.round((modelData.local_confidence || modelData.confidence)*100)+"% / DeepSeek "+Math.round((modelData.ai_confidence || 0)*100)+"%  "+(modelData.ai_reason || ""); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                                Label { visible: matcher.showDetails && modelData.ai_confidence!==undefined; text: "本地 "+Math.round((modelData.local_confidence!==undefined ? modelData.local_confidence : modelData.confidence)*100)+" 分 / DeepSeek "+Math.round((modelData.ai_confidence || 0)*100)+" 分 · DeepSeek 权重 "+Math.round((modelData.ai_weight || 0)*100)+"%\n"+(modelData.ai_reason || ""); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                                 Label { visible: matcher.showDetails && !!modelData.score_details; text: modelData.score_details ? "开发商目录："+(modelData.score_details.developer_match ? "匹配" : "未确认")+" / 存档文件："+(modelData.verified ? "存在" : "未确认") : ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { text: "文件："+modelData.fileSummary; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                                 RowLayout {

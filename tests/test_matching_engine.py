@@ -8,7 +8,7 @@ from matching import scan
 from local_index import directories,clear
 from save_workflow import select_candidate,evidence
 from ai_match import review_directories,identify_game
-from match_engine import match
+from match_engine import match,score_reviews,ai_weight
 
 class MatchingEngine(unittest.TestCase):
     def setUp(self):
@@ -88,6 +88,47 @@ class MatchingEngine(unittest.TestCase):
         with patch('matching.scan',return_value=(candidates,[])),patch('match_engine.cached_ai',return_value=self.identity),patch('ai_match.review_directories',return_value={0:{'confidence':1,'reason':'guess'}}):
             result=match(self.store,'game')
         self.assertIsNone(select_candidate(result));self.assertEqual(result['candidates'][0]['confidence'],.8)
+    def test_ai_downranks_configuration_and_promotes_params_save_directory(self):
+        config=self.root/'Roaming/Naughty Dog/The Last of Us Part II/crs';config.mkdir(parents=True)
+        (config/'settings.dat').write_text('settings fixture')
+        save=self.root/'Documents/The Last of Us Part II/76561197960271872/savedata';(save/'SAVEFILE0A').mkdir(parents=True)
+        (save/'SAVEFILE0A/params.json').write_text('{"title":"slot"}')
+        candidates=[{'path':str(config),'confidence':.87,'files':['settings.dat']},{'path':str(save),'confidence':.85,'files':['SAVEFILE0A/params.json']}]
+        verdicts={0:{'confidence':.25,'reason':'配置目录'},1:{'confidence':.95,'reason':'存档容器'}}
+        score_reviews(candidates,verdicts,ai_weight({}))
+        self.assertEqual(candidates[0]['path'],str(save));self.assertEqual(candidates[0]['confidence'],.93)
+        self.assertEqual(candidates[1]['confidence'],.41);self.assertEqual(candidates[0]['local_confidence'],.85)
+        self.assertIsNone(select_candidate({'candidates':candidates}), 'Ranking alone should not auto-confirm unsupported save evidence')
+    def test_ai_reviews_even_single_rule_candidate_and_reuses_scores_with_new_weight(self):
+        self.store.save_settings({'ai_enabled':True,'ai_key':'dummy','match_network':False})
+        candidate={'path':str(self.release),'confidence':.92,'files':['save3/GameData.json','save3/Flags.json']}
+        with patch('matching.scan',side_effect=lambda *args,**kwargs:([dict(candidate)],[])),patch('match_engine.cached_ai',return_value=self.identity),patch('ai_match.review_directories',return_value={0:{'confidence':.2,'reason':'not save'}}) as review:
+            result=match(self.store,'game');self.assertEqual(result['candidates'][0]['confidence'],.38)
+            self.store.settings['match_ai_weight']=90
+            second=match(self.store,'game');self.assertEqual(second['candidates'][0]['confidence'],.27)
+            self.assertEqual(review.call_count,1)
+            self.assertIsNone(select_candidate(second))
+    def test_high_ai_score_does_not_auto_confirm_bundled_save_or_escaped_file(self):
+        folder=self.root/'patch';folder.mkdir();(folder/'slot.sav').write_bytes(b'fixture')
+        sample={'path':str(folder),'confidence':.55,'files':['slot.sav'],'sample_backup':True}
+        score_reviews([sample],{0:{'confidence':1,'reason':'guess'}},.75);self.assertEqual(sample['confidence'],.55)
+        escaped={'path':str(folder),'confidence':.8,'files':['../patch/slot.sav','../../outside.sav']}
+        # ../patch/slot.sav resolves inside the root; use only the outside path for this check.
+        escaped['files']=['../Cup Dog Games/Rubinite/Release/save3/GameData.json']
+        score_reviews([escaped],{0:{'confidence':1,'reason':'guess'}},.75);self.assertEqual(escaped['confidence'],.8)
+    def test_weight_defaults_and_invalid_values_are_bounded(self):
+        self.assertEqual(ai_weight({}),.75)
+        for value in ('bad',float('nan'),None):self.assertEqual(ai_weight({'match_ai_weight':value}),.75)
+        self.assertEqual(ai_weight({'match_ai_weight':1000}),.95)
+    def test_existing_reviews_are_reweighted_once_without_changing_manual_directory(self):
+        candidate={'path':str(self.release),'confidence':.92,'local_confidence':.92,'ai_confidence':.3,'files':['save3/GameData.json'],'ai_reason':'low'}
+        self.store.save_match_report([{'id':'game','status':'applied','applied_path':str(self.release),'candidates':[candidate]}])
+        self.store.save_game('game',{'save_dir':str(self.release)})
+        self.assertTrue(self.store.reweight_matches());self.assertFalse(self.store.reweight_matches())
+        self.assertEqual(self.store.match_report[0]['candidates'][0]['confidence'],.46)
+        self.store.save_settings({'match_ai_weight':90})
+        self.assertEqual(self.store.match_report[0]['candidates'][0]['confidence'],.36)
+        self.assertEqual(self.store.local['game']['save_dir'],str(self.release))
     def test_steam_lookup_uses_official_metadata(self):
         from network_metadata import lookup
         responses=[{'items':[{'id':1845250,'name':'Rubinite'},{'id':9,'name':'Rubinite Soundtrack'}]},

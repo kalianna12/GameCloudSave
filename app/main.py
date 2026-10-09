@@ -31,6 +31,7 @@ class Bridge(QObject):
     def __init__(self, store):
         super().__init__()
         self.store = store
+        store.reweight_matches()
         self.pool = ThreadPoolExecutor(max_workers=1)
         self._busy = False
         self._status = '就绪'
@@ -217,6 +218,8 @@ class Bridge(QObject):
                 self._imports=annotate_duplicates(self.store,self._imports,self._import_reference)
         if action=='watch' and error and self.store.settings.get('tray_notifications',True):self.notificationReady.emit('自动备份失败',error,True)
         if action in ('settings','ai-test','cloud-config','workflow','match') and not error:
+            if self._matches!=self.store.match_report:
+                self._matches=list(self.store.match_report);self.matchesChanged.emit()
             self.settingsChanged.emit()
             if self.store.settings.get('watch'):self.timer.start(max(5,min(60,int(self.store.settings.get('watch_interval',10))))*1000)
             else:self.timer.stop()

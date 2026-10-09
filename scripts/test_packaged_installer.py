@@ -1,10 +1,11 @@
 """Install/run/uninstall the real EXEs under an isolated workspace test folder."""
 from pathlib import Path
-import os,json,subprocess,time,sys,zipfile,uuid
+import os,json,subprocess,time,sys,zipfile,uuid,argparse
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.2.1');version=parser.parse_args().version
 ROOT=Path(__file__).resolve().parents[1]
 test=ROOT/'test-data'/('installer-v22-'+uuid.uuid4().hex[:8]);test.mkdir()
 target=test/'installed';desktop=test/'desktop';menu=test/'menu';profile=test/'localappdata';profile.mkdir()
-setup=ROOT/'dist/installers/GameCloudSave-Setup-V2.2.exe'
+setup=ROOT/('dist/installers/GameCloudSave-Setup-V'+version+'.exe')
 def run(args,env=None,timeout=120):
     started=time.monotonic()
     result=subprocess.run([str(arg) for arg in args],env=env,capture_output=True,timeout=timeout,creationflags=subprocess.CREATE_NO_WINDOW)
@@ -12,7 +13,7 @@ def run(args,env=None,timeout=120):
     return round(time.monotonic()-started,3)
 report={'test_directory':str(test)}
 report['install_seconds']=run([setup,'--silent','--target',target,'--desktop',desktop,'--start-menu',menu,'--no-register'])
-marker=json.loads((target/'gamecloud-install.json').read_text(encoding='utf-8'));assert marker['version']=='2.2'
+marker=json.loads((target/'gamecloud-install.json').read_text(encoding='utf-8'));assert marker['version']==version
 assert (desktop/'GameCloudSave.lnk').is_file() and (menu/'GameCloudSave.lnk').is_file()
 exe=target/marker['exe'];environment=os.environ.copy();environment.pop('GAMECLOUD_DATA',None);environment['LOCALAPPDATA']=str(profile)
 report['selftest_seconds']=run([exe,'--self-test',test/'selftest.txt'],env=environment)

@@ -1,10 +1,33 @@
 """Concurrent local, Steam and model hints; filesystem evidence remains decisive."""
 from concurrent.futures import ThreadPoolExecutor,wait,FIRST_COMPLETED
 from pathlib import Path
-import hashlib,json,time,threading,re
+import hashlib,json,time,threading,re,math
 
 _ai_limit=threading.Semaphore(2)
 EMPTY={'english_name':'','aliases':[],'developers':[],'publishers':[],'hints':[],'note':'','sources':[]}
+
+def ai_weight(settings):
+    try:value=float(settings.get('match_ai_weight',75))
+    except (TypeError,ValueError):value=75
+    if not math.isfinite(value):value=75
+    return max(.5,min(.95,value/100))
+
+def score_reviews(candidates,scores,weight):
+    """AI can reject configuration folders; automatic use still requires save evidence."""
+    for index,candidate in enumerate(candidates[:30]):
+        verdict=scores.get(index,scores.get(str(index)))
+        if not verdict:continue
+        local=candidate.get('local_confidence',candidate['confidence'])
+        candidate.update(ai_confidence=verdict['confidence'],ai_reason=verdict['reason'],local_confidence=local,ai_weight=weight)
+        combined=(1-weight)*local+weight*verdict['confidence']
+        path=Path(candidate['path']).resolve()
+        try:
+            has_files=path.is_dir() and any((path/name).resolve().is_relative_to(path) and (path/name).is_file() for name in candidate.get('files',[]))
+        except (OSError,ValueError):has_files=False
+        if not has_files:combined=min(local,combined)
+        if candidate.get('sample_backup'):combined=min(.55,combined)
+        candidate['confidence']=math.floor(combined*100+.5+1e-9)/100
+    candidates.sort(key=lambda candidate:-candidate['confidence'])
 
 def merge(*identities):
     result={**EMPTY}
@@ -97,28 +120,21 @@ def match(store,ident,progress=None,cancel=None):
                 identities['network']=cached_network(store,item,local,cancel,english)
                 candidates,checked=scan(item['name'],local,merge(*identities.values()),cancel=cancel)
             except Exception:pass
-        if store.settings.get('ai_enabled') and not warnings.get('ai') and store.settings.get('match_ai_review',True) and len(candidates)>1 and not cancel.is_set():
-            from save_workflow import select_candidate,evidence
-            if select_candidate({'candidates':candidates}) is None:
-                try:
-                    from ai_match import review_directories
-                    from services import protect,read_json,write_json
-                    signatures=[{'path':c['path'],'files':c['files']} for c in candidates[:8]]
-                    cache_key=hashlib.sha256(json.dumps([item['name'],store.settings['ai_model'],signatures],sort_keys=True).encode()).hexdigest()
-                    with store.match_lock:reviews=read_json(store.profile/'ai-reviews.json',{});scores=reviews.get(cache_key)
-                    if scores is None:
-                        with _ai_limit:
-                            if cancel.is_set():return result('review')
-                            scores=review_directories(item['name'],candidates,protect((store.profile/'ai-key.dpapi').read_bytes(),True).decode(),store.settings['ai_model'])
-                        with store.match_lock:
-                            reviews=read_json(store.profile/'ai-reviews.json',{});reviews[cache_key]=scores;write_json(store.profile/'ai-reviews.json',reviews)
-                    for index,candidate in enumerate(candidates[:8]):
-                        verdict=scores.get(index,scores.get(str(index)))
-                        if not verdict:continue
-                        candidate['ai_confidence']=verdict['confidence'];candidate['ai_reason']=verdict['reason'];candidate['local_confidence']=candidate['confidence']
-                        if evidence(candidate):candidate['confidence']=round(.9*candidate['confidence']+.1*verdict['confidence'],2)
-                    candidates.sort(key=lambda c:-c['confidence'])
-                except Exception:warnings['ai']=warnings.get('ai') or '目录辅助比较暂不可用，保留本地验证结果'
+        if store.settings.get('ai_enabled') and not warnings.get('ai') and store.settings.get('match_ai_review',True) and candidates and not cancel.is_set():
+            try:
+                from ai_match import review_directories
+                from services import protect,read_json,write_json
+                signatures=[{'path':c['path'],'files':c['files']} for c in candidates[:30]]
+                cache_key=hashlib.sha256(json.dumps(['directory-review-v2',item['name'],store.settings['ai_model'],signatures],sort_keys=True).encode()).hexdigest()
+                with store.match_lock:reviews=read_json(store.profile/'ai-reviews.json',{});scores=reviews.get(cache_key)
+                if scores is None:
+                    with _ai_limit:
+                        if cancel.is_set():return result('review')
+                        scores=review_directories(item['name'],candidates,protect((store.profile/'ai-key.dpapi').read_bytes(),True).decode(),store.settings['ai_model'])
+                    with store.match_lock:
+                        reviews=read_json(store.profile/'ai-reviews.json',{});reviews[cache_key]=scores;write_json(store.profile/'ai-reviews.json',reviews)
+                score_reviews(candidates,scores,ai_weight(store.settings))
+            except Exception:warnings['ai']=warnings.get('ai') or '目录辅助比较暂不可用，保留本地验证结果'
         row=result('review' if candidates else 'failed' if warnings.get('ai') else 'notfound')
         if not candidates:row['message']=warnings.get('ai') or '未找到存档，请手动选择目录或补充游戏别名'
         return row

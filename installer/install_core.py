@@ -54,7 +54,7 @@ def register(root,exe,version):
     import winreg
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCloudSave') as registry:
         for name,value in {'DisplayName':PRODUCT,'DisplayVersion':version,'InstallLocation':str(root),'DisplayIcon':str(exe),'UninstallString':'"'+str(root/'Uninstall.exe')+'"','Publisher':'GameCloudSave contributors'}.items():winreg.SetValueEx(registry,name,0,winreg.REG_SZ,value)
-def install(payload,target,desktop=None,start_menu=None,version='2.2',registry=True,progress=lambda value:None):
+def install(payload,target,desktop=None,start_menu=None,version='2.2.1',registry=True,progress=lambda value:None):
     target=Path(target).resolve()
     if target==Path(target.anchor) or target==Path.home().resolve():raise ValueError('请选择软件专用安装文件夹')
     previous={}
