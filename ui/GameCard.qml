@@ -19,6 +19,13 @@ Rectangle {
     border.width: selected ? 3 : 1
     Behavior on border.color { ColorAnimation { duration: Theme.motion ? 120 : 0 } }
     Behavior on color { ColorAnimation { duration: Theme.motion && !card.scrolling ? 120 : 0 } }
+    Rectangle {
+        objectName: "cardFocusRing"
+        anchors.fill: parent; z: 100; radius: card.radius
+        color: "transparent"; border.color: Theme.accent
+        border.width: card.selected ? 3 : 0
+        visible: card.selected
+    }
     HoverHandler { id: hover; enabled: !backend.controllerMode }
     Rectangle {
         id: poster
@@ -38,7 +45,7 @@ Rectangle {
     ColumnLayout {
         x: 10; y: poster.height+10; width: parent.width-20
         spacing: 6
-        Label { text: card.game.name; Layout.fillWidth: true; Layout.preferredHeight: 34; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 13; font.bold: true; ToolTip.visible: hover.hovered && !card.scrolling; ToolTip.delay: 1000; ToolTip.text: text }
+        Label { text: card.game.name; Layout.fillWidth: true; Layout.preferredHeight: 34; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 13; font.bold: true; ToolTip.visible: hover.hovered && !card.scrolling; ToolTip.delay: 1000; ToolTip.text: text+"\n发行日期: "+(card.game.release_date || "未知") }
         RowLayout {
             Layout.fillWidth: true; spacing: 5
             Image { source: backend.iconSource(card.game.platform==="other" ? "local" : card.game.platform || "local",Theme.secondary.toString()); Layout.preferredWidth: 15; Layout.preferredHeight: 15; sourceSize: Qt.size(45,45) }

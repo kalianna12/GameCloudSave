@@ -20,6 +20,19 @@ def platform_for(row):
     if plugin and plugin!='00000000-0000-0000-0000-000000000000':return 'other'
     return 'local'
 
+def release_date(value):
+    """Keep calendar dates; reject partial, invalid and unknown source values."""
+    from datetime import date
+    if isinstance(value,dict):
+        if '$date' in value:value=value['$date']
+        else:
+            try:return date(int(value['Year']),int(value['Month']),int(value['Day'])).isoformat()
+            except (KeyError,TypeError,ValueError):return ''
+    if not isinstance(value,str):return ''
+    matched=re.fullmatch(r'(\d{4}-\d{2}-\d{2})(?:[T ].*)?',value.strip())
+    try:return date.fromisoformat(matched[1]).isoformat() if matched else ''
+    except ValueError:return ''
+
 def playnite_metadata(raw):
     platform=platform_for(raw);external=str(raw.get('GameId') or '')
     fields={'platform':platform,'external_id':external,'plugin_id':guid(raw.get('PluginId')),'import_source':'playnite','provenance_version':2}
@@ -27,6 +40,7 @@ def playnite_metadata(raw):
     for link in raw.get('Links') or []:
         matched=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
         if matched:fields['metadata_steam_appid']=matched.group(1);fields['metadata_source']='steam';break
+    fields['release_date']=release_date(raw.get('ReleaseDate'))
     timestamp=raw.get('LastActivity')
     if isinstance(timestamp,dict):timestamp=timestamp.get('$date')
     if isinstance(timestamp,str) and timestamp:fields['last_played']=timestamp

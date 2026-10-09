@@ -65,7 +65,7 @@ $taskTag="22222222-2222-2222-2222-222222222222"
 foreach($taskKind in @('games','genres','tags')) {
     $taskDb=[LiteDB.LiteDatabase]::new((Join-Path $Folder ($taskKind+'.db')))
     try {
-        if($taskKind -eq 'games') {$taskCollection='Game';$taskJson='{"_id":{"$guid":"33333333-3333-3333-3333-333333333333"},"Name":"Fixture","PluginId":{"$guid":"cb91dfc9-b977-43bf-8e70-55f46e410fab"},"GenreIds":[{"$guid":"11111111-1111-1111-1111-111111111111"}],"TagIds":[{"$guid":"22222222-2222-2222-2222-222222222222"}]}'}
+        if($taskKind -eq 'games') {$taskCollection='Game';$taskJson='{"_id":{"$guid":"33333333-3333-3333-3333-333333333333"},"Name":"Fixture","ReleaseDate":{"Year":2001,"Month":9,"Day":12},"PluginId":{"$guid":"cb91dfc9-b977-43bf-8e70-55f46e410fab"},"GenreIds":[{"$guid":"11111111-1111-1111-1111-111111111111"}],"TagIds":[{"$guid":"22222222-2222-2222-2222-222222222222"}]}'}
         elseif($taskKind -eq 'genres') {$taskCollection='Genre';$taskJson='{"_id":{"$guid":"11111111-1111-1111-1111-111111111111"},"Name":"RPG"}'}
         else {$taskCollection='Tag';$taskJson='{"_id":{"$guid":"22222222-2222-2222-2222-222222222222"},"Name":"Co-op"}'}
         $taskDb.GetCollection($taskCollection).Insert([LiteDB.JsonSerializer]::Deserialize($taskJson)) | Out-Null
@@ -77,5 +77,5 @@ foreach($taskKind in @('games','genres','tags')) {
         output=self.root/'export.json'
         exported=run_process(['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'scripts/export_playnite.ps1'),'-AssemblyPath',str(dll),'-DatabasePath',str(self.root/'games.db'),'-OutputPath',str(output)],timeout=20)
         self.assertEqual(exported.returncode,0,exported.stderr)
-        row=json.loads(output.read_text(encoding='utf-8'))[0];self.assertEqual(row['ResolvedGenres'],['RPG']);self.assertEqual(row['ResolvedTags'],['Co-op'])
+        row=json.loads(output.read_text(encoding='utf-8'))[0];self.assertEqual(playnite_metadata(row)['release_date'],'2001-09-12');self.assertEqual(row['ResolvedGenres'],['RPG']);self.assertEqual(row['ResolvedTags'],['Co-op'])
 if __name__=='__main__':unittest.main(verbosity=2)

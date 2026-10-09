@@ -8,6 +8,7 @@ Item {
     property bool keyboardFocused: false
     property string selectedId: ""
     property bool syncing: false
+    readonly property int selectionIndex: list.currentIndex
     property var selectedRecord: items.count ? items.get(Math.min(items.count-1,Math.max(0,list.currentIndex))).record : ({})
     signal selectionFocused()
     signal browseRequested(string mode,string value)

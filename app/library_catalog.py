@@ -36,6 +36,8 @@ def valid_series(games):
         if name:members[name].append(game)
     return {name:rows for name,rows in members.items() if len({row['id'] for row in rows})>=2}
 def prepare_game(game):
+    from library_sources import release_date
+    game={**game,'release_date':release_date(game.get('release_date'))}
     tags=unique([*game.get('tags',[]),*game.get('groups',[])])
     category=game.get('category') or primary(tags)
     name=canonical_series(game.get('series',''))

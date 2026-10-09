@@ -42,11 +42,41 @@ ApplicationWindow {
         while(item) { if(item===home || item===grid) return true;item=item.parent }
         return !activeFocusItem || activeFocusItem===contentItem
     }
+    function focusContent() { if(homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() }
+    function focusControls(items,index) {
+        var available=items.filter(function(item) { return item.visible && item.enabled })
+        if(available.length) { available[Math.max(0,Math.min(available.length-1,index))].forceActiveFocus();backend.navigationMoved() }
+    }
     function controllerInput(command) {
         if(!win.active || backend.popupActive()) return false
         if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else home.forceActiveFocus();return true }
+        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
+        var toolbar=[backButton,search,watchControl,importControl,installedControl,platformControl,sourceControl,seriesControl,sortControl,layoutControl,personalControl]
+        var item=activeFocusItem,side=-1,top=-1
+        while(item) { if(side<0) side=sidebar.indexOf(item);if(top<0) top=toolbar.indexOf(item);item=item.parent }
+        if(side>=0) {
+            if(command==="right") { focusContent();return true }
+            if(command==="up" || command==="down") { focusControls(sidebar,side+(command==="up" ? -1 : 1));return true }
+            if(command==="activate") { sidebar[side].clicked();return true }
+            return true
+        }
+        if(top>=0) {
+            var available=toolbar.filter(function(control) { return control.visible && control.enabled })
+            if(command==="down") { focusContent();return true }
+            if(command==="left" || command==="previous" || command==="right" || command==="next") {
+                var position=available.indexOf(toolbar[top]),step=(command==="left" || command==="previous") ? -1 : 1
+                if(position===0 && step<0) focusControls(sidebar,0);else focusControls(available,position+step)
+                return true
+            }
+            return false
+        }
         if(command==="next" || command==="previous") return false
-        if(!libraryFocus()) return false
+        if(!libraryFocus()) {
+            if(["up","down","left","right"].indexOf(command)<0) return false
+            focusContent()
+        }
+        if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { focusControls(sidebar,Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode)));return true }
+        if(command==="up" && (homeVisible ? home.focusedSection===0 : grid.currentIndex<grid.effectiveColumns)) { search.forceActiveFocus();backend.navigationMoved();return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
             else if(grid.count) {
@@ -71,7 +101,12 @@ ApplicationWindow {
     property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
     property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && shownGames.length>0
     property var homeRows: { var revision=backend.games;return backend.homeSections(installedOnly,platformFilter,importSourceFilter) }
-    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
+    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
+        var ad=a.release_date || "",bd=b.release_date || ""
+        if(!ad || !bd) return ad ? -1 : bd ? 1 : a.name.localeCompare(b.name)
+        return (librarySort==="release_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad)) || a.name.localeCompare(b.name)
+    }
+    return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
     function navigate(mode,value) {
         navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex}])
         search.text="";searchQuery="";groupFilter="";seriesFilter=""
@@ -143,11 +178,11 @@ ApplicationWindow {
         ScrollView { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 84; bottom: parent.bottom; bottomMargin: 80 }
             clip: true
             Column { x: 8; spacing: 4
-                NavigationButton { width: 184; iconName: "grid"; text: "游戏库主页"; selected: libraryMode==="home"; onClicked: win.navigate("home","") }
-                NavigationButton { width: 184; iconName: "grid"; text: "全部游戏"; selected: libraryMode==="all"; onClicked: win.navigate("all","") }
-                NavigationButton { width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: win.navigate("recent","") }
-                NavigationButton { width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: win.navigate("favorites","") }
-                NavigationButton { width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
+                NavigationButton { id: navHome; objectName: "navHome"; width: 184; iconName: "grid"; text: "游戏库主页"; selected: libraryMode==="home"; onClicked: win.navigate("home","") }
+                NavigationButton { id: navAll; objectName: "navAll"; width: 184; iconName: "grid"; text: "全部游戏"; selected: libraryMode==="all"; onClicked: win.navigate("all","") }
+                NavigationButton { id: navRecent; objectName: "navRecent"; width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: win.navigate("recent","") }
+                NavigationButton { id: navFavorites; objectName: "navFavorites"; width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: win.navigate("favorites","") }
+                NavigationButton { id: navSeries; objectName: "navSeries"; width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
                 Rectangle { width: 184; height: 1; color: Theme.border }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
@@ -164,7 +199,7 @@ ApplicationWindow {
         spacing: 18
         RowLayout {
             Layout.fillWidth: true
-            AppButton { objectName: "libraryBack"; text: "返回"; visible: libraryMode!=="home" || searchTokens.length>0; onClicked: win.goBack() }
+            AppButton { id: backButton; objectName: "libraryBack"; text: "返回"; visible: libraryMode!=="home" || searchTokens.length>0; onClicked: win.goBack() }
             ColumnLayout {
                 spacing: 4
                 Label { text: searchTokens.length ? "搜索结果" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: 30; font.bold: true; color: Theme.text }
@@ -172,25 +207,25 @@ ApplicationWindow {
             }
             Item { Layout.fillWidth: true }
             AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索名称、标签、系列…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
-            Switch { text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy; onToggled: backend.saveSettings({watch:checked}) }
-            AppButton { text: "导入游戏"; onClicked: win.openImport() }
+            Switch { id: watchControl; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy; onToggled: backend.saveSettings({watch:checked}) }
+            AppButton { id: importControl; text: "导入游戏"; onClicked: win.openImport() }
         }
         GridLayout {
             Layout.fillWidth: true; columns: win.width<1200 ? 1 : 2
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
                 Layout.fillWidth: true
-                CheckBox { text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
-                AppComboBox { objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
-                AppComboBox { model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
-                AppComboBox { visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
+                CheckBox { id: installedControl; text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
+                AppComboBox { id: platformControl; objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
+                AppComboBox { id: sourceControl; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
+                AppComboBox { id: seriesControl; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
-                AppComboBox { visible: !homeVisible; model: ["名称排序","最近游玩","最近添加"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added"][currentIndex] }
-                AppButton { text: "布局"; onClicked: win.openSettingsPage(2) }
-                AppButton { text: "个性化"; onClicked: personalization.openPersonalization() }
+                AppComboBox { id: sortControl; objectName: "librarySort"; visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppButton { id: layoutControl; text: "布局"; onClicked: win.openSettingsPage(2) }
+                AppButton { id: personalControl; text: "个性化"; onClicked: personalization.openPersonalization() }
                 Item { Layout.fillWidth: win.width<1200 }
             }
         }
