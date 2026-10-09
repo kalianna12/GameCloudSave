@@ -73,7 +73,7 @@ class Store:
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
-                    'match_network':True,'match_workers':2,'match_ai_review':True}
+                    'match_network':True,'match_workers':2,'match_ai_review':True,'guide_dismissed':False}
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         self.games = read_json(self.root / 'library.json', [])
         self.local = read_json(self.profile / 'games.json', {})

@@ -456,7 +456,7 @@ def main():
     parser.add_argument('--quit-after', type=int, default=0)
     parser.add_argument('--self-test')
     parser.add_argument('--self-test-online')
-    parser.add_argument('--show',choices=('library','cloud','match'),default='library')
+    parser.add_argument('--show',choices=('library','cloud','match','settings'),default='library')
     args = parser.parse_args()
     if args.self_test_online:
         import json
@@ -517,7 +517,9 @@ def main():
         return 1
     root_window = engine.rootObjects()[0]
     window = root_window
-    if args.show=='cloud':
+    if args.show=='settings':
+        QMetaObject.invokeMethod(window,'openSettings')
+    elif args.show=='cloud':
         QMetaObject.invokeMethod(window,'openCloud')
         window=window.findChild(QObject,'cloudWindow')
     elif args.show=='match':
