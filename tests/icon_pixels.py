@@ -14,7 +14,7 @@ app=QApplication([]);QQuickStyle.setStyle('Material')
 bridge=Bridge(Store());bridge.timer.stop()
 engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',bridge)
 engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')))
-window=engine.rootObjects()[0];QCursor.setPos(0,0)
+window=engine.rootObjects()[0];window.setProperty('libraryMode','all');QCursor.setPos(0,0)
 end=time.monotonic()+2
 while time.monotonic()<end: app.processEvents();time.sleep(.005)
 image=window.grabWindow();ratio=image.width()/window.width()

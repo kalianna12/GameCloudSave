@@ -10,18 +10,32 @@ SKIP={'redist','_commonredist','directx','vcredist','support','installer','unins
 BAD=('unins','uninstall','setup','install','crash','report','updater','unitycrash','dxsetup','vcredist','vc_redist','config','benchmark','playnite','rclone','steamwebhelper','epicgameslauncher','ubisoftconnect','uplaywebcore','cefprocess')
 def key(value):return re.sub(r'[\W_]','',value.casefold())
 def ident(platform,external):return str(uuid.uuid5(uuid.NAMESPACE_URL,'gamecloud:'+platform+':'+str(external)))
+
+PLUGINS={'cb91dfc9-b977-43bf-8e70-55f46e410fab':'steam','00000002-dbd1-46c6-b5d0-b1ba559d10e4':'epic','c2f038e5-8b92-4877-91f1-da9094155fc5':'ubisoft'}
+def guid(value):return str(value.get('$guid','') if isinstance(value,dict) else value or '').strip().lower()
 def platform_for(row):
-    plugin=row.get('PluginId',{})
-    plugin=plugin.get('$guid','') if isinstance(plugin,dict) else str(plugin)
-    known={'cb91dfc9-b977-43bf-8e70-55f46e410fab':'steam','00000002-dbd1-46c6-b5d0-b1ba559d10e4':'epic','c2f038e5-8b92-4877-91f1-da9094155fc5':'ubisoft'}
-    if plugin.casefold() in known:return known[plugin.casefold()]
-    value=' '.join(str(row.get(field,'')) for field in ('Source','InstallDirectory','GameId'))
-    value+=' '+str(row.get('Links',[]))
-    value=value.casefold()
-    if 'steam' in value:return 'steam'
-    if 'epic' in value:return 'epic'
-    if 'ubisoft' in value or 'uplay' in value:return 'ubisoft'
+    plugin=guid(row.get('PluginId'))
+    if plugin in PLUGINS:return PLUGINS[plugin]
+    # A manually entered Steam metadata link, name or installation folder is not ownership.
+    if plugin and plugin!='00000000-0000-0000-0000-000000000000':return 'other'
     return 'local'
+
+def playnite_metadata(raw):
+    platform=platform_for(raw);external=str(raw.get('GameId') or '')
+    fields={'platform':platform,'external_id':external,'plugin_id':guid(raw.get('PluginId')),'import_source':'playnite','provenance_version':2}
+    if platform=='steam' and external.isdigit():fields['steam_appid']=external
+    for link in raw.get('Links') or []:
+        matched=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
+        if matched:fields['metadata_steam_appid']=matched.group(1);fields['metadata_source']='steam';break
+    timestamp=raw.get('LastActivity')
+    if isinstance(timestamp,dict):timestamp=timestamp.get('$date')
+    if isinstance(timestamp,str) and timestamp:fields['last_played']=timestamp
+    playtime=raw.get('Playtime',0)
+    if isinstance(playtime,dict):playtime=playtime.get('$numberLong',0)
+    try:fields['playtime_seconds']=max(0,int(playtime))
+    except (TypeError,ValueError):pass
+    fields['tags']=[str(value) for value in [*raw.get('ResolvedGenres',[]),*raw.get('ResolvedTags',[])] if isinstance(value,str) and 0<len(value.strip())<=32][:40]
+    return fields
 def candidate(name,platform,external,install,exe='',uri='',arguments=''):
     return {'id':ident(platform,external),'name':name,'platform':platform,'external_id':str(external),
             'install_dir':str(install),'exe':str(exe),'launch_uri':uri,'arguments':arguments,'score':1.0,'selected':True}
@@ -107,7 +121,6 @@ def duplicate_match(store,row,references=()):
         if row['id']==game['id']:reason='相同游戏 ID'
         elif row.get('external_id') and row.get('platform')!='local' and row.get('platform')==game.get('platform') and row['external_id']==game.get('external_id'):reason='相同平台 ID'
         elif row.get('platform')=='steam' and row.get('external_id') and row['external_id']==game.get('steam_appid'):reason='相同 Steam ID'
-        elif row.get('cover_confirmed') and row.get('metadata_steam_appid') and row['metadata_steam_appid'] in (game.get('steam_appid'),game.get('external_id') if game.get('platform')=='steam' else None):reason='所选封面对应相同 Steam 游戏'
         elif row.get('install_dir') and game.get('install_dir') and Path(row['install_dir']).resolve()==Path(game['install_dir']).resolve():reason='相同安装目录'
         elif title and title==key(game['name']) and not (row.get('platform')==game.get('platform')!='local' and row.get('external_id') and game.get('external_id') and row['external_id']!=game['external_id']):reason='游戏名称相同'
         if reason:return {'duplicate_id':game['id'],'duplicate_reason':('Playnite 已管理：' if game.get('playnite') or game.get('source')=='Playnite' else '游戏库已有：')+game['name']+'（'+reason+'）'}
@@ -136,7 +149,7 @@ def annotate_duplicates(store,rows,references=()):
 def import_rows(store,rows,skip_duplicates=False):
     existing={game['id']:game for game in store.games}; count=0
     for row in rows:
-        if row.get('platform') not in ('steam','epic','ubisoft','local'):raise ValueError('未知导入来源')
+        if row.get('platform') not in ('steam','epic','ubisoft','local','other'):raise ValueError('未知导入来源')
         install=Path(row['install_dir']).resolve()
         if not row.get('playnite') and not install.is_dir():continue
         if skip_duplicates:
@@ -147,6 +160,12 @@ def import_rows(store,rows,skip_duplicates=False):
         match=next((g for g in existing.values() if (platform!='local' and g.get('platform')==platform and g.get('external_id')==row['external_id']) or (platform=='steam' and g.get('steam_appid')==row['external_id']) or (store.local.get(g['id'],{}).get('install_dir') and Path(store.local[g['id']]['install_dir']).resolve()==install)),None)
         game_id=match['id'] if match else row['id'] if row.get('playnite') else ident(platform,row['external_id'] if platform!='local' else key(row['name']))
         game={**existing.get(game_id,{}),'id':game_id,'name':row['name'],'platform':platform,'external_id':row['external_id'],'source':'Playnite' if row.get('playnite') else platform,'installed':row.get('installed',True)}
+        game.update(import_source='playnite' if row.get('playnite') else 'folder' if platform=='local' else 'platform',provenance_version=2)
+        if row.get('playnite'):
+            details=playnite_metadata(row['raw']);details['tags']=list(dict.fromkeys([*game.get('tags',[]),*details['tags']]))
+            last=max(str(game.get('last_played','')),str(details.get('last_played','')))
+            game.update(details)
+            if last:game['last_played']=last
         game.setdefault('cover','')
         if not game.get('added_at'):
             from datetime import datetime,timezone
@@ -155,8 +174,11 @@ def import_rows(store,rows,skip_duplicates=False):
             import shutil
             target=store.root/'covers'/(game_id+Path(row['cover']).suffix)
             target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(row['cover'],target);game['cover']=str(target)
-        if platform=='steam':game['steam_appid']=row['external_id']
-        elif row.get('metadata_steam_appid'):game['steam_appid']=row['metadata_steam_appid']
+        if platform=='steam' and row['external_id'].isdigit():game['steam_appid']=row['external_id']
+        elif platform!='steam':game.pop('steam_appid',None)
+        if row.get('metadata_steam_appid'):game['metadata_steam_appid']=row['metadata_steam_appid']
+        from library_catalog import primary
+        if not game.get('category'):game['category']=primary(game.get('tags',[]))
         existing[game_id]=game
         local={**store.local.get(game_id,{}),'install_dir':row['install_dir'],'installed':row.get('installed',True)}
         exe=row.get('exe','')

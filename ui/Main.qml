@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V2.2.1"
+    title: "GameCloudSave · V2.3"
     color: Theme.background
     Material.theme: Theme.dark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
@@ -23,15 +23,24 @@ ApplicationWindow {
     property bool installedOnly: backend.settings.installed_only
     property string searchQuery: ""
     property string platformFilter: "all"
-    property string libraryMode: "all"
+    property string importSourceFilter: "all"
+    property string libraryMode: "home"
     property string groupFilter: ""
     property string seriesFilter: ""
     property string librarySort: "name"
     property bool libraryReady: false
     ListModel { id: libraryModel; dynamicRoles: true }
     Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
-    property var seriesNames: Array.from(new Set(backend.games.map(function(game) { return game.series || "" }).filter(Boolean))).sort()
-    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter) && g.name.toLowerCase().indexOf(searchQuery)>=0 && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="series" || g.series && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
+    property var seriesNames: ((backend.librarySections.find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name })
+    property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
+    property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && shownGames.length>0
+    property var homeRows: { var revision=backend.games;return backend.homeSections(installedOnly,platformFilter,importSourceFilter) }
+    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
+    function navigate(mode,value) {
+        search.text="";searchQuery="";groupFilter="";seriesFilter=""
+        if(mode==="tag") { libraryMode="all";search.text="#"+value;searchQuery=search.text.toLowerCase() }
+        else { libraryMode=mode;if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
+    }
     onShownGamesChanged: if(libraryReady) syncLibrary()
     function syncLibrary() {
         for(var i=0;i<shownGames.length;i++) {
@@ -96,19 +105,16 @@ ApplicationWindow {
         ScrollView { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 84; bottom: parent.bottom; bottomMargin: 80 }
             clip: true
             Column { x: 8; spacing: 4
-                NavigationButton { width: 184; iconName: "grid"; text: "全部游戏"; selected: libraryMode==="all"; onClicked: libraryMode="all" }
-                NavigationButton { width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: libraryMode="recent" }
-                NavigationButton { width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: libraryMode="favorites" }
-                NavigationButton { width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: libraryMode="series" }
+                NavigationButton { width: 184; iconName: "grid"; text: "游戏库主页"; selected: libraryMode==="home"; onClicked: win.navigate("home","") }
+                NavigationButton { width: 184; iconName: "grid"; text: "全部游戏"; selected: libraryMode==="all"; onClicked: win.navigate("all","") }
+                NavigationButton { width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: win.navigate("recent","") }
+                NavigationButton { width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: win.navigate("favorites","") }
+                NavigationButton { width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
                 Rectangle { width: 184; height: 1; color: Theme.border }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
                 NavigationButton { width: 184; iconName: "grid"; text: "批量确认"; onClicked: win.openBatch() }
                 NavigationButton { width: 184; iconName: "help"; text: "使用指南"; onClicked: guideDialog.open() }
-                Label { visible: backend.groups.length>0; text: "分类"; color: Theme.secondary; leftPadding: 12; topPadding: 12 }
-                Repeater { model: backend.groups
-                    NavigationButton { required property string modelData; width: 184; iconName: "folder"; text: modelData; selected: libraryMode==="group" && groupFilter===modelData; onClicked: { groupFilter=modelData;libraryMode="group" } }
-                }
                 NavigationButton { width: 184; iconName: "settings"; text: "管理分类与系列"; onClicked: libraryManager.openManager() }
             }
         }
@@ -122,11 +128,11 @@ ApplicationWindow {
             Layout.fillWidth: true
             ColumnLayout {
                 spacing: 4
-                Label { text: libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" ? groupFilter : libraryMode==="series" ? "系列游戏" : "我的游戏"; font.pixelSize: 30; font.bold: true; color: Theme.text }
+                Label { text: searchTokens.length ? "搜索结果" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: 30; font.bold: true; color: Theme.text }
                 Label { text: shownGames.length+" 款游戏"; color: Theme.secondary; font.pixelSize: 12 }
             }
             Item { Layout.fillWidth: true }
-            AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索游戏…"; Layout.preferredWidth: win.width<1100 ? 130 : 200; selectByMouse: true }
+            AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索名称、标签、系列…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
             Switch { text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy; onToggled: backend.saveSettings({watch:checked}) }
             AppButton { text: "导入游戏"; enabled: !backend.busy; onClicked: win.openImport() }
         }
@@ -136,21 +142,31 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 CheckBox { text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
-                ComboBox { model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 150; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
-                ComboBox { visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 160; onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
+                ComboBox { objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
+                ComboBox { model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
+                ComboBox { visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
-                ComboBox { model: ["名称排序","最近游玩","最近添加"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added"][currentIndex] }
+                ComboBox { visible: !homeVisible; model: ["名称排序","最近游玩","最近添加"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added"][currentIndex] }
                 AppButton { text: "布局"; onClicked: win.openSettingsPage(2) }
                 AppButton { text: "个性化"; onClicked: personalization.openPersonalization() }
                 Item { Layout.fillWidth: win.width<1200 }
             }
         }
+        LibraryHome {
+            id: home; objectName: "libraryHome"; visible: homeVisible
+            Layout.fillWidth: true; Layout.fillHeight: true; sections: homeRows
+            onBrowseRequested: function(mode,value) { win.navigate(mode,value) }
+            onDetailsRequested: function(game) { win.openGame(game) }
+            onLaunchRequested: function(game) { backend.launch(game.id) }
+            onCloudRequested: function(game) { selectGame(game);historyTabs.currentIndex=0;backend.history(activeId);historyDialog.open() }
+        }
         GridView {
             id: grid
             objectName: "gameGrid"
+            visible: !homeVisible
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
             property int effectiveColumns: Math.max(1, Math.min(Math.floor(width / (196 + gridGap)), columnCount > 0 ? columnCount : Math.floor(width / (coverSize + gridGap))))

@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as temporary:
         store.local[str(i)]={'installed':True}
     store.groups=['RPG'];backend=Bridge(store);engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend)
     engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')));assert engine.rootObjects()
-    root=engine.rootObjects()[0];QTest.qWait(400)
+    root=engine.rootObjects()[0];root.setProperty('libraryMode','all');QTest.qWait(400)
     grid=root.findChild(QObject,'gameGrid');assert grid.property('count')==30
     grid.setProperty('contentY',600);QTest.qWait(50)
     def idle():

@@ -72,11 +72,35 @@ class Bridge(QObject):
     @Property('QVariantList', notify=gamesChanged)
     def games(self):
         if self._games_cache is None:
+            from library_catalog import prepare_game
             self._games_cache = [{**game, 'installed':self.store.local.get(game['id'], {}).get('installed', False),
+                     'backgroundUrl':QUrl.fromLocalFile(game['background']).toString() if game.get('background') else '',
                      'coverUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.thumbnails[game['id']])).toString() if game['id'] in self.store.thumbnails else QUrl.fromLocalFile(str(self.store.root / 'covers' / Path(game['cover']).name)).toString() if game['cover'] else '',
                      'coverHighUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.high_thumbnails[game['id']])).toString() if game['id'] in self.store.high_thumbnails else '',
-                     'saveSet': bool(self.store.local.get(game['id'], {}).get('save_dir'))} for game in self.store.games]
+                     'saveSet': bool(self.store.local.get(game['id'], {}).get('save_dir'))} for game in map(prepare_game,self.store.games)]
         return self._games_cache
+
+    @Property('QVariantList',notify=gamesChanged)
+    def librarySections(self):
+        if not hasattr(self,'_sections_for') or self._sections_for is not self._games_cache:
+            from library_catalog import sections
+            self._library_sections=sections(self.games);self._sections_for=self._games_cache
+        return self._library_sections
+
+    @Slot(bool,str,str,result='QVariantList')
+    def homeSections(self,installed_only,platform,origin):
+        games=self.games
+        if not hasattr(self,'_home_cache_for') or self._home_cache_for is not games:self._home_cache_for=games;self._home_cache={}
+        key=(installed_only,platform,origin)
+        if key not in self._home_cache:
+            from library_catalog import sections
+            self._home_cache[key]=sections([game for game in games if (not installed_only or game['installed']) and (platform=='all' or game.get('platform','local')==platform or platform=='local' and game.get('platform')=='other') and (origin=='all' or game.get('import_source')==origin)])
+        return self._home_cache[key]
+
+    @Property('QVariantList',constant=True)
+    def primaryCategories(self):
+        from library_catalog import CATEGORIES
+        return CATEGORIES
 
     @Property('QVariantMap', notify=settingsChanged)
     def settings(self):
@@ -390,6 +414,11 @@ class Bridge(QObject):
         from library_organizer import suggestions
         self.job('organizer-preview',lambda:suggestions(self.store,use_ai))
 
+    @Slot()
+    def refreshPlayniteMetadata(self):
+        def refresh():return '已更新 '+str(self.store.sync_playnite_metadata(self.store.read_playnite()))+' 款已导入游戏的平台与游玩资料'
+        self.job('library-edit',refresh)
+
     @Slot(str,str,str)
     def applyCover(self,scope,ident,result_id):
         def apply():
@@ -404,6 +433,8 @@ class Bridge(QObject):
                 else:row.pop('metadata_steam_appid',None)
                 return {'scope':scope,**self.prepareImportPreview(rows)}
             game=next(game for game in self.store.games if game['id']==ident);game['cover']=path
+            if record.get('provider'):game['metadata_source']=record['provider']
+            if record.get('appid'):game['metadata_steam_appid']=record['appid']
             from services import write_json
             write_json(self.store.root/'library.json',self.store.games);self.store.prepare_thumbnails()
             return {'scope':'game'}

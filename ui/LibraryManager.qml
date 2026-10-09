@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 ApplicationWindow {
-    id: manager; width: 1080; height: 800; minimumWidth: 920; minimumHeight: 650
+    id: manager; width: 1220; height: 800; minimumWidth: 1020; minimumHeight: 650
     title: "分类与系列"; color: Theme.background; font.family: "Microsoft YaHei UI"; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
     property var selected: ({})
     property var edits: ({})
@@ -26,16 +26,17 @@ ApplicationWindow {
             AppButton { text: "清除选择"; onClicked: manager.selected=({}) }
             Item { Layout.fillWidth: true }
             AppButton { text: "应用所选分类"; highlighted: true; enabled: !backend.busy && Object.keys(manager.selected).length>0; onClicked: {
-                var rows=backend.organizerResults.filter(function(row) { return manager.selected[row.id] }).map(function(row) { var edit=manager.edits[row.id] || {};return {id:row.id,groups:edit.groups!==undefined ? edit.groups.split(/[,，]/).map(function(name) { return name.trim() }).filter(Boolean) : row.groups,series:edit.series!==undefined ? edit.series : row.series} });backend.updateLibrary(rows)
+                var rows=backend.organizerResults.filter(function(row) { return manager.selected[row.id] }).map(function(row) { var edit=manager.edits[row.id] || {};return {id:row.id,category:edit.category || row.category,tags:edit.tags!==undefined ? edit.tags.split(/[,，]/).map(function(name) { return name.trim() }).filter(Boolean) : row.tags,series:edit.series!==undefined ? edit.series : row.series} });backend.updateLibrary(rows)
             } }
         }
-        Label { text: "分类用逗号分隔；系列单独填写。建议可修改，应用后才会改变游戏库。"; color: Theme.secondary }
+        Label { text: "主分类选一个，标签可填写多个。系列至少包含两款游戏才在主页展示。建议可编辑，应用后生效。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         ListView { id: list; Layout.fillWidth: true; Layout.fillHeight: true; model: backend.organizerResults; clip: true; spacing: 3
             delegate: ItemDelegate { required property var modelData; width: ListView.view.width; height: 78
                 contentItem: RowLayout {
                     CheckBox { checked: !!manager.selected[modelData.id]; onToggled: { var next=Object.assign({},manager.selected);if(checked) next[modelData.id]=true;else delete next[modelData.id];manager.selected=next } }
                     Label { text: modelData.name; Layout.preferredWidth: 250; Layout.minimumWidth: 180; elide: Text.ElideRight; font.bold: true }
-                    AppTextField { Layout.fillWidth: true; placeholderText: "分类"; text: (manager.edits[modelData.id] || {}).groups!==undefined ? manager.edits[modelData.id].groups : (modelData.groups || []).join(", "); onTextEdited: manager.update(modelData.id,"groups",text) }
+                    ComboBox { Layout.preferredWidth: 148; model: backend.primaryCategories.concat(backend.groups.filter(function(name) { return backend.primaryCategories.indexOf(name)<0 })); currentIndex: Math.max(0,model.indexOf((manager.edits[modelData.id] || {}).category || modelData.category)); onActivated: manager.update(modelData.id,"category",currentText) }
+                    AppTextField { Layout.fillWidth: true; placeholderText: "标签，用逗号分隔"; text: (manager.edits[modelData.id] || {}).tags!==undefined ? manager.edits[modelData.id].tags : (modelData.tags || []).join(", "); onTextEdited: manager.update(modelData.id,"tags",text) }
                     AppTextField { Layout.preferredWidth: 190; placeholderText: "系列"; text: (manager.edits[modelData.id] || {}).series!==undefined ? manager.edits[modelData.id].series : modelData.series || ""; onTextEdited: manager.update(modelData.id,"series",text) }
                 }
             }

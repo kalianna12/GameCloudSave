@@ -84,6 +84,7 @@ class Store:
         self.games = read_json(self.root / 'library.json', [])
         self.groups=read_json(self.root/'groups.json',[])
         self.local = read_json(self.profile / 'games.json', {})
+        self.migrate_library()
         self.match_report = read_json(self.profile / 'match-report.json', [])
         self.thumbnails = read_json(self.root/'thumbnail-index.json',{})
         self.high_thumbnails = read_json(self.root/'thumbnail-hd-index.json',{})
@@ -136,6 +137,14 @@ class Store:
         for item in updates:
             if item['id'] not in known:raise ValueError('游戏条目已不存在')
             game=known[item['id']]
+            if 'category' in item:
+                category=item['category']
+                if not isinstance(category,str) or not 0<len(category.strip())<=32:raise ValueError('主分类名称最多 32 字')
+                game.update(category=category.strip(),category_manual=True,groups=[category.strip()]);group_names.add(category.strip())
+            if 'tags' in item:
+                tags=item['tags']
+                if not isinstance(tags,list) or len(tags)>40 or not all(isinstance(tag,str) and 0<len(tag.strip())<=32 for tag in tags):raise ValueError('每款游戏最多 40 个标签，每个最多 32 字')
+                game['tags']=list(dict.fromkeys(tag.strip() for tag in tags))
             if 'favorite' in item:game['favorite']=bool(item['favorite'])
             if 'series' in item:
                 value=item['series']
@@ -149,6 +158,49 @@ class Store:
         write_json(self.root/'library.json',new_games);self.games=new_games
         self.groups=sorted(group_names);write_json(self.root/'groups.json',self.groups)
 
+    def migrate_library(self):
+        if read_json(self.root/'library-schema.json',{}).get('version',0)>=3:return
+        if not self.games:write_json(self.root/'library-schema.json',{'version':3});return
+        from library_catalog import prepare_game,primary
+        backup=self.root/'migrations/v23';backup.mkdir(parents=True,exist_ok=True)
+        for name in ('library.json','groups.json'):
+            if (self.root/name).is_file() and not (backup/name).exists():shutil.copy2(self.root/name,backup/name)
+        for game in self.games:
+            tags=prepare_game(game)['tags'];game['tags']=tags
+            if not game.get('category_manual'):game['category']=primary(tags)
+            game['groups']=[game.get('category','其他')]
+            game.setdefault('import_source','playnite' if game.get('source')=='Playnite' else 'folder' if game.get('source','local')=='local' else 'platform')
+            if game.get('platform')=='steam' and game.get('external_id') and not str(game['external_id']).isdigit():game['platform']='local';game.pop('steam_appid',None)
+            game.setdefault('platform','local')
+        self.groups=sorted({game['category'] for game in self.games})
+        write_json(self.root/'library.json',self.games);write_json(self.root/'groups.json',self.groups);write_json(self.root/'library-schema.json',{'version':3})
+
+    def sync_playnite_metadata(self,rows):
+        from library_sources import playnite_metadata,guid
+        from library_catalog import primary,unique
+        raw_by_id={guid(raw.get('_id')):raw for raw in rows};count=0
+        for game in self.games:
+            raw=raw_by_id.get(game['id'])
+            if raw is None:continue
+            fields=playnite_metadata(raw);fields['tags']=unique([*game.get('tags',[]),*fields['tags']])
+            last=max(game.get('last_played') or '',fields.get('last_played') or '')
+            game.update(fields)
+            if last:game['last_played']=last
+            if fields['platform']!='steam':game.pop('steam_appid',None)
+            if not game.get('category_manual'):game['category']=primary(game['tags']);game['groups']=[game['category']]
+            relative=raw.get('BackgroundImage') or ''
+            if relative:
+                source=safe_child(Path(self.settings['library'])/'files',relative.replace('\\','/'))
+                if source.is_file():
+                    target=self.root/'backgrounds'/(game['id']+source.suffix.lower());target.parent.mkdir(exist_ok=True)
+                    if not target.is_file():shutil.copy2(source,target)
+                    game['background']=str(target)
+            count+=1
+        if count:
+            self.groups=sorted({game.get('category','其他') for game in self.games})
+            write_json(self.root/'library.json',self.games);write_json(self.root/'groups.json',self.groups)
+        return count
+
     def edit_group(self,old,new):
         new=new.strip()
         if len(new)>32:raise ValueError('分类名称最多 32 字')
@@ -158,6 +210,7 @@ class Store:
         if new:names.append(new)
         for game in self.games:
             if old in game.get('groups',[]):game['groups']=[new if name==old else name for name in game['groups'] if name!=old or new]
+            if game.get('category')==old:game['category']=new or '其他'
         write_json(self.root/'library.json',self.games);self.groups=sorted(names);write_json(self.root/'groups.json',self.groups)
 
     def mark_played(self,ident):
@@ -183,6 +236,10 @@ class Store:
             temporary = Path(temporary)
             try: shutil.copy2(library / 'games.db', temporary / 'games.db')
             except PermissionError: raise ValueError('Playnite 正在占用游戏库；请关闭 Playnite 后再导入。现有游戏列表仍可使用。') from None
+            for name in ('sources.db','genres.db','tags.db'):
+                try:
+                    if (library/name).is_file():shutil.copy2(library/name,temporary/name)
+                except OSError:pass
             result = run_process(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                                   str(RESOURCES / 'scripts/export_playnite.ps1'), '-AssemblyPath', str(dll),
                                   '-DatabasePath', str(temporary / 'games.db'), '-OutputPath', str(temporary / 'games.json')], timeout=60)
@@ -192,12 +249,13 @@ class Store:
         return rows
 
     def playnite_candidates(self):
-        from library_sources import platform_for,candidate
+        from library_sources import platform_for,candidate,playnite_metadata
         rows=[]
         library=Path(self.settings['library'])
         for raw in self.read_playnite():
             platform=platform_for(raw); external=str(raw.get('GameId',''))
             row=candidate(raw.get('Name','未命名'),platform,external,raw.get('InstallDirectory') or '')
+            row.update(playnite_metadata(raw))
             row.update(id=str(uuid.UUID(raw['_id']['$guid'])),playnite=True,installed=bool(raw.get('IsInstalled')),raw=raw)
             relative=raw.get('CoverImage') or ''
             if relative:
@@ -215,7 +273,7 @@ class Store:
         covers.mkdir(parents=True, exist_ok=True)
         count = 0
         for row in rows:
-            from library_sources import platform_for
+            from library_sources import platform_for,playnite_metadata
             platform=platform_for(row)
             if platforms is not None and platform not in platforms:continue
             ident = str(uuid.UUID(row['_id']['$guid']))
@@ -232,10 +290,9 @@ class Store:
                                'cover': cover, 'installed': bool(row.get('IsInstalled')), 'source': 'Playnite',
                                'platform':platform,'external_id':str(row.get('GameId',''))}
             if platform=='steam' and str(row.get('GameId','')).isdigit():existing[ident]['steam_appid']=str(row['GameId'])
-            import re
-            for link in row.get('Links') or []:
-                match=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
-                if match:existing[ident]['steam_appid']=match.group(1);break
+            fields=playnite_metadata(row);fields['tags']=list(dict.fromkeys([*existing[ident].get('tags',[]),*fields['tags']]))
+            existing[ident].update(fields)
+            if platform!='steam':existing[ident].pop('steam_appid',None)
             # Installation paths are specific to the importing computer.
             self.local[ident] = {**self.local.get(ident, {}), 'install_dir': row.get('InstallDirectory') or '', 'installed':bool(row.get('IsInstalled'))}
             self.update_launch_actions(row,ident)

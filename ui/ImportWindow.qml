@@ -26,6 +26,7 @@ ApplicationWindow {
         Label { text: tabs.currentIndex===0 ? "读取 Playnite 现成的游戏库和封面，预览后选择导入。" : tabs.currentIndex===1 ? "读取本机已安装游戏，排除 Playnite 和本软件已有的条目。" : "扫描启动文件，检查重复项，再选择游戏与封面。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
         RowLayout { visible: tabs.currentIndex===0; Layout.fillWidth: true
             CheckBox { id: installedOnly; text: "仅已安装"; checked: true } Item { Layout.fillWidth: true }
+            AppButton { text: "更新已导入信息"; enabled: !backend.busy; onClicked: backend.refreshPlayniteMetadata() }
             AppButton { text: "读取游戏库"; enabled: !backend.busy; highlighted: true; onClicked: backend.previewPlaynite(installedOnly.checked) }
         }
         RowLayout { visible: tabs.currentIndex===1; Layout.fillWidth: true

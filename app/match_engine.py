@@ -72,7 +72,7 @@ def cached_network(store,item,local,cancel,title=None):
     with store.match_lock:
         record=store.network_cache.get(key)
         if record and time.time()-record['time']<86400:return record['identity']
-    identity=lookup(title,Path(local.get('install_dir','')).name,item.get('steam_appid',''),cancel)
+    identity=lookup(title,Path(local.get('install_dir','')).name,item.get('steam_appid') or item.get('metadata_steam_appid',''),cancel)
     if identity and not cancel.is_set():
         with store.match_lock:
             store.network_cache[key]={'time':time.time(),'identity':identity};write_json(store.root/'network-identities.json',store.network_cache)
