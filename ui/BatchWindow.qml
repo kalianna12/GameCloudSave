@@ -33,7 +33,7 @@ ApplicationWindow {
         Label { text: "每行选择一个存档目录，无需逐个打开游戏。多候选请核对，未找到时可手动选择。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         RowLayout {
             CheckBox { id: installed; text: "仅已安装"; checked: true; onToggled: { batch.savedY=0;batch.populate();batch.syncRows();batch.restoreScroll() } }
-            AppButton { text: "全选有目录的游戏"; enabled: !backend.busy; onClicked: batch.selectAll() }
+            AppButton { text: "全选有目录的游戏"; onClicked: batch.selectAll() }
             AppButton { text: "清除选择"; onClicked: batch.selected=({}) }
             AppButton { text: "刷新建议"; enabled: !backend.busy; onClicked: batch.populate() }
             Item { Layout.fillWidth: true } Label { text: "已选 "+batch.ids().length+" 款"; color: Theme.secondary }
@@ -44,13 +44,13 @@ ApplicationWindow {
                 required property var record; property var modelData: record; width: ListView.view.width; height: 80
                 property var options: [{path:"",label:"请选择存档目录"}].concat((modelData.candidates || []).map(function(candidate) { return {path:candidate.path,label:candidate.path,score:candidate.confidence} })).concat(batch.paths[modelData.id] && !(modelData.candidates || []).some(function(candidate) { return candidate.path===batch.paths[modelData.id] }) ? [{path:batch.paths[modelData.id],label:"当前 / 手动："+batch.paths[modelData.id]}] : [])
                 contentItem: RowLayout {
-                    CheckBox { checked: !!batch.selected[modelData.id]; enabled: !backend.busy && !!batch.paths[modelData.id]; onToggled: { var next=Object.assign({},batch.selected);if(checked) next[modelData.id]=true;else delete next[modelData.id];batch.selected=next } }
+                    CheckBox { checked: !!batch.selected[modelData.id]; enabled: !!batch.paths[modelData.id]; onToggled: { var next=Object.assign({},batch.selected);if(checked) next[modelData.id]=true;else delete next[modelData.id];batch.selected=next } }
                     ColumnLayout { Layout.preferredWidth: 210; Layout.minimumWidth: 160
                         Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
                         Label { text: modelData.status==="applied" ? "已设置" : (modelData.candidates || []).length+" 个候选"; color: Theme.secondary; font.pixelSize: 11 }
                     }
                     ColumnLayout { Layout.fillWidth: true
-                        ComboBox { id: picker; implicitHeight: 38; Layout.fillWidth: true; model: options; textRole: "label"; currentIndex: Math.max(0,options.findIndex(function(option) { return option.path===batch.paths[modelData.id] })); onActivated: batch.choose(modelData.id,options[currentIndex].path)
+                        AppComboBox { id: picker; implicitHeight: 38; Layout.fillWidth: true; model: options; textRole: "label"; currentIndex: Math.max(0,options.findIndex(function(option) { return option.path===batch.paths[modelData.id] })); onActivated: batch.choose(modelData.id,options[currentIndex].path)
                             contentItem: Label { text: picker.currentText; font.pixelSize: 12; elide: Text.ElideMiddle; verticalAlignment: Text.AlignVCenter; color: Theme.text; leftPadding: 12; rightPadding: 32 }
                             ToolTip.visible: hover.hovered; ToolTip.text: batch.paths[modelData.id] || "请选择目录"; HoverHandler { id: hover }
                         }

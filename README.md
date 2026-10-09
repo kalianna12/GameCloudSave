@@ -1,8 +1,10 @@
-# GameCloudSave V2.3
+# GameCloudSave V2.3.1
 
 Windows 游戏库与存档备份管理器，Python + PySide6 / Qt Quick。支持 Playnite、Steam/Epic/Ubisoft 已安装游戏、本地 EXE/BAT/CMD 扫描；先保存本地快照，再通过 rclone WebDAV 上传到 AList。
 
-便携版：双击上级目录的 `启动新版.bat`。安装版：运行 `dist/installers/GameCloudSave-Setup-V2.3.exe`。请先从托盘退出旧版。
+便携版：双击上级目录的 `启动新版.bat`。安装版：运行 `dist/installers/GameCloudSave-Setup-V2.3.1.exe`。
+
+V2.3.1 精简查找页和首页文字，统一输入框、按钮与下拉框高度。查找显示游戏进度，可继续搜索、浏览结果或停止；Playnite、DeepSeek 和 DAV 在同一个向导内配置。重复启动唤回已有窗口，开发与打包使用固定程序目录。[验证记录及发行限制](docs/V2.3.1验证记录.md)
 
 V2.3 重构游戏库首页：最近游戏、类别磁贴、系列磁贴、基于最近游玩的本地推荐、类型与风格横排。主分类收敛为九个默认选项，标签可多选、组合搜索；只有至少两款不同游戏才展示系列。平台归属来自 Playnite 库插件或实际平台安装记录，Steam 封面与商店链接只作为元数据。支持更新已导入 Playnite 信息，导入真实最近游玩时间、类型与标签。旧分类迁移保留为标签，并备份原数据。
 
@@ -36,10 +38,10 @@ python -m venv .venv
 .\.venv\Scripts\python.exe tests/test_library_v22.py
 .\.venv\Scripts\python.exe tests/test_library_ui_v22.py
 .\.venv\Scripts\python.exe tests/test_wizard_batch_v21.py
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.3
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.3
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.3.1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.3.1
 ```
 
 构建脚本从当前虚拟环境打包 Qt、Python、rclone、卸载程序、许可证和 source.zip，无需目标电脑安装 Python。安装包按用户安装，默认创建桌面和开始菜单快捷方式，卸载保留个人数据。构建安装包需网络获取第三方许可文本。
 
-历史源码和版本标签保留于 Git，原核心保留于 `legacy`。旧版输出保留在 `dist`，发布标签 `v2.0` 可作为回溯基线；重新运行构建脚本生成当前版本二进制。
+日常修改直接运行源码，无需构建安装器。只修改 QML 时可运行 `scripts/sync_ui.ps1` 更新便携版界面资源；Python 变化需要重新构建。可执行文件固定输出至 `dist/GameCloudSave/GameCloudSave.exe`，不再按版本复制程序目录；图标未变化时保留时间戳，支持 PyInstaller 增量构建。旧版本源码和标签保留于 Git，需要回退时从标签重新打包。本地小版本不上传 GitHub 发行包。

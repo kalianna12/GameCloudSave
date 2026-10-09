@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 Button {
     id: control
-    implicitHeight: 36
+    implicitHeight: 38
     implicitWidth: Math.max(80, contentItem.implicitWidth + 28)
     leftPadding: 14; rightPadding: 14; topPadding: 8; bottomPadding: 8
     topInset: 0; bottomInset: 0

@@ -63,7 +63,8 @@ def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
         row={'id':ident,'name':game['name'],'status':'running','message':'查找并验证存档目录…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
         progress(row)
         try:
-            result=store.match_game(ident) if recheck else reports.get(ident,{'id':ident,'name':game['name'],'candidates':[],'checked':[]})
+            result=store.match_game(ident,progress,cancel) if recheck else reports.get(ident,{'id':ident,'name':game['name'],'candidates':[],'checked':[]})
+            if cancel.is_set():break
             result['upload_requested']=upload
             candidate=select_candidate(result)
             manual=store.local.get(ident,{}).get('save_dir','')
@@ -77,7 +78,7 @@ def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
                 prepared.append((ident,path,row))
         except Exception as error:
             row={**row,'status':'failed','message':str(error) if isinstance(error,ValueError) else '处理失败，请检查目录权限'}; totals['failed']+=1
-        reports[ident]=row; store.save_match_report(list(reports.values())); progress(row)
+        reports[ident]=row; store.save_match_report(list(reports.values())); progress({**row,'_finished':row.get('status') in ('review','failed')})
     for ident,path,result in prepared:
         if cancel.is_set():break
         row=result
@@ -93,11 +94,11 @@ def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
                     progress({**row,'status':'uploading','message':'本地已保存，正在上传统一云端目录…'})
                     try:
                         store.upload(ident,archive)
-                        row={**row,'status':'uploaded','message':'自动配置 → 本地备份 → 云端上传完成'}; totals['uploaded']+=1
+                        row={**row,'status':'uploaded','message':'已上传'}; totals['uploaded']+=1
                     except Exception as error:
                         row={**row,'status':'local_only','message':'本地备份已保留；'+(str(error) if isinstance(error,ValueError) else '上传失败')+'，可批量补传'}; totals['local_only']+=1
                 else: totals['local_only']+=1
         except Exception as error:
             row={**row,'status':'failed','message':str(error) if isinstance(error,ValueError) else '处理失败，请检查目录权限'}; totals['failed']+=1
-        reports[ident]=row; store.save_match_report(list(reports.values())); progress(row)
+        reports[ident]=row; store.save_match_report(list(reports.values())); progress({**row,'_finished':True})
     return totals

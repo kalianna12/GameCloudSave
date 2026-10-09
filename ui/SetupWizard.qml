@@ -8,6 +8,10 @@ ApplicationWindow {
     property int step: 0
     property var skipped: ({})
     property bool finishing: false
+    property bool browsingCloud: false
+    property bool cloudBrowseValid: false
+    function cloudValues() { return {dav_url:server.text,dav_user:user.text,password:password.text,cloud_folder:cloudFolder.text} }
+    function browse(folder) { browsingCloud=true;cloudBrowseValid=false;backend.browseCloud(folder,cloudValues()) }
     property var titles: ["开始使用","Playnite（可选）","本地备份","AList / WebDAV（可选）","DeepSeek（可选）","封面来源","显示与后台","检查设置"]
     signal finished()
     function advance(skip) { if(step>=7) return;var next=Object.assign({},skipped);if(skip) next[step]=true;else delete next[step];skipped=next;step++;scroll.contentItem.contentY=0 }
@@ -22,7 +26,7 @@ ApplicationWindow {
         return v
     }
     function openWizard() {
-        var s=backend.settings;step=0;skipped=({});finishing=false
+        var s=backend.settings;step=0;skipped=({});finishing=false;browsingCloud=false
         usePlaynite.checked=!!s.playnite;playnite.text=s.playnite;library.text=s.library;snapshots.text=s.snapshots
         server.text=s.dav_url;user.text=s.dav_user;password.text="";cloudFolder.text=s.cloud_folder
         aiEnabled.checked=s.ai_enabled;model.text=s.ai_model;apiKey.text=""
@@ -32,8 +36,11 @@ ApplicationWindow {
     }
     onVisibleChanged: if(!visible) { password.text="";apiKey.text="" }
     Connections { target: backend; function onSettingsChanged() {
-        if(cloud.visible) { server.text=backend.settings.dav_url;user.text=backend.settings.dav_user;cloudFolder.text=backend.settings.cloud_folder;password.text="" }
         if(setup.finishing && backend.settings.setup_completed) { setup.finishing=false;setup.close();setup.finished() }
+    } }
+    Connections { target: backend; function onOperationCompleted(action,success) {
+        if(action==="list" && setup.browsingCloud) setup.cloudBrowseValid=success
+        if(setup.finishing && action==="settings" && !success) setup.finishing=false
     } }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 24; spacing: 18
@@ -58,6 +65,8 @@ ApplicationWindow {
                         RowLayout { AppTextField { id: playnite; enabled: usePlaynite.checked; Layout.fillWidth: true } AppButton { text: "选择"; enabled: usePlaynite.checked; onClicked: { var p=backend.pickFolder(playnite.text);if(p) playnite.text=p } } }
                         Label { text: "library 目录（包含 games.db）" }
                         RowLayout { AppTextField { id: library; enabled: usePlaynite.checked; Layout.fillWidth: true } AppButton { text: "选择"; enabled: usePlaynite.checked; onClicked: { var p=backend.pickFolder(library.text);if(p) library.text=p } } }
+                        AppButton { text: "测试游戏库连接"; enabled: usePlaynite.checked && !backend.busy; onClicked: backend.testPlaynite(playnite.text,library.text) }
+                        Label { text: backend.playniteConnection; visible: text.length>0; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
                     }
                     ColumnLayout { visible: setup.step===2; Layout.fillWidth: true; spacing: 12
                         Label { text: "本机备份目录" }
@@ -69,9 +78,32 @@ ApplicationWindow {
                         Label { text: "用户名" } AppTextField { id: user; Layout.fillWidth: true }
                         Label { text: "密码（留空保持已保存密码）" } AppTextField { id: password; Layout.fillWidth: true; echoMode: TextInput.Password }
                         Label { text: "云端备份文件夹" } AppTextField { id: cloudFolder; Layout.fillWidth: true; placeholderText: "例如：百度网盘/game-saves" }
-                        AppButton { text: "连接、浏览并选择文件夹"; enabled: !backend.busy; onClicked: cloud.openBrowserDraft({dav_url:server.text,dav_user:user.text,password:password.text,cloud_folder:cloudFolder.text}) }
-                        AppButton { text: "采用已保存的云端位置"; onClicked: cloudFolder.text=backend.settings.cloud_folder }
-                        Label { text: "可跳过，稍后在云端存储中验证并选择文件夹。统一位置按游戏名和存档目录分组。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                        RowLayout {
+                            AppButton { text: "连接并浏览"; highlighted: true; enabled: !backend.busy; onClicked: setup.browse("") }
+                            AppButton { text: "使用此文件夹"; enabled: setup.cloudBrowseValid && !backend.busy; onClicked: cloudFolder.text=backend.cloudPath || "/" }
+                        }
+                        ColumnLayout {
+                            visible: setup.browsingCloud; Layout.fillWidth: true; spacing: 8
+                            RowLayout {
+                                AppButton { text: "上一级"; enabled: !backend.busy && !!backend.cloudPath; onClicked: setup.browse(backend.cloudPath.split("/").slice(0,-1).join("/")) }
+                                Label { text: "/"+backend.cloudPath; Layout.fillWidth: true; elide: Text.ElideMiddle; color: Theme.secondary }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true; Layout.preferredHeight: 150; color: Theme.surface; radius: 5; border.color: Theme.border
+                                ListView {
+                                    id: wizardFolders; objectName: "wizardCloudFolders"; anchors.fill: parent; anchors.margins: 4; clip: true
+                                    model: backend.directories.filter(function(entry) { return entry.IsDir })
+                                    delegate: ItemDelegate {
+                                        required property var modelData
+                                        width: ListView.view.width; height: 38; enabled: !backend.busy
+                                        text: "▸  "+modelData.Name
+                                        onClicked: setup.browse([backend.cloudPath,modelData.Name].filter(Boolean).join("/"))
+                                    }
+                                    ScrollBar.vertical: ScrollBar {}
+                                    Label { anchors.centerIn: parent; visible: wizardFolders.count===0 && !backend.busy; text: "此处没有子文件夹"; color: Theme.secondary }
+                                }
+                            }
+                        }
                     }
                     ColumnLayout { visible: setup.step===4; Layout.fillWidth: true; spacing: 12
                         Switch { id: aiEnabled; text: "启用 DeepSeek" }
@@ -81,7 +113,7 @@ ApplicationWindow {
                         Label { text: backend.aiConnection; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
                     }
                     ColumnLayout { visible: setup.step===5; Layout.fillWidth: true; spacing: 12
-                        ComboBox { id: provider; Layout.fillWidth: true; model: backend.coverProviders; textRole: "label"; valueRole: "id" }
+                        AppComboBox { id: provider; Layout.fillWidth: true; model: backend.coverProviders; textRole: "label"; valueRole: "id" }
                         Label { text: "Playnite 已有封面直接读取。本地游戏可搜索封面，或用 AI 辅助匹配名称。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                         Label { visible: provider.currentValue==="custom"; text: "自定义 JSON 搜索地址（含 {query}）" }
                         AppTextField { id: customUrl; visible: provider.currentValue==="custom"; Layout.fillWidth: true; placeholderText: "https://服务/search?q={query}" }
@@ -114,7 +146,6 @@ ApplicationWindow {
             AppButton { text: setup.step===7 ? "保存并完成" : "下一步"; enabled: !backend.busy; highlighted: true; onClicked: { if(setup.step===7) { setup.finishing=true;backend.saveSetup(setup.values()) }else setup.advance(false) } }
         }
     }
-    CloudWindow { id: cloud; modality: Qt.ApplicationModal }
     Dialog { id: notices; title: "开源说明"; anchors.centerIn: parent; width: 650; height: 400; modal: true; standardButtons: Dialog.Close
         contentItem: ScrollView { TextArea { text: backend.openSourceNotice; readOnly: true; wrapMode: Text.Wrap } }
     }

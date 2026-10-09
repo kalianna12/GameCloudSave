@@ -16,4 +16,6 @@ buffer = QBuffer(data)
 buffer.open(QIODevice.WriteOnly)
 assert image.save(buffer, 'PNG')
 png = bytes(data)
-(root / 'app.ico').write_bytes(struct.pack('<HHH',0,1,1) + struct.pack('<BBBBHHII',0,0,0,0,1,32,len(png),22) + png)
+icon=struct.pack('<HHH',0,1,1) + struct.pack('<BBBBHHII',0,0,0,0,1,32,len(png),22) + png
+target=root/'app.ico'
+if not target.exists() or target.read_bytes()!=icon:target.write_bytes(icon)

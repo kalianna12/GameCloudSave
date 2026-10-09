@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V2.3"
+    title: "GameCloudSave · V2.3.1"
     color: Theme.background
     Material.theme: Theme.dark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
@@ -90,7 +90,7 @@ ApplicationWindow {
     SetupWizard { id: setupWizard; objectName: "setupWizard" }
     LibraryManager { id: libraryManager; objectName: "libraryManager" }
     PersonalizationWindow { id: personalization; objectName: "personalization" }
-    MatchWindow { id: matchWindow; objectName: "matchWindow"; onCloudSetupRequested: win.openCloud();onBatchRequested: win.openBatch() }
+    MatchWindow { id: matchWindow; objectName: "matchWindow"; onBatchRequested: win.openBatch() }
     Component.onCompleted: { libraryReady=true;syncLibrary();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
 
@@ -134,7 +134,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索名称、标签、系列…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
             Switch { text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy; onToggled: backend.saveSettings({watch:checked}) }
-            AppButton { text: "导入游戏"; enabled: !backend.busy; onClicked: win.openImport() }
+            AppButton { text: "导入游戏"; onClicked: win.openImport() }
         }
         GridLayout {
             Layout.fillWidth: true; columns: win.width<1200 ? 1 : 2
@@ -142,14 +142,14 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 CheckBox { text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
-                ComboBox { objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
-                ComboBox { model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
-                ComboBox { visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
+                AppComboBox { objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
+                AppComboBox { model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
+                AppComboBox { visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
-                ComboBox { visible: !homeVisible; model: ["名称排序","最近游玩","最近添加"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added"][currentIndex] }
+                AppComboBox { visible: !homeVisible; model: ["名称排序","最近游玩","最近添加"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added"][currentIndex] }
                 AppButton { text: "布局"; onClicked: win.openSettingsPage(2) }
                 AppButton { text: "个性化"; onClicked: personalization.openPersonalization() }
                 Item { Layout.fillWidth: win.width<1200 }
@@ -205,6 +205,9 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             BusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
+            ProgressBar { visible: backend.matching; Layout.preferredWidth: 140; indeterminate: backend.matching && backend.matchProgress.done===0; from: 0; to: Math.max(1,backend.matchProgress.total); value: backend.matchProgress.done }
+            Label { visible: backend.matching; text: backend.matchProgress.done+" / "+backend.matchProgress.total; font.pixelSize: 12; color: Theme.secondary }
+            AppButton { visible: backend.matching; text: backend.matchProgress.cancelled ? "正在停止" : "停止查找"; enabled: !backend.matchProgress.cancelled; onClicked: backend.cancelMatching() }
             Rectangle { visible: !backend.busy; width: 6; height: 6; radius: 3; color: Theme.accent }
             Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
         }
@@ -327,7 +330,7 @@ ApplicationWindow {
             RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickSaveFolder(gameSave.text); if(p) gameSave.text=p } } }
             AppButton { text: "查找此游戏的存档"; onClicked: win.openMatch(activeId) }
             Label { text: "启动方式" }
-            ComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动", "通过游戏平台启动"] }
+            AppComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动", "通过游戏平台启动"] }
             Label { text: "启动文件 EXE / BAT / CMD（直接启动时必填）"; font.pixelSize: 12 }
             RowLayout { AppTextField { id: gameExe; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFile("exe"); if(p) gameExe.text=p } } }
             Label { text: "监听进程 EXE（BAT 或平台启动时填写实际游戏 EXE）"; font.pixelSize: 12 }

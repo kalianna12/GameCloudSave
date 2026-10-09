@@ -25,12 +25,21 @@ ApplicationWindow {
         Qt.callLater(function() { results.contentY=Math.max(results.originY,Math.min(savedY,Math.max(results.originY,results.contentHeight-results.height))) })
     }
     Component.onCompleted: syncResults()
-    Connections { target: backend; function onMatchesChanged() { matcher.syncResults() } }
+    Connections { target: backend
+        function onMatchesChanged() { if(!backend.matching) matcher.syncResults();matcher.currentResult=backend.matchResult(matcher.selectedId) }
+        function onMatchRecordChanged(ident,row) {
+            var index=-1
+            for(var i=0;i<resultModel.count;i++) if(resultModel.get(i).record.id===ident) { index=i;break }
+            if(index<0) resultModel.append({record:row});else resultModel.set(index,{record:row})
+            if(ident===matcher.selectedId) matcher.currentResult=row
+        }
+    }
     function openAiSettings() { openMatcher(""); showConnection=true }
-    signal cloudSetupRequested()
     signal batchRequested()
     function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_ai_review:reviewSwitch.checked,match_ai_weight:aiWeight.value,match_workers:matchWorkers.value} }
-    property var currentResult: backend.matchResults.find(function(r) { return r.id===matcher.selectedId }) || ({})
+    property var currentResult: ({})
+    property int candidateLimit: 10
+    onSelectedIdChanged: { currentResult=backend.matchResult(selectedId);candidateLimit=10 }
     function manualStartDirectory() {
         var candidates=currentResult.candidates || []
         if(candidates.length && candidates[0].path) return candidates[0].path
@@ -54,8 +63,7 @@ ApplicationWindow {
             Label { text: "查找存档"; font.pixelSize: 28; font.bold: true }
             Item { Layout.fillWidth: true }
             AppButton { text: "DeepSeek / API Key"; checkable: true; checked: matcher.showConnection; onToggled: matcher.showConnection=checked }
-            AppButton { text: "批量确认目录"; enabled: !backend.busy; onClicked: matcher.batchRequested() }
-            AppButton { text: "设置 DAV"; onClicked: matcher.cloudSetupRequested() }
+            AppButton { text: "批量确认"; onClicked: matcher.batchRequested() }
         }
         Rectangle {
             visible: matcher.showConnection
@@ -82,21 +90,21 @@ ApplicationWindow {
                     Item { Layout.fillWidth: true }
                 }
                 Label { text: backend.aiConnection; color: Theme.secondary }
-                Label { text: "找到存档后可批量备份；无法确定的目录请手动选择。"; color: Theme.secondary; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
         }
         RowLayout {
-            Label { text: "已安装游戏"; color: Theme.secondary; font.pixelSize: 12 }
-            AppButton { text: "查找并备份到云端"; highlighted: true; enabled: !backend.busy; onClicked: { if(!backend.settings.cloud_folder) matcher.cloudSetupRequested(); else backend.autoWorkflow(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),true,matcher.aiValues()) } }
-            AppButton { text: "查找并备份到本地"; enabled: !backend.busy; onClicked: backend.autoWorkflow(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),false,matcher.aiValues()) }
-            AppButton { text: "批量补传"; enabled: !backend.busy; onClicked: backend.retryAll() }
-            Label { text: "云端位置："+(backend.settings.cloud_folder || "点击设置 DAV"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; TapHandler { onTapped: matcher.cloudSetupRequested() } HoverHandler { cursorShape: Qt.PointingHandCursor } }
+            AppComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: matcher.selectedId=currentValue }
+            AppButton { text: "查找当前游戏"; enabled: !backend.busy && !!matcher.selectedId; onClicked: backend.matchGames([matcher.selectedId],matcher.aiValues()) }
+            AppButton { text: "查找已安装游戏"; enabled: !backend.busy; onClicked: backend.matchGames(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),matcher.aiValues()) }
+            AppButton { objectName: "stopMatching"; text: backend.matchProgress.cancelled ? "正在停止" : "停止"; enabled: backend.matching && !backend.matchProgress.cancelled; onClicked: backend.cancelMatching() }
         }
-        RowLayout {
-            ComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: matcher.selectedId=currentValue }
-            AppButton { text: "匹配当前游戏"; enabled: !backend.busy && !!matcher.selectedId; onClicked: backend.matchGames([matcher.selectedId],matcher.aiValues()) }
-            AppButton { text: "匹配已安装游戏"; enabled: !backend.busy; onClicked: backend.matchGames(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),matcher.aiValues()) }
-            AppButton { text: "停止"; enabled: backend.matching; onClicked: backend.cancelMatching() }
+        ColumnLayout {
+            visible: backend.matching; Layout.fillWidth: true; spacing: 6
+            RowLayout {
+                Label { text: backend.matchProgress.done+" / "+backend.matchProgress.total+" 款游戏"; color: Theme.text }
+                Label { text: backend.matchProgress.phase; Layout.fillWidth: true; color: Theme.secondary; elide: Text.ElideRight; font.pixelSize: 12 }
+            }
+            ProgressBar { objectName: "matchProgressBar"; Layout.fillWidth: true; indeterminate: backend.matching && backend.matchProgress.done===0; from: 0; to: Math.max(1,backend.matchProgress.total); value: backend.matchProgress.done }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 16
@@ -140,7 +148,7 @@ ApplicationWindow {
                     Label { text: matcher.currentResult.note || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; visible: matcher.showDetails && !!text }
                     Label { text: "找到的目录"; font.pixelSize: 17; font.bold: true }
                     Repeater {
-                        model: matcher.currentResult.candidates || []
+                        model: (matcher.currentResult.candidates || []).slice(0,matcher.candidateLimit)
                         Rectangle {
                             required property var modelData
                             Layout.fillWidth: true; implicitHeight: Math.max(candidateDetails.implicitHeight+32,128); radius: 6; color: Theme.surface
@@ -167,6 +175,7 @@ ApplicationWindow {
                         model: matcher.showDetails ? matcher.currentResult.checked || [] : []
                         Label { required property var modelData; text: (modelData.exists ? "✓ 存在  " : "× 未找到  ")+modelData.path; Layout.fillWidth: true; wrapMode: Text.Wrap; color: modelData.exists ? Theme.secondary : "#a4978c"; font.pixelSize: 12 }
                     }
+                    AppButton { visible: (matcher.currentResult.candidates || []).length>matcher.candidateLimit; text: "显示更多目录"; onClicked: matcher.candidateLimit+=10 }
                     AppButton { text: "手动选择目录"; enabled: !backend.busy && !!matcher.selectedId; onClicked: { var p=backend.pickSaveFolder(matcher.manualStartDirectory()); if(p) backend.saveGame(matcher.selectedId,{save_dir:p}) } }
                     AppButton { text: matcher.showDetails ? "收起详情" : "匹配详情"; checkable: true; checked: matcher.showDetails; onToggled: matcher.showDetails=checked }
                     Repeater {

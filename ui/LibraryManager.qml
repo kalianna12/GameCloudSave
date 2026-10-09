@@ -15,7 +15,7 @@ ApplicationWindow {
         RowLayout {
             AppTextField { id: groupName; placeholderText: "新分类名称"; Layout.fillWidth: true; maximumLength: 32 }
             AppButton { text: "创建分类"; enabled: !backend.busy && !!groupName.text.trim(); onClicked: backend.editGroup("",groupName.text) }
-            ComboBox { id: group; model: backend.groups; Layout.preferredWidth: 180 }
+            AppComboBox { id: group; model: backend.groups; Layout.preferredWidth: 180 }
             AppButton { text: "重命名"; enabled: !backend.busy && !!group.currentText && !!groupName.text.trim(); onClicked: backend.editGroup(group.currentText,groupName.text) }
             AppButton { text: "删除分类"; enabled: !backend.busy && !!group.currentText; onClicked: deleteGroup.open() }
         }
@@ -35,7 +35,7 @@ ApplicationWindow {
                 contentItem: RowLayout {
                     CheckBox { checked: !!manager.selected[modelData.id]; onToggled: { var next=Object.assign({},manager.selected);if(checked) next[modelData.id]=true;else delete next[modelData.id];manager.selected=next } }
                     Label { text: modelData.name; Layout.preferredWidth: 250; Layout.minimumWidth: 180; elide: Text.ElideRight; font.bold: true }
-                    ComboBox { Layout.preferredWidth: 148; model: backend.primaryCategories.concat(backend.groups.filter(function(name) { return backend.primaryCategories.indexOf(name)<0 })); currentIndex: Math.max(0,model.indexOf((manager.edits[modelData.id] || {}).category || modelData.category)); onActivated: manager.update(modelData.id,"category",currentText) }
+                    AppComboBox { Layout.preferredWidth: 148; model: backend.primaryCategories.concat(backend.groups.filter(function(name) { return backend.primaryCategories.indexOf(name)<0 })); currentIndex: Math.max(0,model.indexOf((manager.edits[modelData.id] || {}).category || modelData.category)); onActivated: manager.update(modelData.id,"category",currentText) }
                     AppTextField { Layout.fillWidth: true; placeholderText: "标签，用逗号分隔"; text: (manager.edits[modelData.id] || {}).tags!==undefined ? manager.edits[modelData.id].tags : (modelData.tags || []).join(", "); onTextEdited: manager.update(modelData.id,"tags",text) }
                     AppTextField { Layout.preferredWidth: 190; placeholderText: "系列"; text: (manager.edits[modelData.id] || {}).series!==undefined ? manager.edits[modelData.id].series : modelData.series || ""; onTextEdited: manager.update(modelData.id,"series",text) }
                 }

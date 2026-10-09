@@ -77,7 +77,7 @@ ApplicationWindow {
                     AppButton { visible: configTabs.currentIndex===0; text: "使用当前浏览文件夹"; Layout.fillWidth: true; enabled: !backend.busy; onClicked: storage.text=backend.cloudPath || "/" }
                     AppButton { visible: configTabs.currentIndex!==1; text: "验证并保存设置"; highlighted: true; Layout.fillWidth: true; enabled: !backend.busy; onClicked: { var v=cloud.values(); v.cloud_folder=storage.text; backend.configureCloud(v) } }
                     Label { visible: configTabs.currentIndex===0; text: "目录结构预览"; font.bold: true }
-                    ComboBox { visible: configTabs.currentIndex===0; id: layoutGame; objectName: "cloudLayoutGame"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id" }
+                    AppComboBox { visible: configTabs.currentIndex===0; id: layoutGame; objectName: "cloudLayoutGame"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id" }
                     Label { visible: configTabs.currentIndex===0; objectName: "cloudLayoutPreview"; text: layoutGame.currentValue ? backend.cloudGamePath(layoutGame.currentValue,cloud.values())+"/备份.zip" : "导入 Playnite 后显示游戏目录"; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: Theme.secondary; font.pixelSize: 12 }
                     CheckBox { visible: configTabs.currentIndex===0; id: separateComputer; objectName: "cloudSeparateComputer"; text: "存档目录下按电脑分组"; checked: backend.settings.cloud_separate_computer; Layout.fillWidth: true }
                     Label { visible: configTabs.currentIndex===0; text: "默认按游戏名和存档目录分组，中文名称保留。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
@@ -119,7 +119,7 @@ ApplicationWindow {
                 }
                 RowLayout {
                     AppTextField { id: fileSearch; objectName: "cloudFileSearch"; placeholderText: "筛选文件名"; Layout.fillWidth: true }
-                    ComboBox { id: fileSort; objectName: "cloudFileSort"; Layout.preferredWidth: 135; model: ["名称", "最近修改", "文件大小"] }
+                    AppComboBox { id: fileSort; objectName: "cloudFileSort"; Layout.preferredWidth: 135; model: ["名称", "最近修改", "文件大小"] }
                     AppButton { text: "新建文件夹"; enabled: !backend.busy; onClicked: { newFolderName.text=""; newFolderDialog.open() } }
                     AppButton { text: "整理旧备份"; enabled: !backend.busy && backend.games.length>0 && backend.directories.some(function(entry) { return !entry.IsDir && /\.zip$/i.test(entry.Name) }); onClicked: organizeDialog.open() }
                 }
@@ -195,7 +195,7 @@ ApplicationWindow {
             spacing: 12
             Label { text: "来源：/"+backend.cloudPath; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
             Label { text: "选择对应的 Playnite 游戏" }
-            ComboBox { id: organizeGame; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id" }
+            AppComboBox { id: organizeGame; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id" }
             Label { text: "复制到“游戏名 / 存档目录”后核对文件完整性。存档目录从备份读取，旧文件保留原位。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
         }
         onOpened: { var index=backend.games.findIndex(function(game) { return backend.cloudPath.split('/').pop()===game.id }); organizeGame.currentIndex=index>=0 ? index : layoutGame.currentIndex }

@@ -21,11 +21,14 @@ class Bridge(QObject):
     cloudChanged = Signal()
     directoriesChanged = Signal()
     matchesChanged = Signal()
+    matchRecordChanged = Signal(str,'QVariantMap')
+    progressChanged = Signal()
     transfersChanged = Signal()
     matchReady = Signal(object)
     transferReady = Signal(str,str)
     watchReady = Signal(object)
     notificationReady = Signal(str,str,bool)
+    operationCompleted = Signal(str,bool)
     finished = Signal(str, object, str)
 
     def __init__(self, store):
@@ -45,7 +48,6 @@ class Bridge(QObject):
         self._picked_save_folders=set()
         self._organizer=[]
         self._icon_cache={}
-        self._candidates = []
         self._running = {}
         self._watch_pending=False
         self._games_cache = None
@@ -56,6 +58,13 @@ class Bridge(QObject):
         self._transfer_ident = ''
         self._cancel_match = threading.Event()
         self._matching = False
+        self._match_pending = {}
+        self._progress = {'done':0,'total':0,'phase':'','cancelled':False}
+        self._progress_done = set()
+        self.matchTimer = QTimer(self)
+        self.matchTimer.setSingleShot(True)
+        self.matchTimer.timeout.connect(self.flushMatches)
+        self._playnite_connection = ''
         self._ai_connection = ''
         self._layout_values = {}
         self.layoutTimer = QTimer(self)
@@ -123,6 +132,13 @@ class Bridge(QObject):
     def aiConnection(self): return self._ai_connection
     @Property(bool, notify=changed)
     def matching(self): return self._matching
+    @Property('QVariantMap',notify=progressChanged)
+    def matchProgress(self): return self._progress
+    @Property(str,notify=changed)
+    def playniteConnection(self): return self._playnite_connection
+
+    @Slot(str,result='QVariantMap')
+    def matchResult(self,ident): return next((row for row in self._matches if row['id']==ident),{})
     @Property('QVariantMap', notify=transfersChanged)
     def transferStates(self): return self._transfers
     @Property('QVariantList', notify=changed)
@@ -149,33 +165,39 @@ class Bridge(QObject):
     def openSourceNotice(self):
         file=RESOURCES/'ui/OPEN_SOURCE_NOTICE.txt'
         return file.read_text(encoding='utf-8') if file.exists() else 'GameCloudSave：MIT 开源许可。'
-    @Property('QVariantList', notify=changed)
-    def candidates(self): return self._candidates
-
     def job(self, action, function):
         if self._busy:
-            return
+            self._status='请等待当前任务完成，或停止查找后再操作'
+            self.changed.emit()
+            return False
         self._busy = True
         self._status = {'import': '正在导入 Playnite 游戏与封面…', 'cloud': '先创建本地快照，再尝试上传…',
                         'list': '正在连接 DAV 并读取目录…', 'watch': '检查游戏运行状态…',
                         'cloud-organize':'正在整理旧备份并校验文件…','cloud-mkdir':'正在创建文件夹…',
-                        'cloud-download':'正在下载文件…'}.get(action, '正在处理…')
+                        'cloud-download':'正在下载文件…','match':'正在查找存档…',
+                        'workflow':'正在备份存档…','playnite-test':'正在检查 Playnite…',
+                        'ai-test':'正在测试 DeepSeek…'}.get(action, '正在处理…')
         self.changed.emit()
         def work():
             try:
                 self.finished.emit(action, function(), '')
             except Exception as error:
+                import logging,traceback
+                logging.getLogger('gamecloud').warning('%s failed (%s)\n%s',action,type(error).__name__,''.join(traceback.format_tb(error.__traceback__)))
                 message = str(error) if isinstance(error, ValueError) else f'操作失败（{type(error).__name__}），请检查本机设置'
                 self.finished.emit(action, None, message)
         self.pool.submit(work)
+        return True
 
     @Slot(str, object, str)
     def complete(self, action, result, error):
+        if action in ('match','workflow'):
+            self.matchTimer.stop();self.flushMatches()
         self._busy = False
         if error:
             self._status = error
         elif action == 'import':
-            self._status = f'已导入 {result} 款游戏 · 封面已缓存 · 重复导入不会产生重复项'
+            self._status = f'已导入 {result} 款游戏'
         elif action in ('list','cloud-mkdir'):
             self._dirs = result['entries']
             self._cloud_path = result['path']
@@ -197,11 +219,14 @@ class Bridge(QObject):
             self._ai_connection=result
             self._status=result
             self.matchesChanged.emit()
+        elif action == 'playnite-test':
+            self._playnite_connection=result;self._status=result
         elif action == 'apply-match':
-            self.receiveMatch(result)
+            self.receiveMatch(result);self.flushMatches()
             self._status=result['message']
         elif action == 'apply-matches':
             for row in result['rows']: self.receiveMatch(row)
+            self.flushMatches()
             self._status=result['message']
         elif action == 'history':
             self._history = result
@@ -219,13 +244,10 @@ class Bridge(QObject):
             else:self._games_cache=None;self.gamesChanged.emit()
             self._status='封面已设置'
         elif action=='organizer-preview':
-            self._organizer=result;self._status='分类建议已生成，请核对后应用'
+            self._organizer=result;self._status='分类建议已生成'
         elif action=='cloud-history':
             self._cloud_history=result
             self._status=f'云端共 {len(result)} 份备份，选择后下载并恢复'
-        elif action == 'candidates':
-            self._candidates = result
-            self._status = f'发现 {len(result)} 个候选目录，请核对后选择'
         else:
             self._status = str(result or '已完成')
         if action in ('backup','restore','snapshot-note','cloud-restore') and not error and getattr(self,'_history_ident',''):
@@ -234,6 +256,10 @@ class Bridge(QObject):
             self.setTransfer(self._transfer_ident,'failed')
         if action == 'match': self._matching=False
         if action=='workflow': self._matching=False
+        if action in ('match','workflow'):
+            self._progress['phase']='已停止' if self._cancel_match.is_set() else '失败' if error else '已完成'
+            self.progressChanged.emit()
+            self.matchesChanged.emit()
         if action in ('import','import-selected','library-edit','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
@@ -250,7 +276,9 @@ class Bridge(QObject):
         if action=='ai-test' and error:
             self._ai_connection=error
             self.matchesChanged.emit()
+        if action=='playnite-test' and error:self._playnite_connection=error
         self.changed.emit()
+        self.operationCompleted.emit(action,not bool(error))
 
     @Slot('QVariantMap')
     def saveLayout(self,values):
@@ -270,12 +298,6 @@ class Bridge(QObject):
     def setTransfer(self,ident,state):
         self._transfers={**self._transfers,ident:state}
         self.transfersChanged.emit()
-
-    @Slot()
-    def importGames(self): self.job('import', self.store.import_playnite)
-
-    @Slot('QVariantList')
-    def importPlaynitePlatforms(self,platforms):self.job('import',lambda:self.store.import_playnite(platforms))
 
     @Slot('QVariantList')
     def previewPlatforms(self,platforms):
@@ -465,7 +487,7 @@ class Bridge(QObject):
     def saveSettings(self, values):
         def save():
             self.store.save_settings(values)
-            return '本机设置已保存 · 其他电脑使用独立设置'
+            return '设置已保存'
         self.job('settings', save)
 
     @Slot('QVariantMap')
@@ -474,9 +496,34 @@ class Bridge(QObject):
             snapshots=values.get('snapshots',self.store.settings['snapshots'])
             if not snapshots or not Path(snapshots).is_absolute():raise ValueError('请填写完整的本地备份目录')
             Path(snapshots).mkdir(parents=True,exist_ok=True)
+            if values.get('ai_enabled') and not values.get('ai_key') and not (self.store.profile/'ai-key.dpapi').is_file():raise ValueError('请填写 DeepSeek API Key，或跳过 DeepSeek 设置')
+            if values.get('dav_url') and values.get('cloud_folder'):
+                self.store.configure_cloud({key:values[key] for key in ('dav_url','dav_user','password','cloud_folder') if key in values})
             self.store.save_settings(values)
             return '基础设置已完成，可以导入游戏'
         self.job('settings',save)
+
+    @Slot(str,str)
+    def testPlaynite(self,program,library):
+        def test():
+            base=Path(program)
+            if not (base/'LiteDB.dll').is_file():base=base/'Playnite'
+            if not (base/'LiteDB.dll').is_file():raise ValueError('所选目录中没有 Playnite 的 LiteDB.dll')
+            if not (Path(library)/'games.db').is_file():raise ValueError('所选游戏库中没有 games.db')
+            from services import run_process
+            import json,tempfile
+            with tempfile.TemporaryDirectory() as directory:
+                target=Path(directory)/'games.json'
+                import shutil
+                database=Path(directory)/'games.db'
+                try:shutil.copy2(Path(library)/'games.db',database)
+                except PermissionError:raise ValueError('请先关闭 Playnite，再测试游戏库连接') from None
+                command=['powershell','-NoProfile','-ExecutionPolicy','Bypass','-File',str(RESOURCES/'scripts/export_playnite.ps1'),'-AssemblyPath',str(base/'LiteDB.dll'),'-DatabasePath',str(database),'-OutputPath',str(target)]
+                result=run_process(command,timeout=30)
+                if result.returncode or not target.is_file():raise ValueError('无法读取游戏库。请先关闭 Playnite，再测试连接')
+                rows=json.loads(target.read_text(encoding='utf-8-sig'))
+                return f'Playnite 已连接 · {len(rows)} 款游戏'
+        self.job('playnite-test',test)
 
     @Slot(str, 'QVariantMap')
     def browseCloud(self, folder, values):
@@ -521,21 +568,9 @@ class Bridge(QObject):
         self.job('retry-all',retry)
 
     @Slot('QVariantList',bool)
-    @Slot('QVariantList',bool,'QVariantMap')
-    def autoWorkflow(self,idents,upload,values=None):
-        if self._busy:return
-        self._cancel_match.clear(); self._matching=True
-        def run():
-            from save_workflow import run_workflow
-            if values:self.store.save_settings(values)
-            totals=run_workflow(self.store,idents,self.matchReady.emit,self._cancel_match,upload)
-            return f"批量完成：云端成功 {totals['uploaded']}，本地保留 {totals['local_only']}，待核对 {totals['review']}，失败 {totals['failed']}"
-        self.job('workflow',run)
-
-    @Slot('QVariantList',bool)
     def backupConfigured(self,idents,upload):
         if self._busy:return
-        self._cancel_match.clear();self._matching=True
+        self.beginMatching(idents,'备份')
         def run():
             from save_workflow import run_workflow
             totals=run_workflow(self.store,idents,self.matchReady.emit,self._cancel_match,upload,recheck=False)
@@ -636,28 +671,49 @@ class Bridge(QObject):
     @Slot(str, int)
     def restore(self, ident, snapshot):
         self.job('restore', lambda: (self.store.restore(ident, snapshot), '已恢复，恢复前存档已另行备份')[1])
-    @Slot(str)
-    def findSaves(self, ident):
-        self._candidates = []
-        self.job('candidates', lambda: self.store.candidates(ident))
-
     @Slot(object)
     def receiveMatch(self,result):
-        if result.get('upload_requested'):
-            mapped={'saving':'saving','uploading':'uploading','uploaded':'success','local_only':'failed','failed':'failed'}
-            if result['status'] in mapped:self.setTransfer(result['id'],mapped[result['status']])
+        # Coalesce worker updates. Never resend every game's file inventory to QML.
+        import copy
+        self._match_pending[result['id']]=copy.deepcopy(result)
+        if not self.matchTimer.isActive():self.matchTimer.start(100)
+
+    @Slot()
+    def flushMatches(self):
+        if not self._match_pending:return
+        pending=self._match_pending;self._match_pending={}
         existing={row['id']:row for row in self._matches}
-        existing[result['id']]=result
+        for result in pending.values():
+            existing[result['id']]=result
         self._matches=list(existing.values())
-        self.matchesChanged.emit()
+        for result in pending.values():
+            self.updateMatchProgress(result)
+            self.matchRecordChanged.emit(result['id'],result)
+            if result.get('upload_requested'):
+                mapped={'saving':'saving','uploading':'uploading','uploaded':'success','local_only':'failed','failed':'failed'}
+                if result['status'] in mapped:self.setTransfer(result['id'],mapped[result['status']])
+        if not self._matching:self.matchesChanged.emit()
+
+    def beginMatching(self,idents,phase):
+        self._cancel_match.clear();self._matching=True;self._progress_done=set()
+        known={game['id'] for game in self.store.games}
+        self._progress={'done':0,'total':len(set(idents)&known),'phase':phase,'cancelled':False}
+        self.progressChanged.emit()
+
+    def updateMatchProgress(self,result):
+        if not self._matching:return
+        finished=result.get('_finished',result.get('status') in ('review','notfound','failed','applied'))
+        if finished:self._progress_done.add(result['id'])
+        self._progress['done']=len(self._progress_done)
+        self._progress['phase']='正在停止…' if self._cancel_match.is_set() else result.get('phase') or result.get('message','查找存档')
+        self.progressChanged.emit()
 
     @Slot('QVariantList')
     @Slot('QVariantList','QVariantMap')
     def matchGames(self,idents,values=None):
         if self._busy: return
         idents=list(dict.fromkeys(idents))
-        self._cancel_match.clear()
-        self._matching=True
+        self.beginMatching(idents,'查找存档')
         def match():
             if values:self.store.save_settings(values)
             from local_index import clear
@@ -668,7 +724,7 @@ class Bridge(QObject):
             def one(ident):
                 if self._cancel_match.is_set():return None
                 game=games[ident]
-                self.matchReady.emit({'id':ident,'name':game['name'],'status':'running','message':'本地、联网资料和 DeepSeek 并行查找…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''})
+                self.matchReady.emit({'id':ident,'name':game['name'],'status':'running','message':'查找存档…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''})
                 try:return self.store.match_game(ident,self.matchReady.emit,self._cancel_match)
                 except Exception as error:return {'id':ident,'name':game['name'],'status':'failed','message':str(error) if isinstance(error,ValueError) else '本地扫描失败，请检查目录权限','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
             with ThreadPoolExecutor(max_workers=max(1,min(3,int(self.store.settings.get('match_workers',2))))) as workers:
@@ -681,11 +737,16 @@ class Bridge(QObject):
                     if result is None:continue
                     self.matchReady.emit(result);results[result['id']]=result
                     self.store.save_match_report(list(results.values()));count+=1
-            return f'匹配已停止，已完成 {count} 个游戏' if self._cancel_match.is_set() else f'匹配完成：{count} 个游戏，结果已保存'
+            return f'已停止 · 完成 {count} 款游戏' if self._cancel_match.is_set() else f'查找完成 · {count} 款游戏'
         self.job('match',match)
 
     @Slot()
-    def cancelMatching(self): self._cancel_match.set()
+    def cancelMatching(self):
+        self._cancel_match.set();self._progress.update(cancelled=True,phase='正在停止…')
+        self.progressChanged.emit()
+
+    # Only the worker queue may write settings, saves or cloud data.
+    # Browsing and selection remain available while it runs.
 
     @Slot(str,str)
     def applyMatch(self,ident,path):
@@ -886,7 +947,6 @@ def main():
             gc.collect()
         Path(args.self_test).write_text('PASS: packaged backup/restore, SQLite, Chinese JSON, DPAPI, rclone, launcher scan, cloud hash module',encoding='utf-8')
         return 0
-    qInstallMessageHandler(lambda kind, context, message: print(message, file=sys.stderr, flush=True))
     app = QApplication(sys.argv)
     app.setApplicationName('GameCloudSave')
     app.setOrganizationName('GameCloudSave')
@@ -894,14 +954,25 @@ def main():
     app.setStyle('Fusion')
     QQuickStyle.setStyle('Material')
     app.setStyleSheet('QWidget { background: #242629; color: #f0f1f2; } QPushButton { padding: 8px; }')
+    from services import DATA
+    from single_instance import SingleInstance
+    instance=SingleInstance(DATA)
+    if not instance.acquire():return 0
+    from diagnostics import configure
+    logger=configure(DATA)
+    qInstallMessageHandler(lambda kind,context,message:logger.warning('%s',message))
     bridge = Bridge(Store())
+    app.aboutToQuit.connect(bridge.cancelMatching)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty('backend', bridge)
     engine.load(QUrl.fromLocalFile(str(RESOURCES / 'ui/Main.qml')))
     if not engine.rootObjects():
         bridge.pool.shutdown(wait=False)
+        instance.release()
         return 1
     root_window = engine.rootObjects()[0]
+    def activate_window():root_window.show();root_window.raise_();root_window.requestActivate()
+    instance.activated.connect(activate_window)
     if args.startup_report:
         def ready():
             Path(args.startup_report).write_text(str(round(time.perf_counter()-_PROCESS_START,3)),encoding='utf-8')
@@ -946,10 +1017,12 @@ def main():
     result = app.exec()
     tray.hide()
     bridge.timer.stop()
-    bridge.flushLayout()
+    bridge.cancelMatching()
     bridge.pool.shutdown(wait=True)
+    bridge._busy=False;bridge.flushLayout()
     import shiboken6
     shiboken6.delete(engine)
+    instance.release()
     return result
 
 if __name__ == '__main__': sys.exit(main())

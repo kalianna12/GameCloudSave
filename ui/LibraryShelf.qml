@@ -38,7 +38,7 @@ Item {
     NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 180 : 0; easing.type: Easing.OutCubic }
     ListView {
         id: list; objectName: "shelf-"+shelf.section.id
-        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 66; bottom: parent.bottom; bottomMargin: 18 }
+        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: shelf.section.subtitle ? 66 : 48; bottom: parent.bottom; bottomMargin: 18 }
         orientation: ListView.Horizontal; spacing: 14; clip: true; model: items
         reuseItems: true; cacheBuffer: 160; flickDeceleration: 2400; maximumFlickVelocity: 2800
         delegate: Item {

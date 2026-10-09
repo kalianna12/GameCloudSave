@@ -42,13 +42,13 @@ ApplicationWindow {
         RowLayout {
             AppButton { text: "全选可导入项"; enabled: !backend.busy; onClicked: importer.selectAll() }
             AppButton { text: "清除选择"; onClicked: importer.selectedIds=({}) }
-            ComboBox { id: importSort; Layout.preferredWidth: 150; model: ["新条目优先","名称排序","匹配分数"] }
+            AppComboBox { id: importSort; Layout.preferredWidth: 150; model: ["新条目优先","名称排序","匹配分数"] }
             AppButton { text: "AI 检查名称与重复项"; visible: tabs.currentIndex===2; enabled: !backend.busy && backend.settings.has_ai_key && backend.importCandidates.length>0; onClicked: backend.reviewImportLaunchers() }
             Item { Layout.fillWidth: true } Label { text: "已选 "+Object.keys(importer.selectedIds).length+" 项"; color: Theme.secondary }
             AppButton { text: "导入所选"; enabled: !backend.busy && Object.keys(importer.selectedIds).length>0; highlighted: true; onClicked: { if(backend.importCandidates.some(function(row) { return importer.selectedIds[row.id] && row.possible_duplicate })) duplicateDialog.open();else backend.importSelected(Object.keys(importer.selectedIds)) } }
         }
         RowLayout { visible: tabs.currentIndex===2
-            Label { text: "封面来源"; color: Theme.secondary } ComboBox { id: source; objectName: "coverSource"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 210; Layout.minimumWidth: 190; currentIndex: Math.max(0,backend.coverProviders.findIndex(function(row) { return row.id===backend.settings.cover_source })) }
+            Label { text: "封面来源"; color: Theme.secondary } AppComboBox { id: source; objectName: "coverSource"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 210; Layout.minimumWidth: 190; currentIndex: Math.max(0,backend.coverProviders.findIndex(function(row) { return row.id===backend.settings.cover_source })) }
             CheckBox { id: aiCover; text: "AI 辅助名称匹配"; checked: backend.settings.ai_enabled; enabled: backend.settings.has_ai_key }
             AppButton { text: "为所选项匹配封面"; enabled: !backend.busy && Object.keys(importer.selectedIds).length>0 && (backend.coverProviders[source.currentIndex] || {}).kind!=="browser"; onClicked: backend.autoImportCovers(Object.keys(importer.selectedIds),source.currentValue,aiCover.checked) }
         }

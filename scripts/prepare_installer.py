@@ -12,10 +12,10 @@ from urllib.request import urlopen
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.3.1');args=parser.parse_args()
 import re
 if not re.fullmatch(r'\d+(\.\d+){0,2}',args.version):raise ValueError('Invalid version')
-release=ROOT/('dist/GameCloudSave-V'+args.version);output=ROOT/'build/installer-payload';output.mkdir(parents=True,exist_ok=True)
+release=ROOT/'dist/GameCloudSave';output=ROOT/'build/installer-payload';output.mkdir(parents=True,exist_ok=True)
 shutil.copy2(ROOT/'dist/installer-tools/Uninstall.exe',release/'Uninstall.exe')
 for name in ('LICENSE','THIRD_PARTY_NOTICES.md'):shutil.copy2(ROOT/name,release/name)
 licenses=release/'licenses';licenses.mkdir(exist_ok=True)

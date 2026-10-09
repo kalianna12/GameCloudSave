@@ -71,7 +71,7 @@ def install(payload,target,desktop=None,start_menu=None,version='2.3',registry=T
             if zipped.testzip():raise ValueError('安装包损坏')
             zipped.extractall(stage)
         files=[file.relative_to(stage).as_posix() for file in stage.rglob('*') if file.is_file()]
-        exes=[name for name in files if '/' not in name and name.startswith('GameCloudSave-V') and name.endswith('.exe')]
+        exes=[name for name in files if name=='GameCloudSave.exe' or '/' not in name and name.startswith('GameCloudSave-V') and name.endswith('.exe')]
         if len(exes)!=1 or 'Uninstall.exe' not in files:raise ValueError('安装包缺少主程序或卸载程序')
         if any(name.startswith(('data/','machines/')) for name in files):raise ValueError('安装包不应包含用户数据')
         target.mkdir(exist_ok=True);changed=[];new=[]
@@ -87,7 +87,12 @@ def install(payload,target,desktop=None,start_menu=None,version='2.3',registry=T
             for directory in (desktop,start_menu):
                 if directory:
                     link=Path(directory)/'GameCloudSave.lnk';shortcut(link,exe);links.append(str(link))
-            record={'product':PRODUCT,'version':version,'exe':exes[0],'files':sorted(set(files+previous.get('files',[]))),'links':list(set(links+previous.get('links',[]))),'registered':registry}
+            old_exe=previous.get('exe','')
+            if old_exe and old_exe!=exes[0] and old_exe in previous.get('files',[]) and '/' not in old_exe and '\\' not in old_exe and old_exe.startswith('GameCloudSave-V') and old_exe.endswith('.exe'):
+                obsolete=checked(target,old_exe)
+                if obsolete.is_file():
+                    shutil.copy2(obsolete,checked(journal,old_exe));changed.append(old_exe);obsolete.unlink()
+            record={'product':PRODUCT,'version':version,'exe':exes[0],'files':sorted(set(files+previous.get('files',[]))-{old_exe} if old_exe!=exes[0] else set(files+previous.get('files',[]))),'links':list(set(links+previous.get('links',[]))),'registered':registry}
             (target/MARKER).write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
             if registry:register(target,exe,version)
             progress(100);return exe

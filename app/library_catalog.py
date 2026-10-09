@@ -58,20 +58,20 @@ def recommend(games,limit=12):
 def sections(games):
     games=[prepare_game(game) for game in games];output=[]
     recent=sorted([game for game in games if game.get('last_played')],key=lambda game:game['last_played'],reverse=True)[:8]
-    output.append({'id':'recent','kind':'recent','title':'继续最近的游戏' if recent else '开始游戏','subtitle':'最近启动过的游戏' if recent else '从已安装或收藏的游戏开始','items':recent or sorted(games,key=lambda game:(not game.get('favorite'),not game.get('installed'),game['name']))[:8],'target':'recent' if recent else 'all','value':''})
+    output.append({'id':'recent','kind':'recent','title':'最近游玩' if recent else '我的游戏','subtitle':'','items':recent or sorted(games,key=lambda game:(not game.get('favorite'),not game.get('installed'),game['name']))[:8],'target':'recent' if recent else 'all','value':''})
     grouped=defaultdict(list)
     for game in games:grouped[game['category']].append(game)
     tiles=[{'id':name,'name':name,'count':len(rows),'games':rows[:3],'target':'category','value':name} for name,rows in grouped.items()]
     tiles.sort(key=lambda tile:(CATEGORIES.index(tile['name']) if tile['name'] in CATEGORIES else 99,tile['name']))
-    if tiles:output.append({'id':'categories','kind':'tiles','title':'按类别浏览','subtitle':'少量主分类，更多风格可用标签搜索','items':tiles,'target':'all','value':''})
+    if tiles:output.append({'id':'categories','kind':'tiles','title':'按类别浏览','subtitle':'','items':tiles,'target':'all','value':''})
     series=valid_series(games)
-    if series:output.append({'id':'series','kind':'tiles','title':'按系列浏览','subtitle':'每个系列至少两款游戏','items':[{'id':name,'name':name,'count':len(rows),'games':rows[:3],'target':'series','value':name} for name,rows in sorted(series.items(),key=lambda pair:(-len(pair[1]),pair[0]))],'target':'series','value':''})
+    if series:output.append({'id':'series','kind':'tiles','title':'按系列浏览','subtitle':'','items':[{'id':name,'name':name,'count':len(rows),'games':rows[:3],'target':'series','value':name} for name,rows in sorted(series.items(),key=lambda pair:(-len(pair[1]),pair[0]))],'target':'series','value':''})
     recommended=recommend(games)
-    if recent and recommended:output.append({'id':'recommend','kind':'games','title':'根据最近游玩推荐','subtitle':'依据游戏类型和共同标签，从你的游戏库挑选','items':recommended,'target':'all','value':''})
+    if recent and recommended:output.append({'id':'recommend','kind':'games','title':'猜你喜欢','subtitle':'','items':recommended,'target':'all','value':''})
     for name in CATEGORIES+[value for value in grouped if value not in CATEGORIES]:
         rows=grouped.get(name,[])
         if len(rows)>=2:output.append({'id':'category:'+name,'kind':'games','title':name,'subtitle':str(len(rows))+' 款游戏','items':sorted(rows,key=lambda game:(not game.get('installed'),game['name']))[:12],'target':'category','value':name})
     for tag in STYLE_TAGS:
         rows=[game for game in games if any(normalized(tag) in normalized(value) for value in game['tags'])]
-        if len(rows)>=3 and len(rows)<len(games):output.append({'id':'tag:'+tag,'kind':'games','title':tag,'subtitle':'标签浏览','items':rows[:12],'target':'tag','value':tag})
+        if len(rows)>=3 and len(rows)<len(games):output.append({'id':'tag:'+tag,'kind':'games','title':tag,'subtitle':'','items':rows[:12],'target':'tag','value':tag})
     return output

@@ -17,7 +17,8 @@ from contextlib import closing
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[1]
 RESOURCES = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else ROOT
-DEFAULT_DATA=Path(os.environ['LOCALAPPDATA'])/'GameCloudSave/data' if (ROOT/'gamecloud-install.json').exists() else ROOT/'data'
+PORTABLE_WORKSPACE=ROOT.parents[1] if ROOT.parent.name=='dist' and ROOT.name=='GameCloudSave' else ROOT
+DEFAULT_DATA=Path(os.environ['LOCALAPPDATA'])/'GameCloudSave/data' if (ROOT/'gamecloud-install.json').exists() else PORTABLE_WORKSPACE/'data'
 DATA = Path(os.environ.get('GAMECLOUD_DATA', str(DEFAULT_DATA)))
 
 def read_json(path, default):
@@ -197,7 +198,7 @@ class Store:
                     game['background']=str(target)
             count+=1
         if count:
-            self.groups=sorted({game.get('category','其他') for game in self.games})
+            self.groups=sorted(set(self.groups)|{game.get('category','其他') for game in self.games})
             write_json(self.root/'library.json',self.games);write_json(self.root/'groups.json',self.groups)
         return count
 
@@ -639,7 +640,7 @@ class Store:
             except ValueError: raise ValueError('该目录可浏览但不能上传；请进入可写的挂载文件夹，再验证保存') from None
             self.rclone(['deletefile',target],values=values)
         self.save_settings(values)
-        return '已验证目录读写权限并保存；所有游戏共用此位置'
+        return '云端目录已验证，设置已保存'
 
     def candidates(self, ident):
         import re

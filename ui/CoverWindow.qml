@@ -12,7 +12,7 @@ ApplicationWindow {
         anchors.fill: parent; anchors.margins: 24; spacing: 14
         RowLayout { Label { text: "搜索封面"; font.pixelSize: 26; font.bold: true } Item { Layout.fillWidth: true } AppButton { text: "关闭"; onClicked: covers.close() } }
         RowLayout { AppTextField { id: query; Layout.fillWidth: true; placeholderText: "中文或英文游戏名称" }
-            ComboBox { id: provider; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 210; Layout.minimumWidth: 190 }
+            AppComboBox { id: provider; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 210; Layout.minimumWidth: 190 }
             AppButton { text: (backend.coverProviders[provider.currentIndex] || {}).kind==="browser" ? "浏览器搜索" : "搜索"; enabled: !backend.busy && !!query.text; highlighted: true; onClicked: { if((backend.coverProviders[provider.currentIndex] || {}).kind==="browser") Qt.openUrlExternally(backend.coverBrowserUrl(query.text,provider.currentValue));else backend.searchCovers(query.text,provider.currentValue,ai.checked) } }
         }
         CheckBox { id: ai; text: "DeepSeek 辅助识别英文名称"; enabled: backend.settings.has_ai_key; checked: backend.settings.ai_enabled }

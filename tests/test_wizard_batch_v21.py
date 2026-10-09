@@ -1,6 +1,6 @@
 """Real QML wizard skipping and all-row batch confirmation/backup."""
 from pathlib import Path
-import sys,tempfile
+import sys,tempfile,time
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from PySide6.QtCore import QObject,QUrl,QMetaObject,Q_ARG
@@ -47,8 +47,9 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         backend.backupConfigured(['0','1'],False)
         for _ in range(600):
             QTest.qWait(25)
+            time.sleep(.001)
             if not backend.busy:break
-    assert len(store.history('0'))==1 and len(store.history('1'))==1
+    assert len(store.history('0'))==1 and len(store.history('1'))==1, backend.status
     backend.timer.stop();backend.pool.shutdown(wait=True);shiboken6.delete(engine)
     import gc;gc.collect()
 print('PASS: all wizard steps/skip/summary/save, all-row batch confirmation retains scroll, backup skips rematching')
