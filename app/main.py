@@ -139,6 +139,9 @@ class Bridge(QObject):
         elif action == 'apply-match':
             self.receiveMatch(result)
             self._status=result['message']
+        elif action == 'apply-matches':
+            for row in result['rows']: self.receiveMatch(row)
+            self._status=result['message']
         elif action == 'history':
             self._history = result
             self._status = f'本机共 {len(result)} 条快照'
@@ -153,7 +156,7 @@ class Bridge(QObject):
             self.setTransfer(self._transfer_ident,'failed')
         if action == 'match': self._matching=False
         if action=='workflow': self._matching=False
-        if action in ('import', 'remove', 'game-settings','apply-match','workflow') and not error:
+        if action in ('import', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
         if action in ('settings','ai-test','cloud-config','workflow','match') and not error:
@@ -396,6 +399,35 @@ class Bridge(QObject):
             self.store.save_match_report(list(reports.values()))
             return result
         self.job('apply-match',apply)
+
+    @Slot('QVariantList')
+    def applyMatches(self, selections):
+        def apply():
+            from save_groups import complete_directory
+            reports={row['id']:row for row in self._matches}
+            prepared=[]; occupied={}
+            selected={item['id'] for item in selections}
+            for ident,local in self.store.local.items():
+                if ident not in selected and local.get('save_dir'):
+                    occupied[str(complete_directory(local['save_dir']).resolve()).casefold()]=ident
+            for item in selections:
+                ident=item['id']; path=item['path']; row=reports.get(ident,{})
+                if path not in [c['path'] for c in row.get('candidates',[])]:
+                    raise ValueError('选中的目录已不在候选结果中，请重新选择')
+                if not Path(path).is_dir():raise ValueError('选中的目录已不存在，请重新查找')
+                complete=str(complete_directory(path).resolve())
+                key=complete.casefold()
+                if key in occupied and occupied[key]!=ident:
+                    raise ValueError('多个游戏使用同一存档目录，请分别核对后确认')
+                occupied[key]=ident; prepared.append((ident,complete,row))
+            rows=[]
+            for ident,path,row in prepared:
+                self.store.save_game(ident,{'save_dir':path})
+                updated={**row,'status':'applied','applied_path':path,'message':'已设置存档目录：'+path}
+                reports[ident]=updated; rows.append(updated)
+            self.store.save_match_report(list(reports.values()))
+            return {'rows':rows,'message':f'已确认 {len(rows)} 款游戏的存档目录'}
+        self.job('apply-matches',apply)
 
     @Slot('QVariantMap')
     def testAi(self,values):

@@ -10,6 +10,7 @@ ApplicationWindow {
     font.family: "Microsoft YaHei UI"
     property string selectedName: ""
     property var selectedEntry: ({})
+    Connections { target: backend; function onDirectoriesChanged() { if(cloud.visible && configTabs.currentIndex===1) configTabs.currentIndex=0 } }
     property var visibleEntries: backend.directories.filter(function(entry) {
         return (!foldersOnly.checked || entry.IsDir) && (showHidden.checked || entry.Name[0]!==".") && entry.Name.toLowerCase().indexOf(fileSearch.text.trim().toLowerCase())>=0
     }).sort(function(a,b) {
@@ -43,6 +44,7 @@ ApplicationWindow {
             Label { text: "云端存储"; font.pixelSize: 28; font.bold: true }
             Item { Layout.fillWidth: true }
             Label { text: backend.settings.computer; color: "#a6a9ae" }
+            AppButton { text: "DAV 连接设置"; onClicked: configTabs.currentIndex=1 }
             AppButton { text: "传输选项"; onClicked: configTabs.currentIndex=2 }
         }
         Rectangle {
@@ -63,14 +65,14 @@ ApplicationWindow {
                     width: connectionPane.availableWidth-12; spacing: 8
                     TabBar {
                         id: configTabs; objectName: "cloudConfigTabs"; Layout.fillWidth: true; currentIndex: backend.settings.has_password ? 0 : 1
-                        TabButton { text: "备份"; font.pixelSize: 13 }
-                        TabButton { text: "连接"; font.pixelSize: 13 }
+                        TabButton { text: "存储位置"; font.pixelSize: 13 }
+                        TabButton { text: "DAV 连接"; font.pixelSize: 13 }
                         TabButton { text: "传输"; font.pixelSize: 13 }
                     }
                     Label { visible: configTabs.currentIndex===0; text: "备份文件夹"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.bold: true }
                     AppTextField { visible: configTabs.currentIndex===0; id: storage; objectName: "cloudStorage"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "选择右侧浏览中的文件夹" }
                     AppButton { visible: configTabs.currentIndex===0; text: "使用当前浏览文件夹"; Layout.fillWidth: true; enabled: !backend.busy; onClicked: storage.text=backend.cloudPath || "/" }
-                    AppButton { text: "保存设置"; highlighted: true; Layout.fillWidth: true; enabled: !backend.busy; onClicked: { var v=cloud.values(); v.cloud_folder=storage.text; backend.configureCloud(v) } }
+                    AppButton { visible: configTabs.currentIndex!==1; text: "验证并保存设置"; highlighted: true; Layout.fillWidth: true; enabled: !backend.busy; onClicked: { var v=cloud.values(); v.cloud_folder=storage.text; backend.configureCloud(v) } }
                     Label { visible: configTabs.currentIndex===0; text: "目录结构预览"; font.bold: true }
                     ComboBox { visible: configTabs.currentIndex===0; id: layoutGame; objectName: "cloudLayoutGame"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id" }
                     Label { visible: configTabs.currentIndex===0; objectName: "cloudLayoutPreview"; text: layoutGame.currentValue ? backend.cloudGamePath(layoutGame.currentValue,cloud.values())+"/备份.zip" : "导入 Playnite 后显示游戏目录"; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: Theme.secondary; font.pixelSize: 12 }
@@ -85,10 +87,15 @@ ApplicationWindow {
                         Label { text: "自动备份需在系统设置中开启游戏监听。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11 }
                     }
                     Label { visible: configTabs.currentIndex===1; text: "连接设置"; font.pixelSize: 18; font.bold: true }
+                    Label { visible: configTabs.currentIndex===1; text: "先连接，再在右侧选择云端文件夹。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                    Label { visible: configTabs.currentIndex===1; text: "WebDAV 地址" }
                     AppTextField { visible: configTabs.currentIndex===1; id: server; objectName: "davServer"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 地址" }
+                    Label { visible: configTabs.currentIndex===1; text: "AList 示例：http://服务器:5244/dav/"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                    Label { visible: configTabs.currentIndex===1; text: "用户名" }
                     AppTextField { visible: configTabs.currentIndex===1; id: user; Layout.fillWidth: true; placeholderText: "用户名"; selectByMouse: true }
+                    Label { visible: configTabs.currentIndex===1; text: "密码" }
                     AppTextField { visible: configTabs.currentIndex===1; id: password; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: backend.settings.has_password ? "密码已保存，留空保持" : "密码" }
-                    AppButton { visible: configTabs.currentIndex===1; text: "连接并浏览"; enabled: !backend.busy; Layout.fillWidth: true; onClicked: backend.browseCloud("",values()) }
+                    AppButton { visible: configTabs.currentIndex===1; text: "连接并浏览文件夹"; highlighted: true; enabled: !backend.busy; Layout.fillWidth: true; onClicked: backend.browseCloud("",values()) }
                     AppButton { visible: configTabs.currentIndex===1; id: advanced; text: "高级：rclone 程序位置"; checkable: true; Layout.fillWidth: true }
                     AppTextField { id: rclonePath; visible: configTabs.currentIndex===1 && advanced.checked; Layout.fillWidth: true; selectByMouse: true }
                     AppButton { visible: configTabs.currentIndex===1 && advanced.checked; text: "选择 rclone.exe"; Layout.fillWidth: true; onClicked: { var p=backend.pickFile("exe"); if(p) rclonePath.text=p } }
@@ -97,6 +104,10 @@ ApplicationWindow {
             }
             ColumnLayout {
                 Layout.fillWidth: true; Layout.fillHeight: true; spacing: 10
+                RowLayout {
+                    Label { text: "进入要保存备份的文件夹，再点击选择。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                    AppButton { text: "选择此文件夹"; enabled: !backend.busy && !!backend.cloudPath; onClicked: { storage.text=backend.cloudPath; configTabs.currentIndex=0 } }
+                }
                 RowLayout {
                     AppButton { text: "上一级"; enabled: !backend.busy; onClicked: backend.browseCloud(backend.cloudPath.split('/').slice(0,-1).join('/'),cloud.values()) }
                     AppTextField { id: location; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 根目录"; onAccepted: backend.browseCloud(text,cloud.values()) }

@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1440; height: 940
     minimumWidth: 900; minimumHeight: 650
-    title: "GameCloudSave · V1.8"
+    title: "GameCloudSave · V1.9"
     color: "#1b1c1e"
     Material.theme: Material.Dark
     Material.accent: "#80c942"
@@ -67,7 +67,7 @@ ApplicationWindow {
             NavigationButton { iconName: "grid"; text: "游戏库"; selected: true }
             NavigationButton { iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
             NavigationButton { iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
-            NavigationButton { iconName: "folder"; text: "使用指南"; onClicked: guideDialog.open() }
+            NavigationButton { iconName: "help"; text: "使用指南"; onClicked: guideDialog.open() }
         }
         NavigationButton { x: 8; anchors.bottom: parent.bottom; anchors.bottomMargin: 20; iconName: "settings"; text: "设置"; onClicked: win.openSettings() }
     }
@@ -234,6 +234,7 @@ ApplicationWindow {
                 Label { text: "查找 Windows 原生游戏存档，支持安装目录和用户目录中的多层路径。"; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 Label { text: "联网查询、DeepSeek 和并行数量在查找窗口的“匹配设置”中调整。不使用 DeepSeek 也可以本地查找或手动选目录。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 AppButton { text: "打开存档查找与匹配设置"; Layout.fillWidth: true; onClicked: win.openMatch("") }
+                AppButton { text: "设置 DeepSeek API Key"; Layout.fillWidth: true; onClicked: { settingsDialog.close(); matchWindow.openAiSettings() } }
                 Label { text: "目录存在不代表已有进度。未玩过的游戏可在首次保存后重新查找；多候选需要核对。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 }
                 Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#a6a9ae" }
