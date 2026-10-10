@@ -36,6 +36,7 @@ def release_date(value):
 def playnite_metadata(raw):
     platform=platform_for(raw);external=str(raw.get('GameId') or '')
     fields={'platform':platform,'external_id':external,'plugin_id':guid(raw.get('PluginId')),'import_source':'playnite','provenance_version':2}
+    if isinstance(raw.get('Name'),str) and raw['Name'].strip():fields['source_name']=raw['Name'].strip()[:200]
     if platform=='steam' and external.isdigit():fields['steam_appid']=external
     for link in raw.get('Links') or []:
         matched=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
@@ -188,6 +189,7 @@ def import_rows(store,rows,skip_duplicates=False):
         match=next((g for g in existing.values() if (platform!='local' and g.get('platform')==platform and g.get('external_id')==row['external_id']) or (platform=='steam' and g.get('steam_appid')==row['external_id']) or (store.local.get(g['id'],{}).get('install_dir') and Path(store.local[g['id']]['install_dir']).resolve()==install)),None)
         game_id=match['id'] if match else row['id'] if row.get('playnite') else ident(platform,row['external_id'] if platform!='local' else key(row['name']))
         game={**existing.get(game_id,{}),'id':game_id,'name':row['name'],'platform':platform,'external_id':row['external_id'],'source':'Playnite' if row.get('playnite') else platform,'installed':row.get('installed',True)}
+        game.setdefault('source_name',row['name'])
         game.update(import_source='playnite' if row.get('playnite') else 'folder' if platform=='local' else 'platform',provenance_version=2)
         if row.get('playnite'):
             details=playnite_metadata(row['raw'])

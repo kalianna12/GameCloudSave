@@ -8,6 +8,7 @@ import hashlib,shutil,threading,time,json
 from library_sources import release_date,guid,playnite_metadata
 from tag_catalog import effective_tags,normalize_tags,vocabulary
 from library_catalog import primary
+from catalog_match import query_hints,search_queries,best_match
 
 def cover_path(store,game):
     value=game.get('cover') or ''
@@ -29,7 +30,7 @@ def cached_lookup(store,game):
     from library_metadata import lookup
     from services import read_json,write_json
     cache_file=store.root/'enrichment-metadata-cache.json'
-    key=json.dumps([game['name'],game.get('steam_appid'),game.get('metadata_steam_appid'),game.get('category'),effective_tags(game)],ensure_ascii=False)
+    key=json.dumps(['titles-v2',game['name'],game.get('steam_appid'),game.get('metadata_steam_appid'),game.get('category'),effective_tags(game)],ensure_ascii=False)
     with store.match_lock:entry=read_json(cache_file,{}).get(key)
     if entry and time.time()-entry['time']<86400:return entry['fields']
     fields=lookup(game)
@@ -88,6 +89,7 @@ def preview(store,idents=None,options=None,cancel=None,notify=lambda row,done,to
                 offer('release_date',data.get('release_date'),data.get('release_date_source','资料库'))
                 offer('tags',data.get('tags'),data.get('tags_source','资料库'))
                 if data.get('metadata_url'):row['metadata_url']=data['metadata_url']
+                if data.get('matched_name'):row['matched_name']=data['matched_name']
             except Exception:notes.append('资料库查询失败，可重试')
         # Trusted app IDs bypass fuzzy cover search. Otherwise preview only a strong, unambiguous match.
         needs_cover=options['covers'] and needs['cover'] and 'cover' not in fields
@@ -102,12 +104,12 @@ def preview(store,idents=None,options=None,cancel=None,notify=lambda row,done,to
                         if cancel.is_set():break
                         results=search(store,game['name'],provider,False,cancel)
                         if results and results[0]['score']>=.93 and (len(results)==1 or results[0]['score']-results[1]['score']>=.08):candidate=results[0];break
-                    if candidate is None and options['use_ai'] and not cancel.is_set():
-                        results=search(store,game['name'],'steam',True,cancel)
-                        if results and results[0]['score']>=.93 and (len(results)==1 or results[0]['score']-results[1]['score']>=.08):candidate=results[0]
                 if candidate and not cancel.is_set():
-                    row['matched_name']=candidate['name']
-                    if needs_cover:
+                    row['matched_name']=row.get('matched_name') or candidate['name']
+                    if candidate.get('provider')=='vndb':
+                        offer('release_date',release_date(candidate.get('released')),'VNDB（首次发行）')
+                        if 'release_date' in fields:row['metadata_url']=candidate.get('page','')
+                    if needs_cover and candidate.get('image'):
                         try:offer('cover',download(store,candidate),candidate.get('provider','资料库'));row['cover_name']=candidate['name']
                         except Exception:notes.append('封面下载失败，可重试')
                     if candidate.get('appid') and (needs_date or needs_tags) and not cancel.is_set():
@@ -127,6 +129,70 @@ def preview(store,idents=None,options=None,cancel=None,notify=lambda row,done,to
         for done,future in enumerate(as_completed(futures),1):
             row=future.result();rows[row['id']]=row
             notify(row,done,total,'正在查询缺失资料和封面' if not cancel.is_set() else '正在停止，已有结果保留')
+    def unresolved(game):
+        needs=missing(store,game);row=rows[game['id']]
+        return (options['dates'] and needs['release_date'] and 'release_date' not in row['fields'] or
+                options['covers'] and needs['cover'] and 'cover' not in row['fields'] or
+                options['tags'] and needs['tags'] and 'tags' not in row['fields'] and not row.get('metadata_url') and not row.get('matched_name'))
+    retry_targets=[game for game in targets if unresolved(game)]
+    if retry_targets and not cancel.is_set():
+        notify(None,total,total,f'正在二次查询 {len(retry_targets)} 款未匹配游戏')
+        def retry(game):
+            row=rows[game['id']];fields=row['fields'];needs=missing(store,game)
+            raw=raw_by_id.get(game['id']);source_game={**game,**(playnite_metadata(raw) if raw else {})}
+            names=query_hints(store,{**game,'aliases':[*game.get('aliases',[]),row.get('matched_name','')]},raw);errors=False;matched=False
+            providers=['vndb','steam'] if source_game.get('category')=='视觉小说' or primary(effective_tags(source_game))=='视觉小说' else ['steam','vndb']
+            row['second_pass']=True
+            def offer(key,value,source):
+                enabled=options['dates'] if key=='release_date' else options['covers'] if key=='cover' else options['tags']
+                if enabled and needs.get(key) and value and key not in fields:
+                    fields[key]=value;row['sources'][key]=source
+            def accept(candidate):
+                nonlocal matched
+                matched=True;before_date=fields.get('release_date');before=len(fields)
+                if candidate.get('provider')=='vndb':
+                    offer('release_date',release_date(candidate.get('released')),'VNDB（首次发行）')
+                    if not before_date and fields.get('release_date'):row['metadata_url']=candidate.get('page','')
+                elif candidate.get('appid'):
+                    try:
+                        data=cached_lookup(store,{**source_game,'name':candidate['name'],'steam_appid':'','metadata_steam_appid':candidate['appid']})
+                        offer('release_date',data.get('release_date'),data.get('release_date_source','Steam'))
+                        offer('tags',data.get('tags'),'Steam')
+                        row['metadata_steam_appid']=candidate['appid']
+                        if data.get('metadata_url') and not before_date and fields.get('release_date'):row['metadata_url']=data['metadata_url']
+                    except Exception:row['notes'].append('二次匹配已找到，资料读取失败，可重试')
+                if options['covers'] and needs['cover'] and 'cover' not in fields and candidate.get('image') and not cancel.is_set():
+                    try:
+                        offer('cover',download(store,candidate),{'steam':'Steam','vndb':'VNDB'}.get(candidate.get('provider'),'资料库'))
+                        row['cover_name']=candidate['name']
+                    except Exception:row['notes'].append('二次匹配已找到，封面下载失败，可重试')
+                if len(fields)>before or not row.get('matched_name'):
+                    row['matched_name']=candidate['name'];row['match_score']=round(candidate['score'],3)
+            def outstanding():
+                return any(enabled and needs[key] and key not in fields for key,enabled in [('release_date',options['dates']),('tags',options['tags']),('cover',options['covers'])])
+            for provider in providers:
+                candidates={};candidate=None
+                for name in search_queries(names):
+                    if cancel.is_set():return row
+                    try:
+                        for record in search(store,name,provider,False,cancel):candidates[record['id']]=record
+                    except Exception:errors=True;continue
+                    candidate=best_match(list(candidates.values()),names,True)
+                    if candidate and candidate['score']>=.999:break
+                if candidate:accept(candidate)
+                if not outstanding():break
+            if not matched and options['use_ai'] and not cancel.is_set():
+                try:
+                    # Only unresolved titles incur the optional AI identification request.
+                    records=search(store,names[0] if names else game['name'],'steam',True,cancel)
+                    if records and records[0]['score']>=.96 and (len(records)==1 or records[0]['score']-records[1]['score']>=.08):accept(records[0])
+                except Exception:errors=True
+            row['notes'].append('已使用原始名称、别名或模糊匹配完成二次查询' if matched else '二次查询仍未可靠匹配，保留缺失项'+('；部分来源暂不可用' if errors else ''))
+            return row
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            for future in as_completed([pool.submit(retry,game) for game in retry_targets]):
+                row=future.result();row['cancelled']=cancel.is_set()
+                notify(row,total,total,'正在二次查询未匹配游戏' if not cancel.is_set() else '正在停止，已有结果保留')
     if options['tags'] and not cancel.is_set():
         # The organizer only sees a detached library with source proposals filled in.
         proposed=deepcopy(games)

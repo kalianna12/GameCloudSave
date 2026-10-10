@@ -105,6 +105,26 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         # Stopping a new query leaves the saved library intact.
         current=(store.root/'library.json').read_bytes();invoke(window,'startQuery');spin(20);backend.cancelEnrichment();idle()
         assert (store.root/'library.json').read_bytes()==current
+    # The additional pass also runs off the UI thread and still produces a preview only.
+    store.games.append({'id':'retry-ui','name':'Custom edit','source_name':'Original candidate','category':'其他','tags':[],'cover':''})
+    backend._games_cache=None;backend.gamesChanged.emit()
+    before=(store.root/'library.json').read_bytes();ticks_before=len(ticks)
+    phases=[]
+    def delayed_search(store,query,provider,*values):
+        time.sleep(.08)
+        if query=='Original candidate' and provider=='steam':
+            return [{'id':'steam:456','appid':'456','name':'Original candidate','provider':'steam','score':1,'image':''}]
+        return []
+    def retry_metadata(game):
+        if game.get('metadata_steam_appid')=='456':return {'release_date':'2002-03-04','release_date_source':'Steam'}
+        return {}
+    backend.enrichmentChanged.connect(lambda:phases.append(backend.enrichmentProgress['phase']))
+    with patch('library_metadata.lookup',side_effect=retry_metadata),patch('cover_sources.search',side_effect=delayed_search):
+        invoke(root,'openEnrichment',['retry-ui'],{'dates':True,'tags':False,'covers':False,'use_ai':False},True);spin(80);idle();spin()
+    assert len(ticks)-ticks_before>=10 and any('二次查询' in phase for phase in phases)
+    assert backend.enrichmentResults[0]['second_pass'] and backend.enrichmentResults[0]['fields']['release_date']=='2002-03-04'
+    assert (store.root/'library.json').read_bytes()==before and not store.games[-1].get('release_date')
+    store.games.pop();backend._games_cache=None;backend.gamesChanged.emit()
     timer.stop();window.hide();root.requestActivate();spin()
     # Import explicitly offers preview enrichment and a plain import without network work.
     invoke(root,'openImport');spin();importer=root.findChild(QObject,'importWindow')

@@ -47,6 +47,15 @@ ApplicationWindow {
         return !activeFocusItem || activeFocusItem===contentItem
     }
     function focusContent() { if(homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() }
+    function focusFirstContent() { if(homeVisible) home.focusFirst();else if(grid.count) grid.navigateFocus(0);else grid.forceActiveFocus() }
+    function previewSidebar(index) {
+        var modes=["home","all","recent","favorites","series"]
+        if(index<0 || index>=modes.length) return
+        searchDelay.stop();search.text="";searchDelay.stop();searchQuery="";groupFilter="";seriesFilter=""
+        libraryMode=modes[index];librarySort=libraryMode==="recent" ? "recent" : "name"
+        grid.currentIndex=grid.count ? 0 : -1;grid.contentY=0
+        home.resetSelection()
+    }
     function focusControls(items,index) {
         var available=items.filter(function(item) { return item.visible && item.enabled })
         if(available.length) { available[Math.max(0,Math.min(available.length-1,index))].forceActiveFocus();backend.navigationMoved() }
@@ -60,9 +69,8 @@ ApplicationWindow {
         var item=activeFocusItem,side=-1,filter=-1,header=-1
         while(item) { if(side<0) side=sidebar.indexOf(item);if(filter<0) filter=filters.indexOf(item);if(header<0) header=headers.indexOf(item);item=item.parent }
         if(side>=0) {
-            if(command==="right") { focusContent();return true }
-            if(command==="up" || command==="down") { focusControls(sidebar,side+(command==="up" ? -1 : 1));return true }
-            if(command==="activate") { sidebar[side].clicked();return true }
+            if(command==="right" || command==="activate") { previewSidebar(side);focusFirstContent();return true }
+            if(command==="up" || command==="down") { var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);previewSidebar(nextSide);return true }
             return true
         }
         if(filter>=0 || header>=0) {
@@ -72,7 +80,7 @@ ApplicationWindow {
             if(command==="down") { if(header>=0) focusControls(filters,filterFocusIndex);else focusContent();return true }
             if(command==="left" || command==="previous" || command==="right" || command==="next") {
                 var step=(command==="left" || command==="previous") ? -1 : 1
-                if(position===0 && step<0) focusControls(sidebar,0);else focusControls(available,position+step)
+                if(position===0 && step<0) { focusControls(sidebar,0);previewSidebar(0) } else focusControls(available,position+step)
                 return true
             }
             if(command==="activate") {
@@ -88,7 +96,8 @@ ApplicationWindow {
             if(["up","down","left","right"].indexOf(command)<0) return true
             focusContent()
         }
-        if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { focusControls(sidebar,Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode)));return true }
+        if(!homeVisible) grid.adoptFocusedCard()
+        if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
         if(command==="up" && (homeVisible ? home.focusedSection===0 : grid.currentIndex<grid.effectiveColumns)) { focusControls(filters,filterFocusIndex);return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
@@ -262,11 +271,16 @@ ApplicationWindow {
             id: grid
             objectName: "gameGrid"
             activeFocusOnTab: true
+            function adoptFocusedCard() {
+                var item=win.activeFocusItem
+                while(item && item!==grid) { if(item.libraryIndex!==undefined) { currentIndex=item.libraryIndex;return } item=item.parent }
+            }
             function navigateFocus(index) {
                 var previousIndex=currentIndex,previousY=contentY
                 gridScroll.stop();currentIndex=index
                 positionViewAtIndex(currentIndex,GridView.Contain)
                 var destination=contentY
+                if(win.activeFocusItem && win.activeFocusItem!==grid) win.activeFocusItem.focus=false
                 forceActiveFocus();contentY=previousY
                 gridScroll.to=destination;gridScroll.restart()
                 if(previousIndex!==currentIndex) backend.navigationMoved()
@@ -279,8 +293,9 @@ ApplicationWindow {
             visible: !homeVisible
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
-            property int effectiveColumns: Math.max(1, Math.min(Math.floor(width / (196 + gridGap)), columnCount > 0 ? columnCount : Math.floor(width / (coverSize + gridGap))))
-            cellWidth: columnCount>0 ? width / effectiveColumns : Math.min(width,coverSize+gridGap)
+            property int layoutColumns: Math.max(1, Math.min(Math.floor(width / (196 + gridGap)), columnCount > 0 ? columnCount : Math.floor(width / (coverSize + gridGap))))
+            readonly property int effectiveColumns: Math.max(1,Math.floor((width+.001)/cellWidth))
+            cellWidth: columnCount>0 ? Math.floor(width / layoutColumns) : Math.min(width,coverSize+gridGap)
             property real cardWidth: cellWidth - gridGap
             cellHeight: cardWidth * 1.38 + 144 + gridGap
             model: libraryModel
@@ -292,6 +307,7 @@ ApplicationWindow {
             delegate: Item {
                 required property var record
                 required property int index
+                property int libraryIndex: index
                 property var modelData: record
                 width: grid.cellWidth; height: grid.cellHeight
                 GameCard {

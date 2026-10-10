@@ -1,13 +1,13 @@
 """Best-effort source metadata. Dates never come from model guesses."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from difflib import SequenceMatcher
 from urllib.parse import urlencode
 from urllib.request import Request,urlopen
-import json,re,time,unicodedata
+import json,re,time
 
 from library_sources import release_date
 from tag_catalog import normalize_tags,vocabulary,MAX_TAGS
+from catalog_match import title_key,best_match
 
 def fetch(url,body=None):
     request=Request(url,data=json.dumps(body).encode() if body is not None else None,
@@ -31,7 +31,9 @@ def steam_date(value):
     try:return datetime(int(match[3]),months[match[2]],int(match[1])).date().isoformat()
     except ValueError:return ''
 
-def title_key(value):return re.sub(r'[\W_]','',unicodedata.normalize('NFKC',value).casefold())
+def vndb_fields(row):
+    return {'release_date':release_date(row.get('released')),'release_date_source':'VNDB（首次发行）',
+            'metadata_url':'https://vndb.org/'+row['id'],'matched_name':row.get('title','')}
 
 def lookup(game):
     appid=str(game.get('steam_appid') or game.get('metadata_steam_appid') or '')
@@ -41,23 +43,21 @@ def lookup(game):
         if data.get('success') and data.get('data',{}).get('type','game')=='game':
             raw=data['data'];date=steam_date(raw.get('release_date'))
             tags=normalize_tags([row.get('description','') for row in raw.get('genres',[])],vocabulary([]))[:MAX_TAGS]
-            result={'release_date':date,'release_date_source':'Steam','tags':tags,'tags_source':'Steam','metadata_url':'https://store.steampowered.com/app/'+appid+'/'}
-        return result
-    # Unknown platform games use visual-novel matching only when the library supplies a VN cue.
+            result={'release_date':date,'release_date_source':'Steam','tags':tags,'tags_source':'Steam','metadata_url':'https://store.steampowered.com/app/'+appid+'/',
+                    'matched_name':raw.get('name') or game['name']}
+        if result.get('release_date'):return result
+    # The fast pass uses VNDB for known visual novels, including unreleased Steam entries.
     tags=normalize_tags(game.get('source_tags') or game.get('tags',[]),vocabulary([]))
-    if game.get('category')!='视觉小说' and '视觉小说' not in tags:return {}
-    data=fetch('https://api.vndb.org/kana/vn',{'filters':['search','=',game['name'][:150]],
-        'fields':'title,alttitle,titles.title,titles.latin,aliases,released','results':5,'sort':'searchrank'})
-    scored=[];name=title_key(game['name'])
-    for row in data.get('results',[]):
-        titles=[row.get('title'),row.get('alttitle'),*row.get('aliases',[])]
-        for item in row.get('titles',[]):titles.extend([item.get('title'),item.get('latin')])
-        score=max((SequenceMatcher(None,name,title_key(title)).ratio() for title in titles if isinstance(title,str) and title),default=0)
-        scored.append((score,row))
-    scored.sort(key=lambda pair:-pair[0])
-    if not scored or scored[0][0]<.96 or len(scored)>1 and scored[0][0]-scored[1][0]<.08:return {}
-    row=scored[0][1];date=release_date(row.get('released'))
-    return {'release_date':date,'release_date_source':'VNDB（首次发行）','metadata_url':'https://vndb.org/'+row['id']}
+    if game.get('category')!='视觉小说' and '视觉小说' not in tags:return result
+    try:
+        data=fetch('https://api.vndb.org/kana/vn',{'filters':['search','=',game['name'][:150]],
+            'fields':'title,alttitle,titles.title,titles.latin,aliases,released','results':5,'sort':'searchrank'})
+    except Exception:
+        if result:return result
+        raise
+    row=best_match(data.get('results',[]),[game['name']],threshold=.96)
+    if not row:return result
+    return {**result,**vndb_fields(row)}
 
 def complete(store,idents=None):
     """Fill missing dates/tags, cache read-only requests, persist once after all workers."""

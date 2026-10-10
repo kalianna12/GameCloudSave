@@ -46,6 +46,7 @@ Item {
     }
     Label { y: 37; width: parent.width; text: shelf.section.subtitle || ""; color: Theme.secondary; font.pixelSize: 11; elide: Text.ElideRight }
     function selectedGame() { return section.kind==="tiles" ? null : selectedRecord }
+    function selectFirst() { horizontal.stop();list.currentIndex=items.count ? 0 : -1;list.positionViewAtBeginning() }
     function activateSelected() { if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else detailsRequested(selectedRecord) }
     function moveSelection(direction) {
         if(!items.count) return

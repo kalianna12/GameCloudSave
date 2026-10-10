@@ -3,11 +3,11 @@ import hashlib
 import json
 import re
 import time
-from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import urlencode,urlparse
 from urllib.request import Request,urlopen
 from library_sources import key
+from catalog_match import titles,score
 
 HOSTS={'shared.fastly.steamstatic.com','cdn.akamai.steamstatic.com','cdn.cloudflare.steamstatic.com','s.vndb.org','t.vndb.org'}
 PROVIDERS=[{'id':'steam','label':'Steam Store','kind':'api'},{'id':'vndb','label':'VNDB','kind':'api'},
@@ -41,7 +41,7 @@ def search(store,query,provider='steam',use_ai=False,cancel=None):
             query=identified.get('english_name') or query
     from services import read_json,write_json,protect
     cache=read_json(store.profile/'cover-search.json',{})
-    cache_key=provider+':'+key(query)
+    cache_key='titles-v2:'+provider+':'+key(query)
     if cancel and cancel.is_set():return []
     if provider=='custom':cache_key+=':'+hashlib.sha256(store.settings.get('custom_cover_url','').encode()).hexdigest()[:16]
     cached=cache.get(cache_key)
@@ -74,10 +74,11 @@ def search(store,query,provider='steam',use_ai=False,cancel=None):
             for item in parser.results:
                 appid=item['appid'];rows.append({'id':'steam:'+appid,'name':item['name'],'provider':'steam','appid':appid,'image':'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/'+appid+'/library_600x900.jpg','fallback':'','page':'https://store.steampowered.com/app/'+appid+'/'})
     elif provider=='vndb':
-        data=fetch_json('https://api.vndb.org/kana/vn',json.dumps({'filters':['search','=',query],'fields':'title,image.url,image.thumbnail','results':20,'sort':'searchrank'}).encode(),{'Content-Type':'application/json'})
+        data=fetch_json('https://api.vndb.org/kana/vn',json.dumps({'filters':['search','=',query],'fields':'title,alttitle,titles.title,titles.latin,aliases,released,image.url,image.thumbnail','results':20,'sort':'searchrank'}).encode(),{'Content-Type':'application/json'})
         for item in data.get('results',[]):
             image=item.get('image') or {}
-            if image.get('url'):rows.append({'id':'vndb:'+item['id'],'name':item['title'],'provider':'vndb','image':image['url'],'fallback':image.get('thumbnail',''),'page':'https://vndb.org/'+item['id']})
+            rows.append({'id':'vndb:'+item['id'],'name':item['title'],'aliases':titles(item),'released':item.get('released',''),
+                         'provider':'vndb','image':image.get('url',''),'fallback':image.get('thumbnail',''),'page':'https://vndb.org/'+item['id']})
     elif provider=='custom':
         from urllib.parse import quote
         endpoint=store.settings.get('custom_cover_url','')
@@ -89,9 +90,7 @@ def search(store,query,provider='steam',use_ai=False,cancel=None):
     elif any(source['id']==provider and source['kind']=='browser' for source in PROVIDERS):raise ValueError('此来源通过浏览器搜索，选好后可粘贴图片地址或导入本地图片')
     else:raise ValueError('未知封面来源')
     for row in rows:
-        names=[key(query),key(original)];name=key(row['name'])
-        row['score']=round(max(SequenceMatcher(None,name,value).ratio() for value in names),2)
-        if any(re.findall(r'\d+',name)!=re.findall(r'\d+',value) for value in names if re.findall(r'\d+',value)):row['score']=min(row['score'],.5)
+        row['score']=round(score([query,original],row),3)
     rows=sorted({row['id']:row for row in rows}.values(),key=lambda row:-row['score'])[:20]
     with store.match_lock:
         cache=read_json(store.profile/'cover-search.json',{})

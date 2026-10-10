@@ -19,6 +19,14 @@ FocusScope {
         Qt.callLater(function() { list.forceLayout();list.contentY=Math.max(list.originY,Math.min(value,Math.max(list.originY,list.contentHeight-list.height))) })
     }
     function currentShelf() { return list.itemAtIndex(focusedSection) }
+    function resetSelection() {
+        vertical.stop();focusedSection=0;list.currentIndex=0;list.forceLayout();list.positionViewAtBeginning()
+        var shelf=currentShelf();if(shelf) shelf.selectFirst()
+    }
+    function focusFirst() {
+        if(currentFocus && currentFocus!==home) currentFocus.focus=false
+        resetSelection();home.forceActiveFocus()
+    }
     function selectedGame() { var shelf=currentShelf();return shelf ? shelf.selectedGame() : null }
     function activateSelected() { var shelf=currentShelf();if(shelf) shelf.activateSelected() }
     function navigateFocus(direction) {
