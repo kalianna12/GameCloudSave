@@ -19,7 +19,7 @@ Dialog {
         else if(index===3) backend.cloudSave(game.id)
         if(index===0 || index===4) close()
     }
-    function usable(index) { return index===4 || !backend.busy && (index<2 || game.saveSet && (index!==3 || backend.settings.cloud_folder)) }
+    function usable(index) { return index===4 || !backend.busy && (index<2 || !!game.saveSet && (index!==3 || !!backend.settings.cloud_folder)) }
     function controllerInput(command) {
         if(!visible) return false
         if(command==="back") close()

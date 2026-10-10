@@ -27,20 +27,22 @@ def fetch_json(url,data=None,headers=None):
             return json.loads(payload)
     except ValueError:raise
     except Exception:raise ValueError('封面来源暂不可用，请重试或更换来源') from None
-def search(store,query,provider='steam',use_ai=False):
+def search(store,query,provider='steam',use_ai=False,cancel=None):
     query=query.strip()[:160]
     if not query:raise ValueError('请输入游戏名称')
     original=query
+    if cancel and cancel.is_set():return []
     if use_ai:
         token=store.profile/'ai-key.dpapi'
         if token.is_file():
             from services import protect
             from ai_match import identify_game
-            identified=identify_game(query,'',protect(token.read_bytes(),True).decode(),store.settings['ai_model'])
+            identified=identify_game(query,'',protect(token.read_bytes(),True).decode(),store.settings['ai_model'],cancel=cancel)
             query=identified.get('english_name') or query
     from services import read_json,write_json,protect
     cache=read_json(store.profile/'cover-search.json',{})
     cache_key=provider+':'+key(query)
+    if cancel and cancel.is_set():return []
     if provider=='custom':cache_key+=':'+hashlib.sha256(store.settings.get('custom_cover_url','').encode()).hexdigest()[:16]
     cached=cache.get(cache_key)
     if cached and time.time()-cached['time']<86400:return cached['rows']

@@ -30,6 +30,9 @@ class Bridge(QObject):
     notificationReady = Signal(str,str,bool)
     operationCompleted = Signal(str,bool)
     inputModeChanged = Signal()
+    enrichmentChanged = Signal()
+    enrichmentReady = Signal(object,int,int,str)
+    enrichmentRequested = Signal('QVariantList','QVariantMap')
     finished = Signal(str, object, str)
 
     def __init__(self, store):
@@ -51,6 +54,10 @@ class Bridge(QObject):
         self._import_reference=[]
         self._picked_save_folders=set()
         self._organizer=[]
+        self._enrichment=[]
+        self._enrichment_progress={'done':0,'total':0,'phase':'尚未查询','running':False}
+        self._cancel_enrichment=threading.Event()
+        self._cover_target=''
         self._icon_cache={}
         self._running = {}
         self._watch_pending=False
@@ -78,6 +85,7 @@ class Bridge(QObject):
         self.transferReady.connect(self.setTransfer)
         self.watchReady.connect(self.receiveWatch)
         self.finished.connect(self.complete)
+        self.enrichmentReady.connect(self.receiveEnrichment)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         if store.settings.get('watch'):self.timer.start(max(5,int(store.settings.get('watch_interval',10)))*1000)
@@ -115,11 +123,6 @@ class Bridge(QObject):
         from library_catalog import CATEGORIES
         return CATEGORIES
 
-    @Property('QVariantList',constant=True)
-    def tagVocabulary(self):
-        from tag_catalog import vocabulary
-        return vocabulary([])
-
     @Property('QVariantList',notify=gamesChanged)
     def searchTerms(self):
         from library_catalog import unique
@@ -129,26 +132,66 @@ class Bridge(QObject):
     def libraryMetadata(self,ident):
         return next((game for game in self.games if game['id']==ident),{})
 
+    @Property('QVariantList',notify=enrichmentChanged)
+    def enrichmentResults(self):return self._enrichment
+
+    @Property('QVariantMap',notify=enrichmentChanged)
+    def enrichmentProgress(self):return self._enrichment_progress
+
+    @Property(str,notify=changed)
+    def coverSearchTarget(self):return self._cover_target
+
+    @Slot(object,int,int,str)
+    def receiveEnrichment(self,row,done,total,phase):
+        if row is not None:
+            row=dict(row)
+            row['coverPreviewUrl']=QUrl.fromLocalFile(row['fields']['cover']).toString() if row['fields'].get('cover') else ''
+            old=row.get('before_cover','')
+            row['coverBeforeUrl']=old if old.startswith(('http://','https://')) else QUrl.fromLocalFile(old).toString() if old else ''
+            position=next((i for i,item in enumerate(self._enrichment) if item['id']==row['id']),None)
+            if position is None:self._enrichment.append(row)
+            else:self._enrichment[position]=row
+        self._enrichment_progress.update(done=done,total=total,phase=phase)
+        self.enrichmentChanged.emit()
+
+    @Slot('QVariantList','QVariantMap')
+    def previewEnrichment(self,idents,options):
+        if self._busy:return
+        from library_enrichment import preview
+        self._cancel_enrichment.clear();self._enrichment=[]
+        self._enrichment_progress={'done':0,'total':0,'phase':'准备查询','running':True}
+        self.enrichmentChanged.emit()
+        self.job('enrichment-preview',lambda:preview(self.store,list(idents),dict(options),self._cancel_enrichment,self.enrichmentReady.emit))
+
+    @Slot()
+    def cancelEnrichment(self):
+        self._cancel_enrichment.set()
+        if self._enrichment_progress['running']:
+            self._enrichment_progress['phase']='正在停止，等待当前请求结束'
+            self.enrichmentChanged.emit()
+
+    @Slot('QVariantList')
+    def applyEnrichment(self,idents):
+        if self._busy:return
+        from library_enrichment import apply
+        self._enrichment_applied=set(idents)
+        self.job('enrichment-apply',lambda:apply(self.store,self._enrichment,list(idents)))
+
+    @Slot(str,str,str,bool)
+    def searchGameCovers(self,ident,query,provider,use_ai):
+        self.searchTargetCovers('game',ident,query,provider,use_ai)
+
+    @Slot(str,str,str,str,bool)
+    def searchTargetCovers(self,scope,ident,query,provider,use_ai):
+        if self._busy:return
+        self._cover_target=scope+':'+ident
+        from cover_sources import search
+        self._cover_results=[]
+        self.job('cover-search',lambda:search(self.store,query,provider,use_ai))
+
     @Slot('QVariantList')
     def completeMetadata(self,idents):
-        from library_metadata import complete
-        def run():
-            from library_sources import release_date
-            initial={game['id']:release_date(game.get('release_date')) for game in self.store.games}
-            # Refresh only imported Playnite records when its library is available.
-            # A locked/unavailable Playnite library does not prevent network enrichment.
-            if any(game.get('import_source')=='playnite' and (not idents or game['id'] in idents) for game in self.store.games):
-                try:
-                    rows=self.store.read_playnite()
-                    if idents:
-                        from library_sources import guid
-                        rows=[row for row in rows if guid(row.get('_id')) in idents]
-                    self.store.sync_playnite_metadata(rows)
-                except (ValueError,OSError):pass
-            result=complete(self.store,idents or None)
-            dated=sum(bool(release_date(game.get('release_date'))) and not initial.get(game['id']) for game in self.store.games if not idents or game['id'] in idents)
-            return f"资料已补全 · 新增日期 {dated} 款 · 日期未知 {result['unknown']} 款"+ (f" · {result['failed']} 项查询失败，可重试" if result['failed'] else '')
-        self.job('library-edit',run)
+        self.previewEnrichment(idents,{'dates':True,'tags':True,'covers':False,'use_ai':False})
 
     @Property('QVariantMap', notify=settingsChanged)
     def settings(self):
@@ -250,6 +293,7 @@ class Bridge(QObject):
                         'cloud-organize':'正在整理旧备份并校验文件…','cloud-mkdir':'正在创建文件夹…',
                         'cloud-download':'正在下载文件…','match':'正在查找存档…',
                         'workflow':'正在备份存档…','playnite-test':'正在检查 Playnite…',
+                        'enrichment-preview':'正在查询缺失资料和封面…','enrichment-apply':'正在应用所选补全…',
                         'ai-test':'正在测试 DeepSeek…'}.get(action, '正在处理…')
         self.changed.emit()
         def work():
@@ -270,6 +314,20 @@ class Bridge(QObject):
         self._busy = False
         if error:
             self._status = error
+        elif action=='import-selected':
+            self._status=result['message']
+        elif action=='enrichment-preview':
+            for row in result['rows']:self.receiveEnrichment(row,len(result['rows']),len(result['rows']),'预览已就绪')
+            count=sum(bool(row['fields']) for row in result['rows'])
+            self._status=('查询已停止' if result['cancelled'] else '查询完成')+f' · {count} 款有可补全内容'+('；'+'；'.join(result['warnings']) if result['warnings'] else '')
+            self._enrichment_progress.update(running=False,phase=self._status)
+            self.enrichmentChanged.emit()
+        elif action=='enrichment-apply':
+            self._status=result
+            for row in self._enrichment:
+                if row['id'] in self._enrichment_applied:row['applied']=True
+            self._enrichment_progress['phase']=result
+            self.enrichmentChanged.emit()
         elif action == 'import':
             self._status = f'已导入 {result} 款游戏'
         elif action in ('list','cloud-mkdir'):
@@ -334,7 +392,7 @@ class Bridge(QObject):
             self._progress['phase']='已停止' if self._cancel_match.is_set() else '失败' if error else '已完成'
             self.progressChanged.emit()
             self.matchesChanged.emit()
-        if action in ('import','import-selected','library-edit','classification-apply','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
+        if action in ('import','import-selected','library-edit','enrichment-apply','classification-apply','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
             self._games_cache=None
             self.gamesChanged.emit()
             if action=='import-selected':
@@ -351,8 +409,13 @@ class Bridge(QObject):
             self._ai_connection=error
             self.matchesChanged.emit()
         if action=='playnite-test' and error:self._playnite_connection=error
+        if action=='enrichment-preview' and error:
+            self._enrichment_progress.update(running=False,phase=error)
+            self.enrichmentChanged.emit()
         self.changed.emit()
         self.operationCompleted.emit(action,not bool(error))
+        if action=='import-selected' and not error and result.get('preview') and result['new_ids']:
+            self.enrichmentRequested.emit(result['new_ids'],result['options'])
 
     @Slot('QVariantMap')
     def saveLayout(self,values):
@@ -407,7 +470,7 @@ class Bridge(QObject):
 
     @Slot()
     def clearCoverSearch(self):
-        if not self._busy:self._cover_results=[];self.changed.emit()
+        if not self._busy:self._cover_results=[];self._cover_target='';self.changed.emit()
 
     @Slot(str,int)
     def scanImports(self,folder,depth):
@@ -424,7 +487,8 @@ class Bridge(QObject):
         self.job('ai-launchers',lambda:self.prepareImportPreview(review_launchers(self.store,self._imports,self._import_reference)))
 
     @Slot('QVariantList')
-    def importSelected(self,selected):
+    @Slot('QVariantList','QVariantMap')
+    def importSelected(self,selected,options=None):
         def run():
             from library_sources import import_rows
             allowed={row['id']:row for row in self._imports}
@@ -438,13 +502,15 @@ class Bridge(QObject):
             if len(set(directories))!=len(directories):raise ValueError('同一游戏请选择一个启动文件')
             before={game['id'] for game in self.store.games}
             count=import_rows(self.store,rows,skip_duplicates=True)
-            from library_metadata import complete
-            metadata=complete(self.store,[game['id'] for game in self.store.games if game['id'] not in before])
-            return f"已导入 {count} 款游戏；排除 {skipped+len(rows)-count} 个重复或失效条目 · 日期未知 {metadata['unknown']} 款"+('（部分资料查询失败，可稍后补全）' if metadata['failed'] else '')
+            return {'message':f'已导入 {count} 款游戏；排除 {skipped+len(rows)-count} 个重复或失效条目',
+                    'new_ids':[game['id'] for game in self.store.games if game['id'] not in before],
+                    'preview':bool((options or {}).get('preview')),'options':dict(options or {})}
         self.job('import-selected',run)
 
     @Slot(str,str,bool)
     def searchCovers(self,query,provider,use_ai=False):
+        if self._busy:return
+        self._cover_target=''
         from cover_sources import search
         self._cover_results=[]
         self.job('cover-search',lambda:search(self.store,query,provider,use_ai))
@@ -459,7 +525,8 @@ class Bridge(QObject):
     @Slot(str,str,str)
     def useCoverUrl(self,scope,ident,url):
         import hashlib
-        record={'id':'manual:'+hashlib.sha256(url.encode()).hexdigest(),'image':url,'fallback':'','user_authorized':True}
+        record={'id':'manual:'+hashlib.sha256(url.encode()).hexdigest(),'name':'链接图片','image':url,'fallback':'','user_authorized':True}
+        self._cover_target=scope+':'+ident
         self._cover_results=[record];self.applyCover(scope,ident,record['id'])
 
     @Slot(str,str)
@@ -529,6 +596,7 @@ class Bridge(QObject):
     @Slot(str,str,str)
     def applyCover(self,scope,ident,result_id):
         def apply():
+            if self._cover_target and self._cover_target!=scope+':'+ident:raise ValueError('封面结果属于其他游戏，请重新搜索')
             from cover_sources import download
             record=next((row for row in self._cover_results if row['id']==result_id),None)
             if record is None:raise ValueError('封面结果已改变，请重新搜索')
@@ -1050,6 +1118,7 @@ def main():
     from input_feedback import InputFeedback
     bridge.input_feedback=InputFeedback(app,bridge,RESOURCES)
     app.aboutToQuit.connect(bridge.cancelMatching)
+    app.aboutToQuit.connect(bridge.cancelEnrichment)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty('backend', bridge)
     engine.load(QUrl.fromLocalFile(str(RESOURCES / 'ui/Main.qml')))

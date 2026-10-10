@@ -137,28 +137,14 @@ ApplicationWindow {
         }
         while(libraryModel.count>shownGames.length) libraryModel.remove(libraryModel.count-1)
     }
-    onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();coverWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();hide() } else Qt.quit() }
+    onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
-    function editMetadata() {
-        var g=backend.libraryMetadata(activeId)
-        metadataDialog.record=g
-        metadataCategory.currentIndex=Math.max(0,metadataCategory.model.indexOf(g.category || "其他"))
-        metadataTags.text=(g.tags || []).join(", ");metadataSeries.text=g.series || "";metadataDate.text=g.release_date || ""
-        metadataDialog.open()
-    }
+    function editMetadata() { gameDialog.openFor(activeId,2) }
     function openGame(g) {
         if(backend.controllerMode) { controllerGameMenu.showGame(g);return }
-        selectGame(g)
-        var v = backend.gameSettings(g.id)
-        gameSave.text = v.save_dir || ""
-        gameExe.text = v.exe || ""
-        monitorExe.text=v.monitor_exe || ""
-        launchMode.currentIndex = ["direct","playnite","platform"].indexOf(v.launch_mode || (v.exe ? "direct" : "playnite"))
-        gameArguments.text = v.arguments || ""
-        gameWorking.text = v.working_dir || ""
-        gameCover.text = ""
-        gameDialog.open()
+        selectGame(g);gameDialog.openFor(g.id,0)
     }
+    function openEnrichment(ids,options,autoStart) { enrichmentWindow.openFor(ids || [],options || {},!!autoStart) }
     function openSettings() { openSettingsPage(0) }
     function openSettingsPage(page) {
         guideDialog.close()
@@ -185,10 +171,11 @@ ApplicationWindow {
         onCancelled: search.forceActiveFocus()
     }
     ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48) }
+    EnrichmentWindow { id: enrichmentWindow }
+    Connections { target: backend; function onEnrichmentRequested(ids,options) { win.openEnrichment(ids,options,true) } }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
     ImportWindow { id: importWindow; objectName: "importWindow" }
     BatchWindow { id: batchWindow; objectName: "batchWindow" }
-    CoverWindow { id: coverWindow }
     SetupWizard { id: setupWizard; objectName: "setupWizard" }
     LibraryManager { id: libraryManager; objectName: "libraryManager" }
     PersonalizationWindow { id: personalization; objectName: "personalization" }
@@ -213,6 +200,7 @@ ApplicationWindow {
                 NavigationButton { id: navFavorites; objectName: "navFavorites"; width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: win.navigate("favorites","") }
                 NavigationButton { id: navSeries; objectName: "navSeries"; width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
                 Rectangle { width: 184; height: 1; color: Theme.border }
+                NavigationButton { objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
                 NavigationButton { width: 184; iconName: "grid"; text: "批量确认"; onClicked: win.openBatch() }
@@ -259,7 +247,6 @@ ApplicationWindow {
                 AppComboBox { id: sortControl; objectName: "librarySort"; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppButton { id: layoutControl; text: "布局"; onClicked: win.openSettingsPage(2) }
                 AppButton { id: personalControl; text: "个性化"; onClicked: personalization.openPersonalization() }
-                AppButton { text: "补全资料"; enabled: !backend.busy; onClicked: backend.completeMetadata([]); ToolTip.visible: hovered; ToolTip.text: "读取 Playnite、Steam / VNDB，补全缺失发行日期及来源标签" }
                 Item { Layout.fillWidth: win.width<1200 }
             }
         }
@@ -442,73 +429,12 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
-        id: gameDialog; objectName: "gameDialog"; title: activeName + " · 本机设置"; anchors.centerIn: parent
-        width: Math.min(680,win.width-60); height: Math.min(780,win.height-60); modal: true
-        Overlay.modal: Rectangle { color: "#bb000000" }
-        contentItem: ScrollView {
-            clip: true
-            ColumnLayout {
-            width: gameDialog.availableWidth-20
-            spacing: 12
-            Label { text: "这些路径只用于 " + backend.settings.computer; color: Theme.accent }
-            Label { text: "存档目录（包含所有存档槽）" }
-            RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickSaveFolder(gameSave.text); if(p) gameSave.text=p } } }
-            AppButton { text: "查找此游戏的存档"; onClicked: win.openMatch(activeId) }
-            AppButton { text: "编辑分类、标签与发行日期"; onClicked: win.editMetadata() }
-            Label { text: "启动方式" }
-            AppComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动", "通过游戏平台启动"] }
-            Label { text: "启动文件 EXE / BAT / CMD（直接启动时必填）"; font.pixelSize: 12 }
-            RowLayout { AppTextField { id: gameExe; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFile("exe"); if(p) gameExe.text=p } } }
-            Label { text: "监听进程 EXE（BAT 或平台启动时填写实际游戏 EXE）"; font.pixelSize: 12 }
-            RowLayout { AppTextField { id: monitorExe; Layout.fillWidth: true; placeholderText: "直接启动 EXE 可留空" } AppButton { text: "选择"; onClicked: { var path=backend.pickFile("exe"); if(path) monitorExe.text=path } } }
-            AppTextField { id: gameArguments; Layout.fillWidth: true; placeholderText: "启动参数（可选）"; selectByMouse: true }
-            RowLayout { AppTextField { id: gameWorking; Layout.fillWidth: true; placeholderText: "工作目录（留空使用 EXE 所在目录）"; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(gameWorking.text); if(p) gameWorking.text=p } } }
-            Label { text: "自定义封面（留空保持现有封面）" }
-            AppButton { text: "搜索并下载封面"; onClicked: coverWindow.openSearch("game",activeId,activeName) }
-            RowLayout { AppTextField { id: gameCover; Layout.fillWidth: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFile("cover"); if(p) gameCover.text=p } } }
-            Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-        }
-        }
-        footer: DialogButtonBox {
-            AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
-            AppButton { text: "保存"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
-            onRejected: gameDialog.close()
-            onAccepted: { backend.saveGame(activeId, {save_dir:gameSave.text, exe:gameExe.text, monitor_exe:monitorExe.text, cover:gameCover.text, launch_mode:["direct","playnite","platform"][launchMode.currentIndex], arguments:gameArguments.text, working_dir:gameWorking.text}); gameDialog.close() }
-        }
-    }
-    Dialog {
-        id: metadataDialog; objectName: "metadataDialog"; title: activeName+" · 游戏资料"; anchors.centerIn: parent
-        property var record: ({})
-        modal: true; width: Math.min(650,win.width-48); height: Math.min(700,win.height-48)
-        Overlay.modal: Rectangle { color: "#bb000000" }
-        contentItem: ScrollView {
-            clip: true
-            ColumnLayout {
-                width: metadataDialog.availableWidth-20; spacing: 12
-                Label { text: "主分类" }
-                AppComboBox { id: metadataCategory; Layout.fillWidth: true; model: backend.primaryCategories.concat(backend.groups.filter(function(name) { return backend.primaryCategories.indexOf(name)<0 })) }
-                Label { text: "标签（逗号分隔，最多 6 个）" }
-                AppTextField { id: metadataTags; objectName: "metadataTags"; Layout.fillWidth: true }
-                Label { text: "标签来源："+(metadataDialog.record.tags_manual ? "手动" : metadataDialog.record.tags_source || "未记录"); Layout.fillWidth: true; color: Theme.secondary }
-                Label { text: "规范词库："+backend.tagVocabulary.join("、"); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
-                Label { text: "系列" }
-                AppTextField { id: metadataSeries; Layout.fillWidth: true }
-                Label { text: "发行日期（YYYY-MM-DD；未知时留空）" }
-                AppTextField { id: metadataDate; objectName: "metadataDate"; Layout.fillWidth: true; placeholderText: "例如 2020-01-31" }
-                Label { text: "来源："+(metadataDialog.record.release_date_source || "未知")+"。手动保存的标签和日期不会被资料补全覆盖。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                AppButton { text: "查询缺失发行日期与标签"; enabled: !backend.busy; onClicked: backend.completeMetadata([activeId]) }
-                AppButton { text: "重新载入已保存资料"; enabled: !backend.busy; onClicked: win.editMetadata() }
-                Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-            }
-        }
-        footer: DialogButtonBox {
-            AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
-            AppButton { text: "保存资料"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
-            onRejected: metadataDialog.close()
-            onAccepted: backend.updateLibrary([{id:activeId,category:metadataCategory.currentText,tags:metadataTags.text.split(/[,，]/).map(function(tag) { return tag.trim() }).filter(Boolean),series:metadataSeries.text,release_date:metadataDate.text.trim()}])
-        }
-        Connections { target: backend; function onOperationCompleted(action,success) { if(action==="library-edit" && success && metadataDialog.visible) win.editMetadata() } }
+    GameSettingsDialog {
+        id: gameDialog; anchors.centerIn: parent
+        onCloudRequested: cloudWindow.openConnectionSettings()
+        onMatchRequested: function(ident) { win.openMatch(ident) }
+        onHistoryRequested: function(ident) { win.activeId=ident;historyTabs.currentIndex=0;backend.history(ident);historyDialog.open() }
+        onEnrichmentRequested: function(ident) { win.openEnrichment([ident],{},true) }
     }
     Dialog {
         id: deleteDialog; title: "移除 " + activeName; anchors.centerIn: parent; modal: true

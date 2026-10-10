@@ -6,6 +6,7 @@ ApplicationWindow {
     id: importer; width: 1120; height: 800; minimumWidth: 900; minimumHeight: 650
     title: "导入游戏"; color: Theme.background; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent; font.family: "Microsoft YaHei UI"
     property var selectedIds: ({})
+    property var pendingIds: []
     property var orderedCandidates: backend.importCandidates.slice().sort(function(a,b) {
         var rankA=a.duplicate_id ? 2 : a.possible_duplicate ? 1 : 0,rankB=b.duplicate_id ? 2 : b.possible_duplicate ? 1 : 0
         if(rankA!==rankB) return rankA-rankB
@@ -16,6 +17,11 @@ ApplicationWindow {
     function platforms() { var output=[]; if(steam.checked) output.push("steam"); if(epic.checked) output.push("epic"); if(ubisoft.checked) output.push("ubisoft"); return output }
     function openImporter() { show(); raise(); requestActivate() }
     function selectAll() { var next={},folders={}; backend.importCandidates.forEach(function(row) { if(!row.duplicate_id && !row.possible_duplicate && !folders[row.install_dir || row.id]) { next[row.id]=true;folders[row.install_dir || row.id]=true } });selectedIds=next }
+    function confirmImport() {
+        pendingIds=Object.keys(selectedIds)
+        if(backend.importCandidates.some(function(row) { return importer.selectedIds[row.id] && row.possible_duplicate })) duplicateDialog.open()
+        else importOptions.open()
+    }
     Connections { target: backend; function onChanged() { var next={}; backend.importCandidates.forEach(function(row) { if(importer.selectedIds[row.id] && !row.duplicate_id) next[row.id]=true });importer.selectedIds=next } }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 24; spacing: 12
@@ -45,7 +51,7 @@ ApplicationWindow {
             AppComboBox { id: importSort; Layout.preferredWidth: 150; model: ["新条目优先","名称排序","匹配分数"] }
             AppButton { text: "AI 检查名称与重复项"; visible: tabs.currentIndex===2; enabled: !backend.busy && backend.settings.has_ai_key && backend.importCandidates.length>0; onClicked: backend.reviewImportLaunchers() }
             Item { Layout.fillWidth: true } Label { text: "已选 "+Object.keys(importer.selectedIds).length+" 项"; color: Theme.secondary }
-            AppButton { text: "导入所选"; enabled: !backend.busy && Object.keys(importer.selectedIds).length>0; highlighted: true; onClicked: { if(backend.importCandidates.some(function(row) { return importer.selectedIds[row.id] && row.possible_duplicate })) duplicateDialog.open();else backend.importSelected(Object.keys(importer.selectedIds)) } }
+            AppButton { text: "导入所选"; enabled: !backend.busy && Object.keys(importer.selectedIds).length>0; highlighted: true; onClicked: importer.confirmImport() }
         }
         RowLayout { visible: tabs.currentIndex===2
             Label { text: "封面来源"; color: Theme.secondary } AppComboBox { id: source; objectName: "coverSource"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 210; Layout.minimumWidth: 190; currentIndex: Math.max(0,backend.coverProviders.findIndex(function(row) { return row.id===backend.settings.cover_source })) }
@@ -74,6 +80,25 @@ ApplicationWindow {
     }
     Dialog { id: duplicateDialog; title: "核对可能重复的游戏"; anchors.centerIn: parent; modal: true; standardButtons: Dialog.Ok | Dialog.Cancel
         Label { text: "所选项包含可能重复的游戏。确认它们是不同作品后再导入。" }
-        onAccepted: backend.importSelected(Object.keys(importer.selectedIds))
+        onAccepted: importOptions.open()
+    }
+    Dialog {
+        id: importOptions; objectName: "importEnrichmentOptions"; title: "导入后完善游戏资料"; modal: true; anchors.centerIn: parent
+        Overlay.modal: Rectangle { color: "#bb000000" }
+        width: Math.min(560,importer.width-48)
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label { text: "即将导入 "+importer.pendingIds.length+" 款游戏。要一起查询缺失的资料和封面吗？"; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            CheckBox { id: enrich; objectName: "enrichAfterImport"; text: "导入后预览资料补全"; checked: true }
+            Label { text: enrich.checked ? "导入后查询发行日期、分类、标签、系列和缺失封面。查看预览，再决定应用哪些结果。" : "仅导入现有资料；以后可从侧栏“资料补全”查询。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+            CheckBox { id: enrichAi; text: "DeepSeek 辅助补充缺失资料"; enabled: enrich.checked && backend.settings.has_ai_key; checked: backend.settings.has_ai_key }
+            Label { visible: !backend.settings.has_ai_key; text: "没有 DeepSeek Key 也能使用资料库查询。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        }
+        footer: DialogButtonBox {
+            AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+            AppButton { text: enrich.checked ? "导入并查询" : "仅导入"; highlighted: true; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+            onRejected: importOptions.close()
+            onAccepted: { importOptions.close();backend.importSelected(importer.pendingIds,{preview:enrich.checked,dates:true,tags:true,covers:true,use_ai:enrichAi.checked && enrich.checked});if(enrich.checked) importer.hide() }
+        }
     }
 }

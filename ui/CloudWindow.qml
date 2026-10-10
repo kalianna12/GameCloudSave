@@ -28,7 +28,8 @@ ApplicationWindow {
     function openBrowser() {
         openBrowserDraft({})
     }
-    function openBrowserDraft(draft) {
+    function openConnectionSettings() { configTabs.currentIndex=1;openBrowserDraft({},false) }
+    function openBrowserDraft(draft,browse) {
         var s=Object.assign({},backend.settings,draft)
         server.text=s.dav_url; user.text=s.dav_user; password.text=s.password || ""; rclonePath.text=s.rclone
         storage.text=s.cloud_folder; location.text=s.cloud_folder==="/" ? "" : s.cloud_folder
@@ -36,7 +37,7 @@ ApplicationWindow {
         var configured=backend.games.findIndex(function(game) { return game.saveSet })
         layoutGame.currentIndex=Math.max(0,configured)
         show(); raise(); requestActivate()
-        if(!backend.busy) backend.browseCloud(location.text,values())
+        if(browse!==false && !backend.busy) backend.browseCloud(location.text,values())
     }
     onVisibleChanged: if (!visible) password.text=""
     Connections { target: backend; function onCloudChanged() { location.text=backend.cloudPath } }

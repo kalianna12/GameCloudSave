@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     assert options and any(not item.property('truncated') for item in options)
     batch.grabWindow().save(str(output/'batch-long-path.png'));invoke(picker,'controllerInput','back');batch.hide();root.requestActivate();spin()
     root.setProperty('activeId','0');root.setProperty('activeName',store.games[0]['name']);invoke(root,'editMetadata');spin()
-    metadata=root.findChild(QObject,'metadataDialog');assert metadata.property('visible')
+    metadata=root.findChild(QObject,'gameDialog');assert metadata.property('visible')
     root.findChild(QObject,'metadataTags').setProperty('text','悬疑, 解谜')
     root.findChild(QObject,'metadataDate').setProperty('text','1999-09-09')
     backend.updateLibrary([{'id':'0','tags':['悬疑','解谜'],'release_date':'1999-09-09'}])
@@ -67,12 +67,22 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     with patch('library_metadata.lookup',return_value={'release_date':'2011-02-03','release_date_source':'Steam','metadata_url':'https://store.steampowered.com/app/1/'}):
         backend.completeMetadata(['1'])
         while backend.busy:spin(25)
-    assert backend.libraryMetadata('1')['release_date']=='2011-02-03' and '新增日期 1 款' in backend.status
+    assert backend.libraryMetadata('1')['release_date']==''
+    assert backend.enrichmentResults[0]['fields']['release_date']=='2011-02-03'
+    backend.applyEnrichment(['1'])
+    while backend.busy:spin(25)
+    assert backend.libraryMetadata('1')['release_date']=='2011-02-03'
     install=Path(directory)/'fixture-import';install.mkdir()
     backend._imports=[{'id':'candidate','name':'Imported game','platform':'steam','external_id':'999999','install_dir':str(install),'score':1}]
     backend._import_reference=[]
     with patch('library_metadata.lookup',return_value={'release_date':'2022-01-02','release_date_source':'Steam','tags':['角色扮演'],'tags_source':'Steam','metadata_url':'https://store.steampowered.com/app/999999/'}):
-        backend.importSelected(['candidate'])
+        backend.importSelected(['candidate'],{'preview':False})
+        while backend.busy:spin(25)
+        game=next(game for game in backend.games if game['name']=='Imported game')
+        assert not game.get('release_date')
+        backend.previewEnrichment([game['id']],{'dates':True,'tags':True,'covers':False,'use_ai':False})
+        while backend.busy:spin(25)
+        backend.applyEnrichment([game['id']])
         while backend.busy:spin(25)
     imported=next(game for game in backend.games if game['name']=='Imported game')
     assert imported['release_date']=='2022-01-02' and imported['tags']==['角色扮演']

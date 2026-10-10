@@ -11,7 +11,7 @@ def series(name):
     value=re.sub(r'\s+(?:[IVX]+|\d+)(?:\s.*)?$','',name,flags=re.I)
     value=re.sub(r'\s*(?:REMASTERED|Definitive Edition|Remake)\s*$','',value,flags=re.I).strip()
     return value if value!=name else ''
-def suggestions(store,use_ai=False,idents=None,force=False):
+def suggestions(store,use_ai=False,idents=None,force=False,cancel=None):
     from library_catalog import prepare_game,primary,canonical_series,unique,CATEGORIES
     from tag_catalog import classified,vocabulary,normalize_tags,effective_tags,MAX_TAGS
     from services import read_json,write_json
@@ -43,6 +43,7 @@ def suggestions(store,use_ai=False,idents=None,force=False):
                     {'role':'user','content':''}]}
     authorization='Bearer '+protect(token.read_bytes(),True).decode()
     def query(batch):
+        if cancel and cancel.is_set():return []
         body={**payload,'messages':[payload['messages'][0],{'role':'user','content':json.dumps([{'id':game['id'],'name':game['name'],'platform':game.get('platform','local'),'source_tags':effective_tags(game),'existing_category':game.get('category','')} for game in batch],ensure_ascii=False)}]}
         request=Request('https://api.deepseek.com/chat/completions',data=json.dumps(body).encode(),headers={'Authorization':authorization,'Content-Type':'application/json'})
         with urlopen(request,timeout=30) as response:data=json.load(response)
@@ -67,6 +68,7 @@ def suggestions(store,use_ai=False,idents=None,force=False):
         with ThreadPoolExecutor(max_workers=2) as pool:
             for items in pool.map(query,batches):
                 responses.extend(items)
+        if cancel and cancel.is_set():return prune_series()
         target_ids={game['id']:game for game in targets}
         for item in responses:
             if item['id'] not in target_ids:continue
