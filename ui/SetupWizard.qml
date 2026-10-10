@@ -75,6 +75,7 @@ ApplicationWindow {
                     }
                     ColumnLayout { visible: setup.step===3; Layout.fillWidth: true; spacing: 10
                         Label { text: "WebDAV 地址" } AppTextField { id: server; Layout.fillWidth: true; placeholderText: "https://服务器/dav/" }
+                        Label { text: "AList 地址需以 /dav/ 结尾，例如 http://服务器:5244/dav/。请填写 WebDAV 地址，而非网页首页地址。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                         Label { text: "用户名" } AppTextField { id: user; Layout.fillWidth: true }
                         Label { text: "密码（留空保持已保存密码）" } AppTextField { id: password; Layout.fillWidth: true; echoMode: TextInput.Password }
                         Label { text: "云端备份文件夹" } AppTextField { id: cloudFolder; Layout.fillWidth: true; placeholderText: "例如：百度网盘/game-saves" }

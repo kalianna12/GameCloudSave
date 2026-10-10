@@ -93,7 +93,7 @@ ApplicationWindow {
                     Label { visible: configTabs.currentIndex===1; text: "先连接，再在右侧选择云端文件夹。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                     Label { visible: configTabs.currentIndex===1; text: "WebDAV 地址" }
                     AppTextField { visible: configTabs.currentIndex===1; id: server; objectName: "davServer"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 地址" }
-                    Label { visible: configTabs.currentIndex===1; text: "AList 示例：http://服务器:5244/dav/"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                    Label { visible: configTabs.currentIndex===1; text: "AList 地址需以 /dav/ 结尾，例如 http://服务器:5244/dav/。请填写 WebDAV 地址，而非网页首页地址。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                     Label { visible: configTabs.currentIndex===1; text: "用户名" }
                     AppTextField { visible: configTabs.currentIndex===1; id: user; Layout.fillWidth: true; placeholderText: "用户名"; selectByMouse: true }
                     Label { visible: configTabs.currentIndex===1; text: "密码" }
