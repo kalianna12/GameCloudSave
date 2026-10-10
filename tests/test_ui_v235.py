@@ -33,6 +33,18 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     assert engine.rootObjects(),messages
     root=engine.rootObjects()[0];root.requestActivate();spin(300)
     output=ROOT/'test-data/v235-ui';output.mkdir(exist_ok=True)
+    # Controller focus stays visible before and after checking the installed filter.
+    grid=root.findChild(QObject,'gameGrid');root.setProperty('libraryMode','all');spin()
+    grid.setProperty('currentIndex',0);grid.forceActiveFocus();dispatch(app,root,backend,'up');spin()
+    installed=root.findChild(QObject,'installedFilter');ring=root.findChild(QObject,'installedFocusRing')
+    assert installed.hasActiveFocus() and ring.isVisible() and not installed.property('checked')
+    root.grabWindow().save(str(output/'installed-focus-unchecked.png'))
+    dispatch(app,root,backend,'activate');spin()
+    while backend.busy:spin(25)
+    assert installed.property('checked') and root.property('installedOnly') and ring.isVisible()
+    root.grabWindow().save(str(output/'installed-focus-checked.png'))
+    dispatch(app,root,backend,'right');spin();assert not ring.isVisible()
+    assert root.activeFocusItem().objectName()=='platformFilter'
     root.setProperty('libraryMode','all');root.setProperty('librarySort','release_asc');root.setWidth(1800);spin()
     root.findChild(QObject,'watchControl').setProperty('checked',True);root.findChild(QObject,'watchControl').forceActiveFocus();spin()
     root.grabWindow().save(str(output/'library-green-focus.png'))

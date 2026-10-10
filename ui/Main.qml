@@ -245,7 +245,15 @@ ApplicationWindow {
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
                 Layout.fillWidth: true
-                CheckBox { id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
+                CheckBox {
+                    id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly
+                    onToggled: { installedOnly=checked; saveLayout() }
+                    Rectangle {
+                        objectName: "installedFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10
+                        color: "transparent"; radius: 6; border.width: 3; border.color: Theme.text
+                        visible: installedControl.activeFocus
+                    }
+                }
                 AppComboBox { id: platformControl; objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
                 AppComboBox { id: sourceControl; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
                 AppComboBox { id: seriesControl; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
