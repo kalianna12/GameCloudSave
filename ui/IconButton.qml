@@ -22,7 +22,7 @@ AbstractButton {
         radius: 5
         x: 0; y: 0; width: control.width; height: control.height
         color: control.transferState === "success" ? "#34502a" : control.transferState === "failed" ? "#56302d" : control.accent ? (control.hovered ? Qt.lighter(Theme.accent,1.12) : Theme.accent) : (control.hovered ? Theme.hover : "transparent")
-        border.color: control.activeFocus ? Theme.secondary : "transparent"
+        border.color: control.activeFocus ? Theme.accent : "transparent"
     }
     contentItem: Item {
         x: 0; y: 0; width: control.width; height: control.height
@@ -36,5 +36,10 @@ AbstractButton {
             opacity: control.enabled ? 1 : 0.4
         }
         BusyIndicator { anchors.centerIn: parent; width: 30; height: 30; running: control.loading; visible: running }
+    }
+    Rectangle {
+        anchors.fill: parent; anchors.margins: -3; z: 10; radius: 6; color: "transparent"
+        border.color: Theme.accent; border.width: 2
+        visible: control.activeFocus && control.accent && control.enabled
     }
 }

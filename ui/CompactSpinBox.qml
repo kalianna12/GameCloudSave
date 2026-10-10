@@ -10,7 +10,7 @@ SpinBox {
         color: Theme.secondary; font.pixelSize: 13
         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
     }
-    background: Rectangle { radius: 5; color: Theme.surface; border.color: control.activeFocus ? Theme.text : Theme.border }
+    background: Rectangle { radius: 5; color: Theme.surface; border.color: control.activeFocus ? Theme.accent : Theme.border }
     up.indicator: Rectangle {
         x: control.width-width; width: 32; height: control.height; radius: 8
         color: control.up.hovered ? Theme.hover : "transparent"

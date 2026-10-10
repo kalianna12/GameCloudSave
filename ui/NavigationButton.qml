@@ -11,7 +11,7 @@ AbstractButton {
     background: Rectangle {
         radius: 5
         color: control.selected ? Theme.hover : control.hovered ? Theme.hover : "transparent"
-        border.color: control.activeFocus ? Theme.text : "transparent"
+        border.color: control.activeFocus ? Theme.accent : "transparent"
     }
     contentItem: Item {
         Image {

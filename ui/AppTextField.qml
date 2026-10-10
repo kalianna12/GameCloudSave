@@ -16,7 +16,7 @@ T.TextField {
     }
     background: Rectangle {
         radius: 5; color: Theme.surface
-        border.color: control.activeFocus ? Theme.text : Theme.border
+        border.color: control.activeFocus ? Theme.accent : Theme.border
         border.width: control.activeFocus ? 2 : 1
     }
 }

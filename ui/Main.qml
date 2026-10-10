@@ -236,7 +236,7 @@ ApplicationWindow {
             Switch {
                 id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
                 onToggled: backend.saveSettings({watch:checked})
-                Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.text; visible: watchControl.activeFocus }
+                Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.accent; visible: watchControl.activeFocus }
             }
             AppButton { id: importControl; text: "导入游戏"; onClicked: win.openImport() }
         }
@@ -250,7 +250,7 @@ ApplicationWindow {
                     onToggled: { installedOnly=checked; saveLayout() }
                     Rectangle {
                         objectName: "installedFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10
-                        color: "transparent"; radius: 6; border.width: 3; border.color: Theme.text
+                        color: "transparent"; radius: 6; border.width: 3; border.color: Theme.accent
                         visible: installedControl.activeFocus
                     }
                 }
