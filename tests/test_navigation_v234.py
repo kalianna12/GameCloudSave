@@ -103,12 +103,38 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     assert root.property('libraryMode')=='series'
     grid.setProperty('currentIndex',0);grid.forceActiveFocus()
     dispatch(app,root,backend,'up');spin()
+    assert root.activeFocusItem().objectName()=='installedFilter'
+    dispatch(app,root,backend,'right');spin()
+    assert root.activeFocusItem().objectName()=='platformFilter'
+    dispatch(app,root,backend,'up');spin()
+    dispatch(app,root,backend,'right');spin()
     assert root.activeFocusItem().objectName()=='search'
+    dispatch(app,root,backend,'activate');spin()
+    keyboard=root.findChild(QObject,'controllerKeyboard');assert keyboard.property('visible')
+    dispatch(app,root,backend,'activate');spin(40)
+    assert keyboard.property('value')=='1'
+    dispatch(app,root,backend,'favorite');spin(40);assert keyboard.property('value')==''
+    dispatch(app,root,backend,'history');spin(40);assert keyboard.property('words')
+    dispatch(app,root,backend,'activate');spin(40);assert keyboard.property('value')=='Game 00'
+    dispatch(app,root,backend,'launch');spin()
+    assert not keyboard.property('visible') and root.property('searchQuery')=='game 00'
+    invoke(root,'navigate','all','');spin()
+    search=root.findChild(QObject,'search');search.forceActiveFocus()
+    dispatch(app,root,backend,'right');spin()
+    watch=root.findChild(QObject,'watchControl');assert watch.hasActiveFocus()
+    assert root.findChild(QObject,'watchFocusRing').isVisible()
+    dispatch(app,root,backend,'right');spin();assert watch.hasActiveFocus(), 'Unsupported import button must not receive controller focus'
+    dispatch(app,root,backend,'activate');spin()
+    while backend.busy:spin(25)
+    assert store.settings['watch']
+    store.settings['watch']=False;backend.timer.stop();backend.settingsChanged.emit()
     # Mouse-click a top control, then resume navigation into the content.
     from PySide6.QtTest import QTest
     from PySide6.QtCore import QPoint
     search=root.findChild(QObject,'search');point=search.mapToScene(QPointF(search.width()/2,search.height()/2))
     QTest.mouseClick(root,Qt.LeftButton,Qt.NoModifier,QPoint(int(point.x()),int(point.y())));spin()
+    dispatch(app,root,backend,'down');spin()
+    assert root.activeFocusItem().objectName()=='platformFilter'
     dispatch(app,root,backend,'down');spin()
     assert grid.hasActiveFocus()
     invoke(root,'navigate','all','');spin()
@@ -121,6 +147,14 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     root.setProperty('librarySort','release_desc');spin()
     assert [g['id'] for g in records()[:2]]==['0','1']
     assert all(not g.get('release_date') for g in records()[2:])
+    # Real combo activation changes sorting even in the recent page.
+    invoke(root,'navigate','recent','');spin()
+    sort=root.findChild(QObject,'librarySort');sort.forceActiveFocus()
+    dispatch(app,root,backend,'activate');spin()
+    for _ in range(2):dispatch(app,root,backend,'down');spin(30)
+    dispatch(app,root,backend,'activate');spin()
+    assert root.property('librarySort')=='release_asc' and [g['id'] for g in records()[:2]]==['1','0']
+    assert sort.width()>=200
     grid.setProperty('currentIndex',0);grid.forceActiveFocus();spin()
     rings=[item for item in walk(root.contentItem()) if item.objectName()=='cardFocusRing' and item.isVisible()]
     assert len(rings)==1 and rings[0].z()>0
@@ -130,6 +164,13 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     assert grid.property('currentIndex')==before
     dispatch(app,root,backend,'back');spin();assert not backend.popupActive()
     dispatch(app,root,backend,'right');spin();assert grid.property('currentIndex')==1
+    # A mouse-only child window must not accept arbitrary gamepad Tab/Space input.
+    invoke(root,'openBatch');spin();child=root.findChild(QObject,'batchWindow')
+    focused=child.activeFocusItem()
+    with patch.object(backend,'applyMatches') as apply:
+        for command in ['up','right','activate','launch']:dispatch(app,root,backend,command);spin(30)
+        assert child.activeFocusItem()==focused and not apply.called
+    dispatch(app,root,backend,'back');spin();assert not child.property('visible')
     assert not any(term in message for message in messages for term in ['TypeError', 'ReferenceError', 'Binding loop', 'Cannot assign']), messages
     feedback.release_cursor(); app.removeEventFilter(feedback)
     backend.timer.stop(); backend.pool.shutdown(wait=True); shiboken6.delete(engine)

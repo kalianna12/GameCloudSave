@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import platform
 import shutil
@@ -144,9 +145,16 @@ class Store:
                 game.update(category=category.strip(),category_manual=True,groups=[category.strip()]);group_names.add(category.strip())
             if 'tags' in item:
                 tags=item['tags']
-                if not isinstance(tags,list) or len(tags)>40 or not all(isinstance(tag,str) and 0<len(tag.strip())<=32 for tag in tags):raise ValueError('每款游戏最多 40 个标签，每个最多 32 字')
-                game['tags']=list(dict.fromkeys(tag.strip() for tag in tags))
+                if not isinstance(tags,list) or len(tags)>6 or not all(isinstance(tag,str) and 0<len(tag.strip())<=32 for tag in tags):raise ValueError('每款游戏最多 6 个标签，每个最多 32 字')
+                game['tags']=list(dict.fromkeys(tag.strip() for tag in tags));game['tags_manual']=bool(item.get('tags_manual',True))
+                if item.get('tags_source'):game['tags_source']=item['tags_source']
+                elif game['tags_manual']:game['tags_source']='手动'
             if 'favorite' in item:game['favorite']=bool(item['favorite'])
+            if 'release_date' in item:
+                from library_sources import release_date
+                value=item['release_date']
+                if not isinstance(value,str) or value and not re.fullmatch(r'\d{4}-\d{2}-\d{2}',value) or value and not release_date(value):raise ValueError('发行日期须为 YYYY-MM-DD，留空表示未知')
+                game.update(release_date=release_date(value),release_date_manual=bool(value),release_date_source='手动' if value else '')
             if 'series' in item:
                 value=item['series']
                 if not isinstance(value,str) or len(value)>80:raise ValueError('系列名最多 80 字')
@@ -166,17 +174,17 @@ class Store:
             if item.get('id') not in known:raise ValueError('游戏条目已不存在')
             if classified(known[item['id']]) and not allow_existing:
                 raise ValueError('所选游戏已有分类或标签，请确认后再重新分类')
-        self.update_library([{key:item[key] for key in ('id','category','tags','series') if key in item} for item in updates])
+        self.update_library([{key:item[key] for key in ('id','category','tags','series','tags_manual','tags_source') if key in item} for item in updates])
 
     def migrate_library(self):
         if read_json(self.root/'library-schema.json',{}).get('version',0)>=3:return
         if not self.games:write_json(self.root/'library-schema.json',{'version':3});return
-        from library_catalog import prepare_game,primary
+        from library_catalog import primary,unique
         backup=self.root/'migrations/v23';backup.mkdir(parents=True,exist_ok=True)
         for name in ('library.json','groups.json'):
             if (self.root/name).is_file() and not (backup/name).exists():shutil.copy2(self.root/name,backup/name)
         for game in self.games:
-            tags=prepare_game(game)['tags'];game['tags']=tags
+            tags=unique([*game.get('tags',[]),*game.get('groups',[])]);game['tags']=tags
             if not game.get('category_manual'):game['category']=primary(tags)
             game['groups']=[game.get('category','其他')]
             game.setdefault('import_source','playnite' if game.get('source')=='Playnite' else 'folder' if game.get('source','local')=='local' else 'platform')
@@ -186,18 +194,18 @@ class Store:
         write_json(self.root/'library.json',self.games);write_json(self.root/'groups.json',self.groups);write_json(self.root/'library-schema.json',{'version':3})
 
     def sync_playnite_metadata(self,rows):
-        from library_sources import playnite_metadata,guid
+        from library_sources import playnite_metadata,guid,merge_metadata
         from library_catalog import primary,unique
         raw_by_id={guid(raw.get('_id')):raw for raw in rows};count=0
         for game in self.games:
             raw=raw_by_id.get(game['id'])
             if raw is None:continue
-            fields=playnite_metadata(raw);fields['tags']=unique([*game.get('tags',[]),*fields['tags']])
+            fields=playnite_metadata(raw)
             last=max(game.get('last_played') or '',fields.get('last_played') or '')
-            game.update(fields)
+            merge_metadata(game,fields)
             if last:game['last_played']=last
             if fields['platform']!='steam':game.pop('steam_appid',None)
-            if not game.get('category_manual'):game['category']=primary(game['tags']);game['groups']=[game['category']]
+            if not game.get('category_manual'):game['category']=primary(game.get('tags',[]));game['groups']=[game['category']]
             relative=raw.get('BackgroundImage') or ''
             if relative:
                 source=safe_child(Path(self.settings['library'])/'files',relative.replace('\\','/'))
@@ -283,7 +291,7 @@ class Store:
         covers.mkdir(parents=True, exist_ok=True)
         count = 0
         for row in rows:
-            from library_sources import platform_for,playnite_metadata
+            from library_sources import platform_for,playnite_metadata,merge_metadata
             platform=platform_for(row)
             if platforms is not None and platform not in platforms:continue
             ident = str(uuid.UUID(row['_id']['$guid']))
@@ -300,8 +308,8 @@ class Store:
                                'cover': cover, 'installed': bool(row.get('IsInstalled')), 'source': 'Playnite',
                                'platform':platform,'external_id':str(row.get('GameId',''))}
             if platform=='steam' and str(row.get('GameId','')).isdigit():existing[ident]['steam_appid']=str(row['GameId'])
-            fields=playnite_metadata(row);fields['tags']=list(dict.fromkeys([*existing[ident].get('tags',[]),*fields['tags']]))
-            existing[ident].update(fields)
+            fields=playnite_metadata(row)
+            merge_metadata(existing[ident],fields)
             if platform!='steam':existing[ident].pop('steam_appid',None)
             # Installation paths are specific to the importing computer.
             self.local[ident] = {**self.local.get(ident, {}), 'install_dir': row.get('InstallDirectory') or '', 'installed':bool(row.get('IsInstalled'))}

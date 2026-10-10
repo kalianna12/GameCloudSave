@@ -41,20 +41,20 @@ ApplicationWindow {
         ListView { id: list; objectName: "batchGameList"; Layout.fillWidth: true; Layout.fillHeight: true; model: stableRows; clip: true; spacing: 4
             onContentYChanged: if(moving || bar.pressed) batch.savedY=contentY
             delegate: ItemDelegate {
-                required property var record; property var modelData: record; width: ListView.view.width; height: 80
+                required property var record; property var modelData: record; width: ListView.view.width; height: Math.max(80,contentItem.implicitHeight+16)
                 property var options: [{path:"",label:"请选择存档目录"}].concat((modelData.candidates || []).map(function(candidate) { return {path:candidate.path,label:candidate.path,score:candidate.confidence} })).concat(batch.paths[modelData.id] && !(modelData.candidates || []).some(function(candidate) { return candidate.path===batch.paths[modelData.id] }) ? [{path:batch.paths[modelData.id],label:"当前 / 手动："+batch.paths[modelData.id]}] : [])
                 contentItem: RowLayout {
                     CheckBox { checked: !!batch.selected[modelData.id]; enabled: !!batch.paths[modelData.id]; onToggled: { var next=Object.assign({},batch.selected);if(checked) next[modelData.id]=true;else delete next[modelData.id];batch.selected=next } }
-                    ColumnLayout { Layout.preferredWidth: 210; Layout.minimumWidth: 160
+                    ColumnLayout { Layout.fillWidth: false; Layout.preferredWidth: 210; Layout.maximumWidth: 210; Layout.minimumWidth: 160
                         Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
                         Label { text: modelData.status==="applied" ? "已设置" : (modelData.candidates || []).length+" 个候选"; color: Theme.secondary; font.pixelSize: 11 }
                     }
-                    ColumnLayout { Layout.fillWidth: true
-                        AppComboBox { id: picker; implicitHeight: 38; Layout.fillWidth: true; model: options; textRole: "label"; currentIndex: Math.max(0,options.findIndex(function(option) { return option.path===batch.paths[modelData.id] })); onActivated: batch.choose(modelData.id,options[currentIndex].path)
+                    ColumnLayout { Layout.fillWidth: true; Layout.minimumWidth: 0
+                        AppComboBox { id: picker; objectName: "batchPathPicker"; wrapOptions: true; implicitHeight: 38; Layout.fillWidth: true; model: options; textRole: "label"; currentIndex: Math.max(0,options.findIndex(function(option) { return option.path===batch.paths[modelData.id] })); onActivated: batch.choose(modelData.id,options[currentIndex].path)
                             contentItem: Label { text: picker.currentText; font.pixelSize: 12; elide: Text.ElideMiddle; verticalAlignment: Text.AlignVCenter; color: Theme.text; leftPadding: 12; rightPadding: 32 }
                             ToolTip.visible: hover.hovered; ToolTip.text: batch.paths[modelData.id] || "请选择目录"; HoverHandler { id: hover }
                         }
-                        Label { text: batch.paths[modelData.id] || "尚未选择"; Layout.fillWidth: true; elide: Text.ElideMiddle; font.pixelSize: 11; color: Theme.secondary }
+                        Label { objectName: "batchPathDetails"; text: batch.paths[modelData.id] || "尚未选择"; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; font.pixelSize: 11; color: Theme.secondary }
                     }
                     AppButton { text: "手动选择"; enabled: !backend.busy; onClicked: { var path=backend.pickSaveFolder(batch.paths[modelData.id] || ((modelData.candidates || [])[0] || {}).path || backend.gameSettings(modelData.id).install_dir || "");if(path) batch.choose(modelData.id,path) } }
                     ScoreRing { score: ((modelData.candidates || []).find(function(candidate) { return candidate.path===batch.paths[modelData.id] }) || {}).confidence || 0; Layout.preferredWidth: 48; Layout.preferredHeight: 48 }

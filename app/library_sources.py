@@ -41,6 +41,7 @@ def playnite_metadata(raw):
         matched=re.search(r'store\.steampowered\.com/app/(\d+)',link.get('Url',''))
         if matched:fields['metadata_steam_appid']=matched.group(1);fields['metadata_source']='steam';break
     fields['release_date']=release_date(raw.get('ReleaseDate'))
+    if fields['release_date']:fields['release_date_source']='Playnite'
     timestamp=raw.get('LastActivity')
     if isinstance(timestamp,dict):timestamp=timestamp.get('$date')
     if isinstance(timestamp,str) and timestamp:fields['last_played']=timestamp
@@ -48,8 +49,21 @@ def playnite_metadata(raw):
     if isinstance(playtime,dict):playtime=playtime.get('$numberLong',0)
     try:fields['playtime_seconds']=max(0,int(playtime))
     except (TypeError,ValueError):pass
-    fields['tags']=[str(value) for value in [*raw.get('ResolvedGenres',[]),*raw.get('ResolvedTags',[])] if isinstance(value,str) and 0<len(value.strip())<=32][:40]
+    fields['source_tags']=[str(value) for value in [*raw.get('ResolvedGenres',[]),*raw.get('ResolvedTags',[])] if isinstance(value,str) and 0<len(value.strip())<=32][:40]
+    from tag_catalog import normalize_tags,vocabulary,MAX_TAGS
+    fields['tags']=normalize_tags(fields['source_tags'],vocabulary([]))[:MAX_TAGS]
+    fields['tags_source']='Playnite'
     return fields
+
+def merge_metadata(game,fields):
+    """Source refresh respects explicit user edits and keeps valid known dates."""
+    fields=dict(fields)
+    if game.get('tags_manual') or not fields.get('tags'):
+        fields.pop('tags',None);fields.pop('tags_source',None)
+    if not fields.get('source_tags'):fields.pop('source_tags',None)
+    if game.get('release_date_manual') or not fields.get('release_date'):
+        fields.pop('release_date',None);fields.pop('release_date_source',None)
+    game.update(fields)
 def candidate(name,platform,external,install,exe='',uri='',arguments=''):
     return {'id':ident(platform,external),'name':name,'platform':platform,'external_id':str(external),
             'install_dir':str(install),'exe':str(exe),'launch_uri':uri,'arguments':arguments,'score':1.0,'selected':True}
@@ -176,9 +190,9 @@ def import_rows(store,rows,skip_duplicates=False):
         game={**existing.get(game_id,{}),'id':game_id,'name':row['name'],'platform':platform,'external_id':row['external_id'],'source':'Playnite' if row.get('playnite') else platform,'installed':row.get('installed',True)}
         game.update(import_source='playnite' if row.get('playnite') else 'folder' if platform=='local' else 'platform',provenance_version=2)
         if row.get('playnite'):
-            details=playnite_metadata(row['raw']);details['tags']=list(dict.fromkeys([*game.get('tags',[]),*details['tags']]))
+            details=playnite_metadata(row['raw'])
             last=max(str(game.get('last_played','')),str(details.get('last_played','')))
-            game.update(details)
+            merge_metadata(game,details)
             if last:game['last_played']=last
         game.setdefault('cover','')
         if not game.get('added_at'):

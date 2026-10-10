@@ -115,6 +115,41 @@ class Bridge(QObject):
         from library_catalog import CATEGORIES
         return CATEGORIES
 
+    @Property('QVariantList',constant=True)
+    def tagVocabulary(self):
+        from tag_catalog import vocabulary
+        return vocabulary([])
+
+    @Property('QVariantList',notify=gamesChanged)
+    def searchTerms(self):
+        from library_catalog import unique
+        return unique([*[game['name'] for game in self.games],*[tag for game in self.games for tag in game['tags']],*[game['series'] for game in self.games if game['series']]])
+
+    @Slot(str,result='QVariantMap')
+    def libraryMetadata(self,ident):
+        return next((game for game in self.games if game['id']==ident),{})
+
+    @Slot('QVariantList')
+    def completeMetadata(self,idents):
+        from library_metadata import complete
+        def run():
+            from library_sources import release_date
+            initial={game['id']:release_date(game.get('release_date')) for game in self.store.games}
+            # Refresh only imported Playnite records when its library is available.
+            # A locked/unavailable Playnite library does not prevent network enrichment.
+            if any(game.get('import_source')=='playnite' and (not idents or game['id'] in idents) for game in self.store.games):
+                try:
+                    rows=self.store.read_playnite()
+                    if idents:
+                        from library_sources import guid
+                        rows=[row for row in rows if guid(row.get('_id')) in idents]
+                    self.store.sync_playnite_metadata(rows)
+                except (ValueError,OSError):pass
+            result=complete(self.store,idents or None)
+            dated=sum(bool(release_date(game.get('release_date'))) and not initial.get(game['id']) for game in self.store.games if not idents or game['id'] in idents)
+            return f"资料已补全 · 新增日期 {dated} 款 · 日期未知 {result['unknown']} 款"+ (f" · {result['failed']} 项查询失败，可重试" if result['failed'] else '')
+        self.job('library-edit',run)
+
     @Property('QVariantMap', notify=settingsChanged)
     def settings(self):
         return {**self.store.settings, 'machine_id': self.store.identity, 'has_password': (self.store.profile / 'credential.dpapi').exists(),
@@ -401,8 +436,11 @@ class Bridge(QObject):
             rows=[row for row in rows if not row.get('duplicate_id')]
             directories=[row['install_dir'].casefold() for row in rows]
             if len(set(directories))!=len(directories):raise ValueError('同一游戏请选择一个启动文件')
+            before={game['id'] for game in self.store.games}
             count=import_rows(self.store,rows,skip_duplicates=True)
-            return f'已导入 {count} 款游戏；排除 {skipped+len(rows)-count} 个重复或失效条目'
+            from library_metadata import complete
+            metadata=complete(self.store,[game['id'] for game in self.store.games if game['id'] not in before])
+            return f"已导入 {count} 款游戏；排除 {skipped+len(rows)-count} 个重复或失效条目 · 日期未知 {metadata['unknown']} 款"+('（部分资料查询失败，可稍后补全）' if metadata['failed'] else '')
         self.job('import-selected',run)
 
     @Slot(str,str,bool)
@@ -463,7 +501,7 @@ class Bridge(QObject):
         self.job('settings',read)
 
     @Slot('QVariantList')
-    def updateLibrary(self,updates):self.job('library-edit',lambda:(self.store.update_library(updates),'游戏库分类已更新')[1])
+    def updateLibrary(self,updates):self.job('library-edit',lambda:(self.store.update_library(updates),'游戏资料已更新')[1])
     @Slot(str)
     def toggleFavorite(self,ident):
         game=next(game for game in self.store.games if game['id']==ident)

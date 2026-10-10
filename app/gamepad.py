@@ -1,13 +1,21 @@
 """Foreground-only Windows XInput navigation with bounded repeat and hot-plug polling."""
 import ctypes,time
-from PySide6.QtCore import QObject,QTimer,Qt,Signal,QMetaObject,Q_ARG,Q_RETURN_ARG,QEvent
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import QObject,QTimer,Qt,Signal,QMetaObject,Q_ARG,Q_RETURN_ARG
 
 def dispatch(app,root,bridge,command):
     window=app.focusWindow()
     if window is None:return
     bridge.setControllerMode(True)
     popup=bridge.active_popup()
+    if popup is not None and popup.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
+        if QMetaObject.invokeMethod(popup,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
+    # Only the library, its explicit controller popups and combo lists are supported.
+    # Never synthesize Tab/Space into native file pickers or mouse-only editors.
+    if window!=root:
+        if command=='back':
+            if popup is not None:QMetaObject.invokeMethod(popup,'close')
+            else:window.close();root.show();root.raise_();root.requestActivate()
+        return
     target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
     while target is not None and not target.inherits('QQuickWindow'):
         if target.inherits('QQuickComboBox') and target.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
@@ -17,19 +25,8 @@ def dispatch(app,root,bridge,command):
         if popup is not None:
             method='reject' if popup.metaObject().indexOfMethod('reject()')>=0 else 'close'
             QMetaObject.invokeMethod(popup,method);return
-    if command=='back' and window!=root and not bridge.popupActive():
-        window.close();root.show();root.raise_();root.requestActivate();return
-    if QMetaObject.invokeMethod(root,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
-    keys={'up':Qt.Key_Up,'down':Qt.Key_Down,'left':Qt.Key_Left,'right':Qt.Key_Right,'back':Qt.Key_Escape,'activate':Qt.Key_Space,'next':Qt.Key_Tab,'previous':Qt.Key_Backtab}
-    key=keys.get(command)
-    if key is None:return
-    focused=window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
-    if focused is not None and focused.inherits('QQuickAbstractButton') and command in ('left','up','right','down'):
-        key=Qt.Key_Backtab if command in ('left','up') else Qt.Key_Tab
-    before=window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
-    for kind in (QEvent.KeyPress,QEvent.KeyRelease):app.sendEvent(window,QKeyEvent(kind,key,Qt.NoModifier))
-    if command in ('up','down','left','right','next','previous') and hasattr(window,'activeFocusItem') and window.activeFocusItem()!=before:
-        bridge.navigationMoved()
+    if popup is not None:return
+    QMetaObject.invokeMethod(root,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command))
 
 class Pad(ctypes.Structure):
     _fields_=[('buttons',ctypes.c_uint16),('left_trigger',ctypes.c_uint8),('right_trigger',ctypes.c_uint8),

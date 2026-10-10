@@ -29,12 +29,16 @@ ApplicationWindow {
     property string seriesFilter: ""
     property string librarySort: "name"
     property bool libraryReady: false
+    property int filterFocusIndex: 0
+    property int headerFocusIndex: 0
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl]
+    readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
     function goBack() {
         var previous=navigationHistory.length ? navigationHistory[navigationHistory.length-1] : {mode:"home",category:"",series:"",search:"",y:0,gridY:0,gridIndex:0}
         navigationHistory=navigationHistory.slice(0,-1)
         searchDelay.stop();search.text=previous.search;searchQuery=previous.search;searchDelay.stop()
-        libraryMode=previous.mode;groupFilter=previous.category;seriesFilter=previous.series
+        libraryMode=previous.mode;librarySort=previous.sort || (previous.mode==="recent" ? "recent" : "name");groupFilter=previous.category;seriesFilter=previous.series
         Qt.callLater(function() { if(win.homeVisible) home.restorePosition(previous.y);else { grid.currentIndex=Math.min(grid.count-1,previous.gridIndex || 0);grid.contentY=previous.gridY || 0;grid.forceActiveFocus() } })
     }
     function libraryFocus() {
@@ -51,32 +55,41 @@ ApplicationWindow {
         if(!win.active || backend.popupActive()) return false
         if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else home.forceActiveFocus();return true }
         var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
-        var toolbar=[backButton,search,watchControl,importControl,installedControl,platformControl,sourceControl,seriesControl,sortControl,layoutControl,personalControl]
-        var item=activeFocusItem,side=-1,top=-1
-        while(item) { if(side<0) side=sidebar.indexOf(item);if(top<0) top=toolbar.indexOf(item);item=item.parent }
+        var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
+        var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
+        var item=activeFocusItem,side=-1,filter=-1,header=-1
+        while(item) { if(side<0) side=sidebar.indexOf(item);if(filter<0) filter=filters.indexOf(item);if(header<0) header=headers.indexOf(item);item=item.parent }
         if(side>=0) {
             if(command==="right") { focusContent();return true }
             if(command==="up" || command==="down") { focusControls(sidebar,side+(command==="up" ? -1 : 1));return true }
             if(command==="activate") { sidebar[side].clicked();return true }
             return true
         }
-        if(top>=0) {
-            var available=toolbar.filter(function(control) { return control.visible && control.enabled })
-            if(command==="down") { focusContent();return true }
+        if(filter>=0 || header>=0) {
+            var available=filter>=0 ? filters : headers,position=filter>=0 ? filter : header
+            if(filter>=0) filterFocusIndex=filter;else headerFocusIndex=header
+            if(command==="up") { if(filter>=0) focusControls(headers,headerFocusIndex);return true }
+            if(command==="down") { if(header>=0) focusControls(filters,filterFocusIndex);else focusContent();return true }
             if(command==="left" || command==="previous" || command==="right" || command==="next") {
-                var position=available.indexOf(toolbar[top]),step=(command==="left" || command==="previous") ? -1 : 1
+                var step=(command==="left" || command==="previous") ? -1 : 1
                 if(position===0 && step<0) focusControls(sidebar,0);else focusControls(available,position+step)
                 return true
             }
-            return false
+            if(command==="activate") {
+                if(header>=0 && headers[header]===search) { searchKeyboard.start(search.text);return true }
+                if(header>=0 && headers[header]===watchControl) { watchControl.toggle();watchControl.toggled();return true }
+                if(filter>=0 && filters[filter]===installedControl) { installedControl.toggle();installedControl.toggled();return true }
+                if(header>=0 && headers[header]===backButton) goBack()
+            }
+            return true
         }
         if(command==="next" || command==="previous") return false
         if(!libraryFocus()) {
-            if(["up","down","left","right"].indexOf(command)<0) return false
+            if(["up","down","left","right"].indexOf(command)<0) return true
             focusContent()
         }
         if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { focusControls(sidebar,Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode)));return true }
-        if(command==="up" && (homeVisible ? home.focusedSection===0 : grid.currentIndex<grid.effectiveColumns)) { search.forceActiveFocus();backend.navigationMoved();return true }
+        if(command==="up" && (homeVisible ? home.focusedSection===0 : grid.currentIndex<grid.effectiveColumns)) { focusControls(filters,filterFocusIndex);return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
             else if(grid.count) {
@@ -88,10 +101,10 @@ ApplicationWindow {
         if(homeVisible && command==="activate") { home.activateSelected();return true }
         var game=homeVisible ? home.selectedGame() : grid.count ? libraryModel.get(Math.max(0,grid.currentIndex)).record : null
         if(!game || !game.id) return false
-        if(command==="activate") win.openGame(game)
+        if(command==="activate") controllerGameMenu.showGame(game)
         else if(command==="favorite") backend.toggleFavorite(game.id)
         else if(command==="launch") backend.launch(game.id)
-        else if(command==="history") { selectGame(game);historyTabs.currentIndex=0;backend.history(game.id);historyDialog.open() }
+        else if(command==="history") controllerGameMenu.showGame(game)
         else return false
         return true
     }
@@ -106,12 +119,12 @@ ApplicationWindow {
         if(!ad || !bd) return ad ? -1 : bd ? 1 : a.name.localeCompare(b.name)
         return (librarySort==="release_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad)) || a.name.localeCompare(b.name)
     }
-    return libraryMode==="recent" || librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
+    return librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
     function navigate(mode,value) {
-        navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex}])
+        navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex,sort:librarySort}])
         search.text="";searchQuery="";groupFilter="";seriesFilter=""
         if(mode==="tag") { libraryMode="all";search.text="#"+value;searchQuery=search.text.toLowerCase() }
-        else { libraryMode=mode;if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
+        else { libraryMode=mode;librarySort=mode==="recent" ? "recent" : "name";if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
         Qt.callLater(function() { if(win.homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() })
     }
     onShownGamesChanged: if(libraryReady) syncLibrary()
@@ -126,7 +139,15 @@ ApplicationWindow {
     }
     onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();coverWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
+    function editMetadata() {
+        var g=backend.libraryMetadata(activeId)
+        metadataDialog.record=g
+        metadataCategory.currentIndex=Math.max(0,metadataCategory.model.indexOf(g.category || "其他"))
+        metadataTags.text=(g.tags || []).join(", ");metadataSeries.text=g.series || "";metadataDate.text=g.release_date || ""
+        metadataDialog.open()
+    }
     function openGame(g) {
+        if(backend.controllerMode) { controllerGameMenu.showGame(g);return }
         selectGame(g)
         var v = backend.gameSettings(g.id)
         gameSave.text = v.save_dir || ""
@@ -156,6 +177,14 @@ ApplicationWindow {
     function openBatch() { guideDialog.close();batchWindow.openBatch() }
     function openSetup() { guideDialog.close();setupWizard.openWizard() }
     function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly}) }
+    ControllerKeyboard {
+        id: searchKeyboard; objectName: "controllerKeyboard"
+        width: Math.min(820,win.width-48); anchors.centerIn: parent
+        quickTerms: backend.searchTerms
+        onSubmitted: function(value) { search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
+        onCancelled: search.forceActiveFocus()
+    }
+    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48) }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
     ImportWindow { id: importWindow; objectName: "importWindow" }
     BatchWindow { id: batchWindow; objectName: "batchWindow" }
@@ -206,16 +235,20 @@ ApplicationWindow {
                 Label { text: shownGames.length+" 款游戏"; color: Theme.secondary; font.pixelSize: 12 }
             }
             Item { Layout.fillWidth: true }
-            AppTextField { id: search; objectName: "search"; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索名称、标签、系列…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
-            Switch { id: watchControl; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy; onToggled: backend.saveSettings({watch:checked}) }
+            AppTextField { id: search; objectName: "search"; clip: true; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索名称、标签、系列…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
+            Switch {
+                id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
+                onToggled: backend.saveSettings({watch:checked})
+                Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.text; visible: watchControl.activeFocus }
+            }
             AppButton { id: importControl; text: "导入游戏"; onClicked: win.openImport() }
         }
         GridLayout {
-            Layout.fillWidth: true; columns: win.width<1200 ? 1 : 2
+            Layout.fillWidth: true; columns: win.width<1700 ? 1 : 2
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
                 Layout.fillWidth: true
-                CheckBox { id: installedControl; text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
+                CheckBox { id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly; onToggled: { installedOnly=checked; saveLayout() } }
                 AppComboBox { id: platformControl; objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
                 AppComboBox { id: sourceControl; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
                 AppComboBox { id: seriesControl; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
@@ -223,9 +256,10 @@ ApplicationWindow {
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
-                AppComboBox { id: sortControl; objectName: "librarySort"; visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: 140; onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppComboBox { id: sortControl; objectName: "librarySort"; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppButton { id: layoutControl; text: "布局"; onClicked: win.openSettingsPage(2) }
                 AppButton { id: personalControl; text: "个性化"; onClicked: personalization.openPersonalization() }
+                AppButton { text: "补全资料"; enabled: !backend.busy; onClicked: backend.completeMetadata([]); ToolTip.visible: hovered; ToolTip.text: "读取 Playnite、Steam / VNDB，补全缺失发行日期及来源标签" }
                 Item { Layout.fillWidth: win.width<1200 }
             }
         }
@@ -261,7 +295,7 @@ ApplicationWindow {
             property int effectiveColumns: Math.max(1, Math.min(Math.floor(width / (196 + gridGap)), columnCount > 0 ? columnCount : Math.floor(width / (coverSize + gridGap))))
             cellWidth: columnCount>0 ? width / effectiveColumns : Math.min(width,coverSize+gridGap)
             property real cardWidth: cellWidth - gridGap
-            cellHeight: cardWidth * 1.38 + 120 + gridGap
+            cellHeight: cardWidth * 1.38 + 144 + gridGap
             model: libraryModel
             cacheBuffer: cellHeight*2
             reuseItems: true
@@ -421,6 +455,7 @@ ApplicationWindow {
             Label { text: "存档目录（包含所有存档槽）" }
             RowLayout { AppTextField { id: gameSave; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickSaveFolder(gameSave.text); if(p) gameSave.text=p } } }
             AppButton { text: "查找此游戏的存档"; onClicked: win.openMatch(activeId) }
+            AppButton { text: "编辑分类、标签与发行日期"; onClicked: win.editMetadata() }
             Label { text: "启动方式" }
             AppComboBox { id: launchMode; Layout.fillWidth: true; model: ["直接启动", "通过 Playnite 启动", "通过游戏平台启动"] }
             Label { text: "启动文件 EXE / BAT / CMD（直接启动时必填）"; font.pixelSize: 12 }
@@ -441,6 +476,39 @@ ApplicationWindow {
             onRejected: gameDialog.close()
             onAccepted: { backend.saveGame(activeId, {save_dir:gameSave.text, exe:gameExe.text, monitor_exe:monitorExe.text, cover:gameCover.text, launch_mode:["direct","playnite","platform"][launchMode.currentIndex], arguments:gameArguments.text, working_dir:gameWorking.text}); gameDialog.close() }
         }
+    }
+    Dialog {
+        id: metadataDialog; objectName: "metadataDialog"; title: activeName+" · 游戏资料"; anchors.centerIn: parent
+        property var record: ({})
+        modal: true; width: Math.min(650,win.width-48); height: Math.min(700,win.height-48)
+        Overlay.modal: Rectangle { color: "#bb000000" }
+        contentItem: ScrollView {
+            clip: true
+            ColumnLayout {
+                width: metadataDialog.availableWidth-20; spacing: 12
+                Label { text: "主分类" }
+                AppComboBox { id: metadataCategory; Layout.fillWidth: true; model: backend.primaryCategories.concat(backend.groups.filter(function(name) { return backend.primaryCategories.indexOf(name)<0 })) }
+                Label { text: "标签（逗号分隔，最多 6 个）" }
+                AppTextField { id: metadataTags; objectName: "metadataTags"; Layout.fillWidth: true }
+                Label { text: "标签来源："+(metadataDialog.record.tags_manual ? "手动" : metadataDialog.record.tags_source || "未记录"); Layout.fillWidth: true; color: Theme.secondary }
+                Label { text: "规范词库："+backend.tagVocabulary.join("、"); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                Label { text: "系列" }
+                AppTextField { id: metadataSeries; Layout.fillWidth: true }
+                Label { text: "发行日期（YYYY-MM-DD；未知时留空）" }
+                AppTextField { id: metadataDate; objectName: "metadataDate"; Layout.fillWidth: true; placeholderText: "例如 2020-01-31" }
+                Label { text: "来源："+(metadataDialog.record.release_date_source || "未知")+"。手动保存的标签和日期不会被资料补全覆盖。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                AppButton { text: "查询缺失发行日期与标签"; enabled: !backend.busy; onClicked: backend.completeMetadata([activeId]) }
+                AppButton { text: "重新载入已保存资料"; enabled: !backend.busy; onClicked: win.editMetadata() }
+                Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+            }
+        }
+        footer: DialogButtonBox {
+            AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+            AppButton { text: "保存资料"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+            onRejected: metadataDialog.close()
+            onAccepted: backend.updateLibrary([{id:activeId,category:metadataCategory.currentText,tags:metadataTags.text.split(/[,，]/).map(function(tag) { return tag.trim() }).filter(Boolean),series:metadataSeries.text,release_date:metadataDate.text.trim()}])
+        }
+        Connections { target: backend; function onOperationCompleted(action,success) { if(action==="library-edit" && success && metadataDialog.visible) win.editMetadata() } }
     }
     Dialog {
         id: deleteDialog; title: "移除 " + activeName; anchors.centerIn: parent; modal: true

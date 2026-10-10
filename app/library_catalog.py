@@ -16,6 +16,8 @@ STYLE_TAGS=['恐怖','开放世界','合作','恋爱','独立','悬疑','Rogueli
 def unique(values):return list(dict.fromkeys(value.strip() for value in values if isinstance(value,str) and value.strip()))
 def normalized(value):return unicodedata.normalize('NFKC',value or '').casefold().strip()
 def primary(tags):
+    from tag_catalog import normalize_tags,vocabulary
+    tags=normalize_tags(tags,vocabulary([]))
     values={normalized(value) for value in tags}
     for category in ('视觉小说','音乐节奏','竞速体育','射击竞技','角色扮演','策略模拟','解谜休闲','动作冒险'):
         aliases=CATEGORY_TAGS[category]
@@ -38,7 +40,8 @@ def valid_series(games):
 def prepare_game(game):
     from library_sources import release_date
     game={**game,'release_date':release_date(game.get('release_date'))}
-    tags=unique([*game.get('tags',[]),*game.get('groups',[])])
+    from tag_catalog import effective_tags
+    tags=effective_tags({**game,'tags':unique([*game.get('tags',[]),*game.get('groups',[])])})
     category=game.get('category') or primary(tags)
     name=canonical_series(game.get('series',''))
     return {**game,'category':category,'tags':tags,'series':name,
@@ -66,6 +69,10 @@ def sections(games):
     tiles=[{'id':name,'name':name,'count':len(rows),'games':rows[:3],'target':'category','value':name} for name,rows in grouped.items()]
     tiles.sort(key=lambda tile:(CATEGORIES.index(tile['name']) if tile['name'] in CATEGORIES else 99,tile['name']))
     if tiles:output.append({'id':'categories','kind':'tiles','title':'按类别浏览','subtitle':'','items':tiles,'target':'all','value':''})
+    tags=defaultdict(list)
+    for game in games:
+        for tag in game['tags']:tags[tag].append(game)
+    if tags:output.append({'id':'tags','kind':'tiles','title':'按标签浏览','subtitle':'全部有效标签','items':[{'id':tag,'name':tag,'count':len(rows),'games':rows[:3],'target':'tag','value':tag} for tag,rows in sorted(tags.items(),key=lambda pair:(-len(pair[1]),pair[0]))],'target':'all','value':''})
     series=valid_series(games)
     if series:output.append({'id':'series','kind':'tiles','title':'按系列浏览','subtitle':'','items':[{'id':name,'name':name,'count':len(rows),'games':rows[:3],'target':'series','value':name} for name,rows in sorted(series.items(),key=lambda pair:(-len(pair[1]),pair[0]))],'target':'series','value':''})
     recommended=recommend(games)
@@ -74,6 +81,6 @@ def sections(games):
         rows=grouped.get(name,[])
         if len(rows)>=2:output.append({'id':'category:'+name,'kind':'games','title':name,'subtitle':str(len(rows))+' 款游戏','items':sorted(rows,key=lambda game:(not game.get('installed'),game['name']))[:12],'target':'category','value':name})
     for tag in STYLE_TAGS:
-        rows=[game for game in games if any(normalized(tag) in normalized(value) for value in game['tags'])]
+        rows=[game for game in games if tag in game['tags']]
         if len(rows)>=3 and len(rows)<len(games):output.append({'id':'tag:'+tag,'kind':'games','title':tag,'subtitle':'','items':rows[:12],'target':'tag','value':tag})
     return output

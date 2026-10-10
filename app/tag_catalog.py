@@ -1,5 +1,4 @@
 """Stable tag vocabulary: reuse library terms and reject invented model tags."""
-from collections import Counter
 import re,unicodedata
 
 ALIASES={
@@ -8,7 +7,7 @@ ALIASES={
  '剧情':['剧情向','故事丰富','story rich','story-rich','story'],
  '角色扮演':['rpg','role playing','role-playing'],
  '动作角色扮演':['arpg','action rpg','action-rpg','动作rpg'],
- '魂类':['soulslike','souls-like','类魂'],
+ '魂类':['soulslike','souls-like','类魂','类魂系列'],
  'Roguelike':['roguelike','rogue-like','肉鸽','类rogue'],
  '恐怖':['horror','生存恐怖','survival horror'],
  '独立':['indie','独立游戏'],
@@ -25,10 +24,12 @@ ALIASES={
  '音乐节奏':['rhythm','music','音乐','节奏','音游'],
  '竞速':['racing','赛车'], '体育':['sports'],
  '养成':['养成模拟'], '休闲':['casual'],
- '悬疑':['mystery'], '科幻':['sci-fi','science fiction'],
+ '悬疑':['mystery','mystery fiction'], '科幻':['sci-fi','science fiction'],
  '奇幻':['fantasy'], '探索':['exploration'], '建造':['building'],
  '经营':['management'], '生存':['survival'], '工具':['software','软件'],
- '校园':[], '治愈':[], '历史':[], '成人':[]}
+ '校园':['school life'], '治愈':['iyashikei'], '历史':['historical'], '成人':['sexual content','nudity']}
+
+MAX_TAGS=6
 
 def normalized(value):
     return re.sub(r'[\s_-]+',' ',unicodedata.normalize('NFKC',value).casefold()).strip()
@@ -40,22 +41,23 @@ def key(value):
     return text
 
 def vocabulary(games):
-    counts=Counter(tag.strip() for game in games for tag in game.get('tags',[]) if isinstance(tag,str) and tag.strip() and tag.strip()!='其他')
-    result={}
-    # Existing spelling wins. Frequency and a stable tie-break avoid output drift.
-    for tag in sorted(counts,key=lambda tag:(-counts[tag],normalized(tag),tag)):
-        result.setdefault(key(tag),tag)
-    if not result:
-        for tag in ALIASES:result.setdefault(key(tag),tag)
-    return sorted(result.values(),key=lambda value:(normalized(value),value))
+    # Imported descriptions and old AI output cannot expand the model vocabulary.
+    return list(ALIASES)
 
 def normalize_tags(values,allowed):
     known={key(value):value for value in allowed}
     output=[]
     for value in values:
+        if not isinstance(value,str):continue
         canonical=known.get(key(value))
         if canonical and canonical not in output:output.append(canonical)
     return output
+
+def effective_tags(game):
+    if game.get('tags_manual'):
+        return list(dict.fromkeys(value.strip() for value in game.get('tags',[]) if isinstance(value,str) and value.strip()))[:MAX_TAGS]
+    source=normalize_tags(game.get('source_tags',[]),vocabulary([]))
+    return (source or normalize_tags(game.get('tags',[]),vocabulary([])))[:MAX_TAGS]
 
 def classified(game):
     tags=[tag for tag in game.get('tags',[]) if isinstance(tag,str) and tag.strip() and tag.strip()!='其他']

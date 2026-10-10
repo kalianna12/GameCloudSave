@@ -30,7 +30,7 @@ ApplicationWindow {
         var source=selectedRows()
         var existing=source.filter(function(row) { return row.protected && !manager.approved[row.id] }).map(function(row) { return row.id })
         if(existing.length) { warn("apply",existing);return }
-        var rows=source.map(function(row) { var edit=manager.edits[row.id] || {};return {id:row.id,category:edit.category || row.category,tags:edit.tags!==undefined ? edit.tags.split(/[,，]/).map(function(name) { return name.trim() }).filter(Boolean) : row.tags,series:edit.series!==undefined ? edit.series : row.series} })
+        var rows=source.map(function(row) { var edit=manager.edits[row.id] || {};return {id:row.id,category:edit.category || row.category,tags:edit.tags!==undefined ? edit.tags.split(/[,，]/).map(function(name) { return name.trim() }).filter(Boolean) : row.tags,tags_manual:edit.tags!==undefined,tags_source:edit.tags!==undefined ? "手动" : row.tags_source || "未记录",series:edit.series!==undefined ? edit.series : row.series} })
         backend.applyOrganizer(rows,source.some(function(row) { return row.protected }))
     }
     Connections { target: backend; function onOperationCompleted(action,success) {
@@ -60,14 +60,15 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             AppButton { text: "应用所选分类"; highlighted: true; enabled: !backend.busy && Object.keys(manager.selected).length>0; onClicked: manager.applySelected() }
         }
-        Label { text: "默认只处理未分类游戏。DeepSeek 沿用现有标签；预览后应用。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: "Steam / Playnite 标签优先，规范别名后最多 6 个；DeepSeek 只补缺失标签，最多 3 个，预览后应用。首页风格行至少需 3 款游戏；全部标签可在“按标签浏览”查看。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: "规范词库："+backend.tagVocabulary.join("、"); color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11 }
         ListView { id: list; Layout.fillWidth: true; Layout.fillHeight: true; model: backend.organizerResults; clip: true; spacing: 3
             delegate: ItemDelegate { required property var modelData; width: ListView.view.width; height: 78
                 contentItem: RowLayout {
                     CheckBox { checked: !!manager.selected[modelData.id]; onToggled: manager.choose(modelData,checked) }
                     ColumnLayout { Layout.preferredWidth: 250; Layout.minimumWidth: 180; spacing: 3
                         Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
-                        Label { text: modelData.protected ? "已分类" : "未分类"; color: Theme.secondary; font.pixelSize: 11 }
+                        Label { text: (modelData.protected ? "已分类" : "未分类")+" · 标签来源："+(modelData.tags_source || "未记录"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; font.pixelSize: 11 }
                     }
                     AppComboBox { enabled: !modelData.protected || !!manager.selected[modelData.id]; Layout.preferredWidth: 148; model: backend.primaryCategories.concat(backend.groups.filter(function(name) { return backend.primaryCategories.indexOf(name)<0 })); currentIndex: Math.max(0,model.indexOf((manager.edits[modelData.id] || {}).category || modelData.category)); onActivated: manager.update(modelData.id,"category",currentText) }
                     AppTextField { enabled: !modelData.protected || !!manager.selected[modelData.id]; Layout.fillWidth: true; placeholderText: "标签，用逗号分隔"; text: (manager.edits[modelData.id] || {}).tags!==undefined ? manager.edits[modelData.id].tags : (modelData.tags || []).join(", "); onTextEdited: manager.update(modelData.id,"tags",text) }

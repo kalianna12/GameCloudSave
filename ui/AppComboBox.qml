@@ -5,6 +5,7 @@ C.ComboBox {
     id: control
     property int controllerIndex: 0
     property bool controllerBrowsing: false
+    property bool wrapOptions: false
     function controllerInput(command) {
         if(command!=="activate" && command!=="back" && command!=="up" && command!=="down") return false
         if(!popup.visible) {
@@ -45,12 +46,13 @@ C.ComboBox {
     delegate: C.ItemDelegate {
         required property int index
         hoverEnabled: !backend.controllerMode
-        width: control.width; implicitHeight: 38; font: control.font
+        width: control.width; implicitHeight: Math.max(38,contentItem.implicitHeight+16); font: control.font
         text: control.textAt(index); highlighted: (control.controllerBrowsing ? control.controllerIndex : control.highlightedIndex)===index
         onHoveredChanged: if(hovered) control.controllerBrowsing=false
         contentItem: Text {
             text: parent.text; font: control.font; color: Theme.text
-            verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter; elide: control.wrapOptions ? Text.ElideNone : Text.ElideRight
+            wrapMode: control.wrapOptions ? Text.WrapAnywhere : Text.NoWrap
         }
         background: Rectangle { color: parent.highlighted || parent.hovered ? Theme.hover : Theme.surface }
     }

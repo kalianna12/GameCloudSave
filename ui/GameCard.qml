@@ -51,6 +51,7 @@ Rectangle {
             Image { source: backend.iconSource(card.game.platform==="other" ? "local" : card.game.platform || "local",Theme.secondary.toString()); Layout.preferredWidth: 15; Layout.preferredHeight: 15; sourceSize: Qt.size(45,45) }
             Label { text: (card.game.platform==="steam" ? "Steam" : card.game.platform==="epic" ? "Epic" : card.game.platform==="ubisoft" ? "Ubisoft" : "本地")+" / "+(card.game.installed ? "已安装" : "未安装") + (card.game.saveSet ? " / 可备份" : ""); font.pixelSize: 10; color: Theme.secondary; Layout.fillWidth: true; elide: Text.ElideRight }
         }
+        Label { objectName: "gameReleaseDate"; text: "发行："+(card.game.release_date || "未知"); Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11; color: Theme.secondary }
         RowLayout {
             objectName: "gameActions"
             Layout.fillWidth: true; spacing: 0
