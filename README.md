@@ -1,8 +1,12 @@
-# GameCloudSave V2.3.3
+# GameCloudSave V2.4.0
 
 Windows 游戏库与存档备份管理器，Python + PySide6 / Qt Quick。支持 Playnite、Steam/Epic/Ubisoft 已安装游戏、本地 EXE/BAT/CMD 扫描；先保存本地快照，再通过 rclone WebDAV 上传到 AList。
 
-便携版：双击上级目录的 `启动新版.bat`。安装版：运行 `dist/installers/GameCloudSave-Setup-V2.3.3.exe`。
+从 [V2.4.0 发行页](https://github.com/kalianna12/GameCloudSave/releases/tag/v2.4.0) 下载安装包或便携包。安装版运行 `GameCloudSave-Setup-V2.4.0.exe`；便携包完整解压后运行 `GameCloudSave.exe`，无需另装 Python。当前本机便携目录仍可双击上级目录的 `启动新版.bat`。
+
+V2.4.0 整合单游戏的三个设置页面、批量资料/封面补全预览、导入选择、首轮漏查后的名称重试、VNDB 日期、规范标签和主题统一焦点。手柄侧栏选中即显示，内页按实际网格导航，搜索可打开应用内键盘。已有资料保留，候选需预览后应用。
+
+[完整发布说明](docs/V2.4.0发布说明.md) · [安装、更新和卸载说明](docs/安装与便携使用说明.txt)
 
 V2.3.3 修复重复焦点高亮，首页与子页面支持平滑手柄滚动。手柄操作隐藏鼠标并暂停悬停，移动鼠标恢复；导航提示音可在个性化中关闭。沿用固定标签词库和已有分类保护。[本轮说明与验证](docs/V2.3.3输入与网络.md)
 
@@ -40,10 +44,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe tests/test_library_v22.py
 .\.venv\Scripts\python.exe tests/test_library_ui_v22.py
 .\.venv\Scripts\python.exe tests/test_wizard_batch_v21.py
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.3.3
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.3.3
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.4.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.4.0
+.\.venv\Scripts\python.exe scripts/package_release.py --version 2.4.0
 ```
 
 构建脚本从当前虚拟环境打包 Qt、Python、rclone、卸载程序、许可证和 source.zip，无需目标电脑安装 Python。安装包按用户安装，默认创建桌面和开始菜单快捷方式，卸载保留个人数据。构建安装包需网络获取第三方许可文本。
 
-日常修改直接运行源码，无需构建安装器。只修改 QML 时可运行 `scripts/sync_ui.ps1` 更新便携版界面资源；Python 变化需要重新构建。可执行文件固定输出至 `dist/GameCloudSave/GameCloudSave.exe`，不再按版本复制程序目录；图标未变化时保留时间戳，支持 PyInstaller 增量构建。旧版本源码和标签保留于 Git，需要回退时从标签重新打包。本地小版本不上传 GitHub 发行包。
+日常小版本修改只运行源码并使用隔离数据，不同步便携版或重建安装包；用户明确要求打包与发布后才运行构建脚本。可执行文件固定输出至 `dist/GameCloudSave/GameCloudSave.exe`，不按版本复制多份便携程序。旧版本源码和标签保留于 Git，需要回退时从对应标签重新构建。
