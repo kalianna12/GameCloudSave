@@ -24,6 +24,12 @@ Item {
     HoverHandler { id: hover; enabled: !backend.controllerMode }
     Rectangle {
         id: poster; width: parent.width; height: parent.height-48; radius: 6; color: Theme.surface; clip: true
+        transform: [
+            Rotation { origin.x: poster.width/2; origin.y: poster.height/2; axis.x: 0; axis.y: 1; axis.z: 0; angle: coverEffect.yaw
+                Behavior on angle { enabled: coverEffect.available; SpringAnimation { spring: 3; damping: .34; epsilon: .02 } } },
+            Rotation { origin.x: poster.width/2; origin.y: poster.height/2; axis.x: 1; axis.y: 0; axis.z: 0; angle: coverEffect.pitch
+                Behavior on angle { enabled: coverEffect.available; SpringAnimation { spring: 3; damping: .34; epsilon: .02 } } }
+        ]
         Image {
             id: cover; anchors.fill: parent
             source: tile.featured && tile.game.backgroundUrl ? tile.game.backgroundUrl : tile.game.coverHighUrl || tile.game.coverUrl || ""
@@ -31,6 +37,7 @@ Item {
             sourceSize: Qt.size(tile.featured ? Math.min(1440,Math.ceil(tile.width*Screen.devicePixelRatio)) : Math.min(720,Math.ceil(tile.width*Screen.devicePixelRatio)),0)
         }
         Label { visible: !cover.source.toString() || cover.status===Image.Error; anchors.centerIn: parent; width: parent.width-20; text: tile.game.name || ""; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: Theme.secondary }
+        CoverEffects { id: coverEffect; anchors.fill: parent; z: 5; controllerFocused: tile.selected && backend.controllerMode; suspended: tile.scrolling; tiltLimit: tile.featured ? 2 : 6 }
         Rectangle { objectName: "tileFocusRing"; readonly property real focusWidth: border.width; anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected ? 3 : hover.hovered && !tile.scrolling && !tile.featured ? 2 : 0; border.color: tile.selected ? Theme.accent : Theme.secondary; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
         TapHandler { onTapped: { tile.forceActiveFocus();if(tile.selectOnly) tile.selectionRequested();else tile.detailsRequested(tile.game) } }
         Rectangle {

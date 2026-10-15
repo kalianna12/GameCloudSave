@@ -27,6 +27,8 @@ class Bridge(QObject):
     matchReady = Signal(object)
     transferReady = Signal(str,str)
     watchReady = Signal(object)
+    watchFinished = Signal(object)
+    watchStateChanged = Signal()
     notificationReady = Signal(str,str,bool)
     operationCompleted = Signal(str,bool)
     inputModeChanged = Signal()
@@ -61,6 +63,14 @@ class Bridge(QObject):
         self._icon_cache={}
         self._running = {}
         self._watch_pending=False
+        from game_watcher import ProcessSampler,Sessions,ExitQueue
+        self._watch_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='game-watch')
+        self._sampler=ProcessSampler();self._sessions=Sessions()
+        self._exit_queue=ExitQueue(store.profile/'watch-queue.json')
+        self._playing=threading.Event();self._auto_active=False;self._launched_recent={}
+        self._watch_sampled=False
+        self._watch_closed=False
+        self._watch_message='等待游戏启动';self._watch_ready_count=0;self._watch_last_info={}
         self._games_cache = None
         self._cloud_path = ''
         self._preview = {}
@@ -84,11 +94,23 @@ class Bridge(QObject):
         self.matchReady.connect(self.receiveMatch)
         self.transferReady.connect(self.setTransfer)
         self.watchReady.connect(self.receiveWatch)
+        self.watchFinished.connect(self.receiveAutoBackup)
         self.finished.connect(self.complete)
         self.enrichmentReady.connect(self.receiveEnrichment)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
-        if store.settings.get('watch'):self.timer.start(max(5,int(store.settings.get('watch_interval',10)))*1000)
+        if store.settings.get('watch'):
+            self.timer.start(max(2,min(60,int(store.settings.get('watch_interval',5))))*1000)
+            QTimer.singleShot(0,self.poll)
+
+    @Property('QVariantMap',notify=watchStateChanged)
+    def watchInfo(self):
+        return {**self._exit_queue.counts(),'running':len(self._sessions.active),'ready':self._watch_ready_count,
+                'working':self._auto_active,'message':self._watch_message}
+
+    def refreshWatchInfo(self):
+        info=self.watchInfo
+        if info!=self._watch_last_info:self._watch_last_info=info;self.watchStateChanged.emit()
 
     @Property('QVariantList', notify=gamesChanged)
     def games(self):
@@ -403,8 +425,13 @@ class Bridge(QObject):
             if self._matches!=self.store.match_report:
                 self._matches=list(self.store.match_report);self.matchesChanged.emit()
             self.settingsChanged.emit()
-            if self.store.settings.get('watch'):self.timer.start(max(5,min(60,int(self.store.settings.get('watch_interval',10))))*1000)
-            else:self.timer.stop()
+            if self.store.settings.get('watch'):
+                self.timer.start(max(2,min(60,int(self.store.settings.get('watch_interval',5))))*1000)
+                QTimer.singleShot(0,self.poll)
+            else:
+                self.timer.stop()
+                from game_watcher import Sessions
+                self._sessions=Sessions();self._playing.clear();self._watch_message='自动监听已暂停';self.refreshWatchInfo()
         if action=='ai-test' and error:
             self._ai_connection=error
             self.matchesChanged.emit()
@@ -416,6 +443,7 @@ class Bridge(QObject):
         self.operationCompleted.emit(action,not bool(error))
         if action=='import-selected' and not error and result.get('preview') and result['new_ids']:
             self.enrichmentRequested.emit(result['new_ids'],result['options'])
+        QTimer.singleShot(0,self.drainAutoBackups)
 
     @Slot('QVariantMap')
     def saveLayout(self,values):
@@ -763,7 +791,10 @@ class Bridge(QObject):
 
     @Slot(str)
     def launch(self, ident):
-        self.job('launch', lambda: (self.store.launch(ident), '启动请求已发送')[1])
+        def launch():
+            self.store.launch(ident);self._launched_recent[ident]=time.monotonic()
+            return '启动请求已发送'
+        self.job('launch',launch)
 
     @Slot(str)
     def remove(self, ident):
@@ -1005,45 +1036,97 @@ class Bridge(QObject):
         return QFileDialog.getOpenFileName(None, '选择文件', '', '图片 (*.jpg *.png *.webp *.jpeg)' if kind == 'cover' else '启动文件 (*.exe *.bat *.cmd)')[0]
 
     def poll(self):
-        if self._busy or self._watch_pending or not self.store.settings.get('watch'): return
-        configured={ident:local for ident,local in self.store.local.items() if local.get('save_dir') and Path(local.get('monitor_exe') or local.get('exe','')).suffix.casefold()=='.exe' and any(game['id']==ident for game in self.store.games)}
-        if not configured:return
+        if self._watch_closed or self._watch_pending or not self.store.settings.get('watch'): return
+        games=[{'id':game['id']} for game in self.store.games]
+        local={ident:{key:item.get(key,'') for key in ('save_dir','monitor_exe','exe','install_dir')} for ident,item in self.store.local.items()}
+        if not any(item.get('save_dir') for item in local.values()):
+            self._watch_ready_count=0;self._watch_message='先为游戏选择存档目录，之后退出时自动备份';self.refreshWatchInfo();return
         self._watch_pending=True
         def check():
-            import psutil
+            from game_watcher import background_work
             try:
-                processes=[p.info for p in psutil.process_iter(['name','exe'])]
-                paths={str(Path(p['exe']).resolve()).casefold() for p in processes if p.get('exe')}
-                names={p['name'].casefold() for p in processes if p.get('name') and not p.get('exe')}
-                configured_names=[Path(local.get('monitor_exe') or local.get('exe','')).name.casefold() for local in configured.values()]
-                states={}
-                for ident,local in configured.items():
-                    file=Path(local.get('monitor_exe') or local['exe']);name=file.name.casefold()
-                    states[ident]=str(file.resolve()).casefold() in paths or (configured_names.count(name)==1 and name in names)
-                self.watchReady.emit(states)
-            except Exception:self.watchReady.emit(None)
-        self.pool.submit(check)
+                with background_work():
+                    targets=self._sampler.targets(games,local)
+                    states=self._sampler.sample(targets) if targets else {}
+                if not self._watch_closed:self.watchReady.emit({'states':states,'ready':len(targets)})
+            except Exception:
+                if not self._watch_closed:self.watchReady.emit(None)
+        self._watch_pool.submit(check)
 
     @Slot(object)
     def receiveWatch(self,states):
         self._watch_pending=False
-        if states is None or self._busy or not self.store.settings.get('watch'):return
-        transitions=[(ident,running) for ident,running in states.items() if running!=self._running.get(ident,False)]
-        self._running.update(states)
-        if not transitions:return
-        def backup():
-            failed=0
-            if self.store.settings.get('tray_notifications',True):self.notificationReady.emit('自动备份','正在备份 '+str(len(transitions))+' 款游戏存档',False)
-            for ident,running in transitions:
-                if running:self.store.mark_played(ident)
-                archive=self.store.backup(ident,'game_start' if running else 'game_stop')
-                if self.store.settings.get('watch_upload',True):
-                    try:self.store.upload(ident,archive)
-                    except Exception:failed+=1
-            message=f'自动备份完成：{len(transitions)} 份'+(f'，{failed} 份上传失败，已保留本地' if failed else '')
-            if self.store.settings.get('tray_notifications',True):self.notificationReady.emit('自动备份完成',message,bool(failed))
-            return message
-        self.job('watch',backup)
+        if not self.store.settings.get('watch'):return
+        if states is None:
+            self._watch_message='暂未读到进程状态，稍后重试';self.refreshWatchInfo();return
+        self._watch_ready_count=states.get('ready',len(states));states=states.get('states',states)
+        self._watch_sampled=True
+        started,ended=self._sessions.update(states)
+        self._running={ident:ident in self._sessions.active for ident in states}
+        if self._sessions.active:self._playing.set()
+        else:self._playing.clear()
+        for session in ended:
+            self._exit_queue.add(session,count_play=session['ident'] not in self._launched_recent)
+            self._launched_recent.pop(session['ident'],None)
+        if self._sessions.missing:self._watch_message='正在确认游戏退出，等待存档写入完成'
+        elif self._sessions.active:self._watch_message=f'正在监听 {len(self._sessions.active)} 款游戏 · 退出后备份'
+        elif ended:self._watch_message='已确认游戏退出，备份已排队'
+        elif not self._watch_ready_count:self._watch_message='未找到可监听的游戏进程，请在游戏设置中选择实际 EXE'
+        elif not self._auto_active and not self._exit_queue.counts()['failed']:self._watch_message='监听就绪 · 退出后自动备份'
+        self.refreshWatchInfo();self.drainAutoBackups()
+
+    def drainAutoBackups(self):
+        if self._watch_closed or self._busy or self._auto_active or self._watch_pending or not self._watch_sampled or self._playing.is_set() or not self.store.settings.get('watch'):return
+        row=self._exit_queue.next()
+        if not row:return
+        self._auto_active=True;self._watch_message='正在保存退出后的存档';self.refreshWatchInfo()
+        def work():
+            from game_watcher import background_work
+            token=row['token'];ident=row['ident'];error=False;message='';archive=None
+            try:
+                with background_work():
+                    if self._watch_closed or self._playing.is_set():self.watchFinished.emit({'deferred':True});return
+                    archive=Path(row['archive']) if row.get('archive') else None
+                    if archive is None:
+                        self.transferReady.emit(ident,'saving')
+                        archive=self.store.backup(ident,'game_stop',session_key=token)
+                        self._exit_queue.discard_pruned(ident,{record['archive_path'] for record in self.store.history(ident)})
+                        self._exit_queue.update(token,archive=str(archive),phase='saved')
+                        if row.get('count_play'):
+                            try:self.store.mark_played(ident)
+                            except Exception:
+                                import logging
+                                logging.getLogger('gamecloud').warning('游玩统计暂未更新；继续保存与上传自动备份')
+                    if self._watch_closed or self._playing.is_set():self.watchFinished.emit({'deferred':True});return
+                    if self.store.settings.get('watch_upload',True):
+                        self.transferReady.emit(ident,'uploading')
+                        self.store.upload(ident,archive);message='自动备份已保存并上传'
+                    else:message='自动备份已保存到本机'
+                    self._exit_queue.finish(token);self.transferReady.emit(ident,'success' if self.store.settings.get('watch_upload',True) else 'idle')
+            except Exception as exception:
+                error=True;message=('上传失败，本地备份已保留，可点重试' if archive else '本地备份失败，请检查存档目录')
+                self._exit_queue.update(token,phase='upload_failed' if archive else 'backup_failed')
+                self.transferReady.emit(ident,'failed')
+            self.watchFinished.emit({'id':ident,'error':error,'message':message})
+        self.pool.submit(work)
+
+    @Slot(object)
+    def receiveAutoBackup(self,result):
+        self._auto_active=False
+        if result.get('deferred'):self._watch_message='游戏运行中，自动备份等待游戏退出'
+        else:
+            self._watch_message=result['message'];self._games_cache=None;self.gamesChanged.emit()
+            if getattr(self,'_history_ident','')==result['id']:self._history=self.store.history(result['id']);self.changed.emit()
+            if self.store.settings.get('tray_notifications',True):
+                self.notificationReady.emit('自动备份失败' if result['error'] else '自动备份完成',result['message'],result['error'])
+        self.refreshWatchInfo();QTimer.singleShot(0,self.drainAutoBackups)
+
+    @Slot()
+    def retryAutoBackups(self):
+        self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
+
+    def shutdownWatch(self):
+        self._watch_closed=True;self.timer.stop();self._watch_pool.shutdown(wait=False,cancel_futures=True)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1119,6 +1202,7 @@ def main():
     bridge.input_feedback=InputFeedback(app,bridge,RESOURCES)
     app.aboutToQuit.connect(bridge.cancelMatching)
     app.aboutToQuit.connect(bridge.cancelEnrichment)
+    app.aboutToQuit.connect(bridge.shutdownWatch)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty('backend', bridge)
     engine.load(QUrl.fromLocalFile(str(RESOURCES / 'ui/Main.qml')))

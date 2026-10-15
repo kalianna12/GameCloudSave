@@ -134,7 +134,7 @@ ApplicationWindow {
         search.text="";searchQuery="";groupFilter="";seriesFilter=""
         if(mode==="tag") { libraryMode="all";search.text="#"+value;searchQuery=search.text.toLowerCase() }
         else { libraryMode=mode;librarySort=mode==="recent" ? "recent" : "name";if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
-        Qt.callLater(function() { if(win.homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() })
+        Qt.callLater(function() { win.focusFirstContent() })
     }
     onShownGamesChanged: if(libraryReady) syncLibrary()
     function syncLibrary() {
@@ -162,6 +162,7 @@ ApplicationWindow {
         snapshotPath.text = s.snapshots
         watchSwitch.checked=s.watch
         autoUpload.checked=s.watch_upload
+        autoKeep.value=s.auto_snapshot_keep || 5
         traySwitch.checked=s.close_to_tray; watchInterval.value=s.watch_interval
         settingsTabs.currentIndex=typeof page==="number" ? page : 0
         settingsDialog.open()
@@ -236,6 +237,7 @@ ApplicationWindow {
             Switch {
                 id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
                 onToggled: backend.saveSettings({watch:checked})
+                ToolTip.visible: hovered; ToolTip.text: backend.watchInfo.message
                 Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.accent; visible: watchControl.activeFocus }
             }
             AppButton { id: importControl; text: "导入游戏"; onClicked: win.openImport() }
@@ -346,6 +348,8 @@ ApplicationWindow {
             AppButton { visible: backend.matching; text: backend.matchProgress.cancelled ? "正在停止" : "停止查找"; enabled: !backend.matchProgress.cancelled; onClicked: backend.cancelMatching() }
             Rectangle { visible: !backend.busy; width: 6; height: 6; radius: 3; color: Theme.accent }
             Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
+            Label { objectName: "watchStatus"; visible: backend.settings.watch; text: backend.watchInfo.message; color: backend.watchInfo.failed ? Theme.accent : Theme.secondary; font.pixelSize: 11; Layout.minimumWidth: 0; Layout.maximumWidth: win.width<1100 ? 130 : 300; elide: Text.ElideRight; ToolTip.visible: watchStatusHover.hovered; ToolTip.text: text+"\n点击调整自动备份、上传和保留份数"; HoverHandler { id: watchStatusHover; cursorShape: Qt.PointingHandCursor } TapHandler { onTapped: win.openSettingsPage(1) } }
+            AppButton { visible: backend.watchInfo.failed>0; text: "重试自动备份/上传"; enabled: backend.settings.watch && !backend.watchInfo.working; onClicked: backend.retryAutoBackups() }
             Label { visible: backend.gamepadConnected; text: "A 查看  B 返回  X 收藏  Y 存档  Menu 启动"; color: Theme.secondary; font.pixelSize: 11 }
         }
     }
@@ -413,11 +417,12 @@ ApplicationWindow {
                 visible: settingsTabs.currentIndex===1; Layout.fillWidth: true; spacing: 10
                 Label { text: "本地备份目录" }
                 RowLayout { AppTextField { id: snapshotPath; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(snapshotPath.text); if(p) snapshotPath.text=p } } }
-                Switch { id: watchSwitch; text: "监听游戏启动与退出并备份" }
+                Switch { id: watchSwitch; text: "游戏退出后自动备份一次" }
                 CheckBox { id: traySwitch; text: "关闭主窗口时留在托盘"; checked: backend.settings.close_to_tray }
-                RowLayout { Label { text: "监听间隔（秒）"; Layout.fillWidth: true } CompactSpinBox { id: watchInterval; from: 5; to: 60; stepSize: 5; value: backend.settings.watch_interval } }
+                RowLayout { Label { text: "监听间隔（秒）"; Layout.fillWidth: true } CompactSpinBox { id: watchInterval; from: 2; to: 60; stepSize: 1; value: backend.settings.watch_interval } }
+                RowLayout { Label { text: "每款游戏本机自动备份保留份数"; Layout.fillWidth: true } CompactSpinBox { id: autoKeep; objectName: "autoSnapshotKeep"; from: 1; to: 100; value: backend.settings.auto_snapshot_keep || 5 } }
                 CheckBox { id: autoUpload; text: "自动备份后上传云端"; enabled: watchSwitch.checked }
-                Label { text: "自动备份需要在游戏设置中配置启动 EXE 和存档目录。上传失败会保留本地备份。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                Label { text: "运行期间只检查进程，确认退出后才备份并上传。选择存档目录后会从安装目录识别实际 EXE，无法识别时在游戏设置中指定。默认保留最近 5 份本机自动备份，手动备份不限制，云端不随此上限清理；上传失败保留本地并提示重试。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 AppButton { text: "设置云端连接与备份文件夹"; Layout.fillWidth: true; onClicked: win.openCloud() }
                 Label { text: backend.settings.cloud_folder ? "云端文件夹："+backend.settings.cloud_folder : "尚未设置云端，可先使用本地备份。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 Label { text: "传输超时、重试次数和按电脑分目录，可在云端窗口的传输选项中设置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
@@ -448,7 +453,7 @@ ApplicationWindow {
             AppButton { text: "保存本机设置"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
             onRejected: { coverSize=backend.settings.cover_size; columnCount=backend.settings.columns; gridGap=backend.settings.gap; installedOnly=backend.settings.installed_only; settingsDialog.close() }
             onAccepted: {
-                backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked,close_to_tray:traySwitch.checked,watch_interval:watchInterval.value}); saveLayout(); settingsDialog.close()
+                backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked,close_to_tray:traySwitch.checked,watch_interval:watchInterval.value,auto_snapshot_keep:autoKeep.value}); saveLayout(); settingsDialog.close()
             }
         }
     }
@@ -493,7 +498,7 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillWidth: true
                             Label { text: modelData.created_at; Layout.fillWidth: true; elide: Text.ElideRight }
-                            Label { text: (historyTabs.currentIndex===0 ? (modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; font.pixelSize: 12 }
+                            Label { text: (historyTabs.currentIndex===0 ? (modelData.event==="game_stop" || modelData.event==="game_start" ? "自动备份 · " : modelData.event==="manual" ? "手动备份 · " : "")+(modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; font.pixelSize: 12 }
                         }
                         AppButton { text: "备注"; visible: historyTabs.currentIndex===0; enabled: !backend.busy; onClicked: { noteDialog.snapshotId=modelData.id; snapshotNote.text=modelData.note || ""; noteDialog.open() } }
                         AppButton { text: historyTabs.currentIndex===0 ? "恢复" : "下载并恢复"; enabled: !backend.busy; onClicked: { restoreDialog.snapshotId=modelData.id || 0; restoreDialog.cloudRecord=historyTabs.currentIndex===1 ? modelData : ({}); restoreDialog.open() } }

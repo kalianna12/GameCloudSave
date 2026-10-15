@@ -79,7 +79,7 @@ class Store:
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
-                    'close_to_tray':True,'watch_interval':10}
+                    'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True})
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         if self.settings.get('cover_source')=='igdb':self.settings['cover_source']='steam'
@@ -97,6 +97,8 @@ class Store:
 
     def save_settings(self, values):
         values = dict(values)
+        if 'auto_snapshot_keep' in values and (type(values['auto_snapshot_keep'])!=int or not 1<=values['auto_snapshot_keep']<=100):
+            raise ValueError('自动存档保留份数须为 1 到 100，手动存档不受限制')
         password = values.pop('password', '')
         ai_key = values.pop('ai_key', '')
         values.pop('igdb_secret',None)
@@ -468,11 +470,12 @@ class Store:
             conn.commit()
             return core.get_game(conn, ident)
 
-    def backup(self, ident, event='manual'):
+    def backup(self, ident, event='manual', session_key=''):
         game = self.game(ident)
         core = self.core()
         with closing(core.connect_db()) as conn:
-            archive = core.snapshot_game(conn, game, event, '新版手动备份' if event == 'manual' else '自动备份')
+            archive = core.snapshot_game(conn, game, event, '新版手动备份' if event == 'manual' else '自动备份',
+                                         auto_keep=max(1,min(100,int(self.settings.get('auto_snapshot_keep',5)))),session_key=session_key)
         if not archive:
             raise ValueError('本地快照创建失败')
         return archive

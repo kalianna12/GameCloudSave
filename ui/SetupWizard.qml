@@ -22,7 +22,7 @@ ApplicationWindow {
         if(!skipped[3]) { v.dav_url=server.text;v.dav_user=user.text;v.password=password.text;v.cloud_folder=cloudFolder.text }
         if(!skipped[4]) { v.ai_enabled=aiEnabled.checked;v.ai_model=model.text;v.ai_key=apiKey.text }
         if(!skipped[5]) { v.cover_source=provider.currentValue;v.custom_cover_url=customUrl.text }
-        if(!skipped[6]) { v.watch=watch.checked;v.watch_upload=upload.checked;v.close_to_tray=tray.checked;v.watch_interval=interval.value;v.cover_size=size.value;v.columns=columns.value;v.gap=gap.value }
+        if(!skipped[6]) { v.watch=watch.checked;v.watch_upload=upload.checked;v.close_to_tray=tray.checked;v.watch_interval=interval.value;v.auto_snapshot_keep=autoKeep.value;v.cover_size=size.value;v.columns=columns.value;v.gap=gap.value }
         return v
     }
     function openWizard() {
@@ -31,7 +31,7 @@ ApplicationWindow {
         server.text=s.dav_url;user.text=s.dav_user;password.text="";cloudFolder.text=s.cloud_folder
         aiEnabled.checked=s.ai_enabled;model.text=s.ai_model;apiKey.text=""
         provider.currentIndex=Math.max(0,backend.coverProviders.findIndex(function(row) { return row.id===s.cover_source }));customUrl.text=s.custom_cover_url
-        watch.checked=s.watch;upload.checked=s.watch_upload;tray.checked=s.close_to_tray;interval.value=s.watch_interval;size.value=s.cover_size;columns.value=s.columns;gap.value=s.gap
+        watch.checked=s.watch;upload.checked=s.watch_upload;tray.checked=s.close_to_tray;interval.value=s.watch_interval;autoKeep.value=s.auto_snapshot_keep || 5;size.value=s.cover_size;columns.value=s.columns;gap.value=s.gap
         show();raise();requestActivate()
     }
     onVisibleChanged: if(!visible) { password.text="";apiKey.text="" }
@@ -121,9 +121,11 @@ ApplicationWindow {
                     }
                     ColumnLayout { visible: setup.step===6; Layout.fillWidth: true; spacing: 10
                         CheckBox { id: tray; text: "关闭主窗口后留在托盘" }
-                        CheckBox { id: watch; text: "监听游戏启动与退出并自动备份" }
+                        CheckBox { id: watch; text: "游戏退出后自动备份一次" }
                         CheckBox { id: upload; text: "自动备份后上传云端"; enabled: watch.checked }
-                        RowLayout { Label { text: "监听间隔（秒）"; Layout.fillWidth: true } CompactSpinBox { id: interval; from: 5; to: 60; stepSize: 5 } }
+                        RowLayout { Label { text: "监听间隔（秒）"; Layout.fillWidth: true } CompactSpinBox { id: interval; from: 2; to: 60; stepSize: 1 } }
+                        RowLayout { Label { text: "每款游戏本机自动备份保留份数"; Layout.fillWidth: true } CompactSpinBox { id: autoKeep; from: 1; to: 100 } }
+                        Label { text: "仅清理超出上限的本机自动备份；手动备份和云端存档保留。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                         RowLayout { Label { text: "封面大小"; Layout.fillWidth: true } CompactSpinBox { id: size; from: 196; to: 360; stepSize: 4 } }
                         RowLayout { Label { text: "每行数量（0 为自动）"; Layout.fillWidth: true } CompactSpinBox { id: columns; from: 0; to: 10 } }
                         RowLayout { Label { text: "卡片间隔"; Layout.fillWidth: true } CompactSpinBox { id: gap; from: 8; to: 48; stepSize: 2 } }

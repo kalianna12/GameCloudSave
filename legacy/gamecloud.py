@@ -23,7 +23,9 @@ import sqlite3
 import subprocess
 import sys
 import time
+import zipfile
 from dataclasses import dataclass
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -49,7 +51,7 @@ SAVE_EXTENSIONS = {
     ".bin",
 }
 
-AUTO_SNAPSHOT_KEEP = 3
+AUTO_SNAPSHOT_KEEP = 5
 MAX_RECENT_CLOUD = 12
 
 
@@ -104,7 +106,7 @@ def connect_db() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    with connect_db() as conn:
+    with closing(connect_db()) as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS games (
@@ -133,6 +135,10 @@ def init_db() -> None:
             );
             """
         )
+        if 'session_key' not in {row[1] for row in conn.execute('PRAGMA table_info(snapshots)')}:
+            conn.execute("ALTER TABLE snapshots ADD COLUMN session_key TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS snapshot_session ON snapshots(game_id,session_key) WHERE session_key<>''")
+        conn.commit()
 
 
 def _normalize_recent_list(value: Any) -> List[str]:
@@ -352,17 +358,24 @@ def prune_auto_snapshots(conn: sqlite3.Connection, game_id: int, keep: int = AUT
 
     for row in rows[keep:]:
         archive = Path(row["archive_path"])
+        game_name=conn.execute('SELECT name FROM games WHERE id=?',(game_id,)).fetchone()[0]
+        allowed=(get_snapshot_root()/slugify(game_name)).resolve()
+        if not archive.resolve().is_relative_to(allowed):continue
         try:
             if archive.exists():
                 archive.unlink()
-        except Exception:
-            pass
+        except OSError:
+            continue
         conn.execute("DELETE FROM snapshots WHERE id = ?", (row["id"],))
 
     conn.commit()
 
 
-def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str) -> Optional[Path]:
+def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str, auto_keep: int = AUTO_SNAPSHOT_KEEP, session_key: str = '') -> Optional[Path]:
+    if session_key:
+        existing=conn.execute('SELECT archive_path FROM snapshots WHERE game_id=? AND session_key=?',(game.id,session_key)).fetchone()
+        if existing and Path(existing['archive_path']).is_file():return Path(existing['archive_path'])
+        if existing:raise ValueError('这次自动备份文件已不在本机，请核对保留上限或备份目录')
     save_dir = Path(game.save_dir)
     if not save_dir.exists() or not save_dir.is_dir():
         print(f"[WARN] 存档目录不可用: {save_dir}")
@@ -376,11 +389,6 @@ def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str) -
     zip_name = f"{ts}__{slugify(event)}.zip"
     zip_path = target_dir / zip_name
 
-    tmp_base = target_dir / f"{ts}__tmp"
-    if tmp_base.exists():
-        shutil.rmtree(tmp_base, ignore_errors=True)
-    tmp_base.mkdir(parents=True, exist_ok=True)
-
     meta = {
         "game": game.name,
         "event": event,
@@ -388,26 +396,33 @@ def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str) -
         "created_at": now_iso(),
         "save_dir": str(save_dir),
     }
-    (tmp_base / "_snapshot_meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-
-    staging = tmp_base / "save"
-    shutil.copytree(save_dir, staging, dirs_exist_ok=True)
-    shutil.make_archive(str(zip_path.with_suffix("")), "zip", root_dir=tmp_base)
-    shutil.rmtree(tmp_base, ignore_errors=True)
+    temporary=zip_path.with_suffix('.part')
+    try:
+        with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED,compresslevel=1 if event in ('game_start','game_stop') else 6) as zipped:
+            zipped.writestr('_snapshot_meta.json',json.dumps(meta,ensure_ascii=False))
+            zipped.writestr('save/',b'')
+            for file in save_dir.rglob('*'):
+                if file.is_file():
+                    before=file.stat();zipped.write(file,'save/'+file.relative_to(save_dir).as_posix());after=file.stat()
+                    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('存档仍在写入，请稍后重试备份')
+                elif file.is_dir():zipped.writestr('save/'+file.relative_to(save_dir).as_posix()+'/',b'')
+        temporary.replace(zip_path)
+    except Exception:
+        temporary.unlink(missing_ok=True);raise
 
     file_hash = sha256_file(zip_path)
     conn.execute(
         """
-        INSERT INTO snapshots (game_id, created_at, event, note, archive_path, sha256, uploaded, cloud_ref)
-        VALUES (?, ?, ?, ?, ?, ?, 0, '')
+        INSERT INTO snapshots (game_id, created_at, event, note, archive_path, sha256, uploaded, cloud_ref, session_key)
+        VALUES (?, ?, ?, ?, ?, ?, 0, '', ?)
         """,
-        (game.id, now_iso(), event, note, str(zip_path), file_hash),
+        (game.id, now_iso(), event, note, str(zip_path), file_hash, session_key),
     )
     conn.commit()
 
     # Keep only the latest N auto snapshots; manual snapshots are unlimited.
     if event in {"game_start", "game_stop"}:
-        prune_auto_snapshots(conn, game.id, keep=AUTO_SNAPSHOT_KEEP)
+        prune_auto_snapshots(conn, game.id, keep=auto_keep)
 
     return zip_path
 

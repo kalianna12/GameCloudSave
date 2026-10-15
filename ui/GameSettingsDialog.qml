@@ -64,6 +64,8 @@ Dialog {
                     AppButton { text: "查找存档"; enabled: !backend.busy; onClicked: dialog.matchRequested(dialog.gameId) }
                     AppButton { text: "查看备份记录"; enabled: !backend.busy; onClicked: dialog.historyRequested(dialog.gameId) }
                 }
+                Label { text: backend.settings.watch ? "退出后自动备份已开启 · "+backend.watchInfo.message : "自动备份未开启，可在设置的备份页启用"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                RowLayout { Layout.fillWidth: true; AppTextField { id: monitor; Layout.fillWidth: true; placeholderText: "监听进程：自动识别，失败时指定实际游戏 EXE" } AppButton { text: "选择进程"; enabled: !backend.busy; onClicked: { var path=backend.pickFile("exe");if(path) monitor.text=path } } }
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
                 Label { text: "云端连接"; font.bold: true }
                 Label { text: "DAV 连接与备份文件夹由所有游戏共用，各游戏存档会分开保存。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
@@ -72,13 +74,12 @@ Dialog {
                 AppButton { text: "设置 DAV 连接与文件夹"; enabled: !backend.busy; onClicked: dialog.cloudRequested() }
                 Label { text: "AList 示例：http://服务器:5244/dav/，地址需以 /dav/ 结尾。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
-                AppButton { id: advanced; text: checked ? "收起启动与监听设置" : "启动与监听设置"; checkable: true }
+                AppButton { id: advanced; text: checked ? "收起启动与监听设置" : "启动与监听设置（无法识别进程时展开）"; checkable: true }
                 ColumnLayout {
                     visible: advanced.checked; Layout.fillWidth: true; spacing: 10
                     Label { text: "启动方式" }
                     AppComboBox { id: launchMode; model: ["直接启动","通过 Playnite 启动","通过游戏平台启动"]; Layout.fillWidth: true }
                     RowLayout { AppTextField { id: exe; Layout.fillWidth: true; placeholderText: "启动文件 EXE / BAT / CMD" } AppButton { text: "选择"; enabled: !backend.busy; onClicked: { var path=backend.pickFile("exe");if(path) exe.text=path } } }
-                    RowLayout { AppTextField { id: monitor; Layout.fillWidth: true; placeholderText: "实际游戏进程（直接启动 EXE 可留空）" } AppButton { text: "选择"; enabled: !backend.busy; onClicked: { var path=backend.pickFile("exe");if(path) monitor.text=path } } }
                     AppTextField { id: gameArguments; Layout.fillWidth: true; placeholderText: "启动参数（可选）" }
                     AppTextField { id: working; Layout.fillWidth: true; placeholderText: "工作目录（留空使用 EXE 所在目录）" }
                 }

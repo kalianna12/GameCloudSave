@@ -30,6 +30,12 @@ Rectangle {
     Rectangle {
         id: poster
         width: parent.width; height: card.width * 1.38; color: Theme.sidebar; clip: true
+        transform: [
+            Rotation { origin.x: poster.width/2; origin.y: poster.height/2; axis.x: 0; axis.y: 1; axis.z: 0; angle: coverEffect.yaw
+                Behavior on angle { enabled: coverEffect.available; SpringAnimation { spring: 3; damping: .34; epsilon: .02 } } },
+            Rotation { origin.x: poster.width/2; origin.y: poster.height/2; axis.x: 1; axis.y: 0; axis.z: 0; angle: coverEffect.pitch
+                Behavior on angle { enabled: coverEffect.available; SpringAnimation { spring: 3; damping: .34; epsilon: .02 } } }
+        ]
         Image {
             id: art
             objectName: "coverImage"
@@ -40,7 +46,9 @@ Rectangle {
             sourceSize: Qt.size(decodeWidth, 0)
         }
         Label { visible: !card.game.coverUrl || art.status===Image.Error; anchors.centerIn: parent; width: parent.width-26; text: card.game.name; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; color: Theme.secondary; font.pixelSize: 23; font.bold: true }
-        IconButton { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; width: 32; height: 32; iconName: "star"; accent: !!card.game.favorite; visible: card.game.favorite || hover.hovered; hint: card.game.favorite ? "取消收藏" : "收藏"; enabled: !backend.busy; onClicked: card.favoriteRequested() }
+        MouseArea { anchors.fill: parent; z: 1; enabled: !backend.busy; cursorShape: Qt.PointingHandCursor; onClicked: card.settingsRequested() }
+        CoverEffects { id: coverEffect; anchors.fill: parent; z: 5; controllerFocused: card.selected && backend.controllerMode; suspended: card.scrolling }
+        IconButton { z: 6; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; width: 32; height: 32; iconName: "star"; accent: !!card.game.favorite; visible: card.game.favorite || hover.hovered; hint: card.game.favorite ? "取消收藏" : "收藏"; enabled: !backend.busy; onClicked: card.favoriteRequested() }
     }
     ColumnLayout {
         x: 10; y: poster.height+10; width: parent.width-20

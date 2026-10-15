@@ -11,6 +11,43 @@ import zipfile
 
 PRODUCT='GameCloudSave'
 MARKER='gamecloud-install.json'
+REGISTRY_KEY=r'Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCloudSave'
+
+def registry_state():
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,REGISTRY_KEY) as entry:
+            return [winreg.EnumValue(entry,index) for index in range(winreg.QueryInfoKey(entry)[1])]
+    except FileNotFoundError:return None
+
+def restore_registry(values):
+    import winreg
+    try:winreg.DeleteKey(winreg.HKEY_CURRENT_USER,REGISTRY_KEY)
+    except FileNotFoundError:pass
+    if values is not None:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,REGISTRY_KEY) as entry:
+            for name,value,kind in values:winreg.SetValueEx(entry,name,0,kind,value)
+
+def installed_directory():
+    values={name:value for name,value,_ in registry_state() or []}
+    return values.get('InstallLocation','')
+
+def owned_path(root,name):
+    path=checked(root,name);parts=PurePosixPath(str(name).replace('\\','/')).parts
+    if not parts or any(part.casefold() in ('data','machines','test-data','snapshots') for part in parts) or path.suffix.casefold()=='.dpapi' or str(name).casefold()==MARKER:
+        raise ValueError('安装清单包含个人数据或无效文件，已停止操作')
+    return path
+
+def read_record(target):
+    try:record=json.loads((target/MARKER).read_text(encoding='utf-8'))
+    except (OSError,ValueError):raise ValueError('此目录不是有效安装目录；便携版请保留 data 后自行移除程序文件') from None
+    if not isinstance(record,dict) or record.get('product')!=PRODUCT or not isinstance(record.get('files'),list) or not record['files']:
+        raise ValueError('安装清单无效，已停止操作')
+    for name in record['files']:
+        if not isinstance(name,str):raise ValueError('安装清单无效')
+        owned_path(target,name)
+    if record.get('exe') not in record['files'] or 'Uninstall.exe' not in record['files']:raise ValueError('安装清单缺少程序记录')
+    return record
 def checked(root,relative):
     relative=str(relative).replace('\\','/')
     if PurePosixPath(relative).is_absolute() or '..' in PurePosixPath(relative).parts or ':' in relative:raise ValueError('安装包路径无效')
@@ -54,6 +91,8 @@ def register(root,exe,version):
     import winreg
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCloudSave') as registry:
         for name,value in {'DisplayName':PRODUCT,'DisplayVersion':version,'InstallLocation':str(root),'DisplayIcon':str(exe),'UninstallString':'"'+str(root/'Uninstall.exe')+'"','Publisher':'GameCloudSave contributors'}.items():winreg.SetValueEx(registry,name,0,winreg.REG_SZ,value)
+        winreg.SetValueEx(registry,'QuietUninstallString',0,winreg.REG_SZ,'"'+str(root/'Uninstall.exe')+'" --silent')
+        for name in ('NoModify','NoRepair'):winreg.SetValueEx(registry,name,0,winreg.REG_DWORD,1)
 def install(payload,target,desktop=None,start_menu=None,version='2.3',registry=True,progress=lambda value:None):
     target=Path(target).resolve()
     if target==Path(target.anchor) or target==Path.home().resolve():raise ValueError('请选择软件专用安装文件夹')
@@ -61,20 +100,27 @@ def install(payload,target,desktop=None,start_menu=None,version='2.3',registry=T
     if target.exists() and any(target.iterdir()):
         try:previous=json.loads((target/MARKER).read_text(encoding='utf-8'))
         except (OSError,ValueError):raise ValueError('该目录已有其他文件，请选择空目录或现有 GameCloudSave 安装目录') from None
-        if previous.get('product')!=PRODUCT:raise ValueError('安装目录不属于 GameCloudSave')
+        if not isinstance(previous,dict) or previous.get('product')!=PRODUCT:raise ValueError('安装目录不属于 GameCloudSave')
+        previous=read_record(target)
+    original_registry=registry_state() if registry else None
+    location=next((value for name,value,_ in original_registry or [] if name=='InstallLocation'),'')
+    if location and Path(location).resolve()!=target and (Path(location)/MARKER).is_file():
+        raise ValueError('已有安装位于 '+location+'，请选择原目录升级，或先卸载原安装')
     if running(target):raise ValueError('请先退出 GameCloudSave，包括托盘中的程序')
     target.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(dir=target.parent,prefix='gamecloud-stage-') as temporary:
         stage=Path(temporary)/'new';journal=Path(temporary)/'old';stage.mkdir();journal.mkdir()
         with zipfile.ZipFile(payload) as zipped:
-            for info in zipped.infolist():checked(stage,info.filename)
+            for info in zipped.infolist():
+                owned_path(stage,info.filename)
             if zipped.testzip():raise ValueError('安装包损坏')
             zipped.extractall(stage)
         files=[file.relative_to(stage).as_posix() for file in stage.rglob('*') if file.is_file()]
         exes=[name for name in files if name=='GameCloudSave.exe' or '/' not in name and name.startswith('GameCloudSave-V') and name.endswith('.exe')]
         if len(exes)!=1 or 'Uninstall.exe' not in files:raise ValueError('安装包缺少主程序或卸载程序')
         if any(name.startswith(('data/','machines/')) for name in files):raise ValueError('安装包不应包含用户数据')
-        target.mkdir(exist_ok=True);changed=[];new=[]
+        target.mkdir(exist_ok=True);changed=[];new=[];link_journal={}
+        marker_before=(target/MARKER).read_bytes() if (target/MARKER).exists() else None
         try:
             for index,name in enumerate(files):
                 destination=checked(target,name);source=checked(stage,name)
@@ -86,23 +132,32 @@ def install(payload,target,desktop=None,start_menu=None,version='2.3',registry=T
             exe=target/exes[0];links=[]
             for directory in (desktop,start_menu):
                 if directory:
-                    link=Path(directory)/'GameCloudSave.lnk';shortcut(link,exe);links.append(str(link))
-            old_exe=previous.get('exe','')
-            if old_exe and old_exe!=exes[0] and old_exe in previous.get('files',[]) and '/' not in old_exe and '\\' not in old_exe and old_exe.startswith('GameCloudSave-V') and old_exe.endswith('.exe'):
-                obsolete=checked(target,old_exe)
+                    link=Path(directory)/'GameCloudSave.lnk'
+                    link_journal[link]=link.read_bytes() if link.is_file() else None
+                    shortcut(link,exe);links.append(str(link))
+            for name in set(previous.get('files',[]))-set(files):
+                obsolete=owned_path(target,name)
                 if obsolete.is_file():
-                    shutil.copy2(obsolete,checked(journal,old_exe));changed.append(old_exe);obsolete.unlink()
-            record={'product':PRODUCT,'version':version,'exe':exes[0],'files':sorted(set(files+previous.get('files',[]))-{old_exe} if old_exe!=exes[0] else set(files+previous.get('files',[]))),'links':list(set(links+previous.get('links',[]))),'registered':registry}
+                    saved=checked(journal,name);saved.parent.mkdir(parents=True,exist_ok=True)
+                    shutil.copy2(obsolete,saved);changed.append(name);obsolete.unlink()
+            record={'product':PRODUCT,'version':version,'exe':exes[0],'files':sorted(files),'links':list(set(links+previous.get('links',[]))),'registered':registry}
             (target/MARKER).write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
             if registry:register(target,exe,version)
             progress(100);return exe
         except Exception:
             for name in new:checked(target,name).unlink(missing_ok=True)
-            for name in changed:shutil.copy2(checked(journal,name),checked(target,name))
+            for name in changed:
+                destination=checked(target,name);destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(checked(journal,name),destination)
+            for link,content in link_journal.items():
+                if content is None:link.unlink(missing_ok=True)
+                else:link.write_bytes(content)
+            if marker_before is None:(target/MARKER).unlink(missing_ok=True)
+            else:(target/MARKER).write_bytes(marker_before)
+            if registry:restore_registry(original_registry)
             raise
 def uninstall(target,progress=lambda value:None):
     target=Path(target).resolve()
-    record=json.loads((target/MARKER).read_text(encoding='utf-8'))
+    record=read_record(target)
     if record.get('product')!=PRODUCT or target==Path(target.anchor):raise ValueError('卸载目录无效')
     if running(target):raise ValueError('请先退出 GameCloudSave，包括托盘中的程序')
     files=[checked(target,name) for name in record['files']]
