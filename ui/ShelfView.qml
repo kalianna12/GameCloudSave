@@ -10,7 +10,7 @@ Item {
     property int currentRow: 0
     property bool controllerFocused: false
     readonly property real bookWidth: Math.max(120,Math.min(230,coverSize*.9))
-    readonly property real rowHeight: bookWidth*1.42+112
+    readonly property real rowHeight: bookWidth*1.42+130
     readonly property int selectedIndex: currentRow<groups.length ? groups[currentRow].items.findIndex(function(g) { return g.id===selectedId }) : -1
     signal selected(string ident)
     signal detailsRequested(var game)
@@ -64,14 +64,14 @@ Item {
                 IconButton { iconName: "arrow-right"; bare: true; width: 30; height: 28; hint: "向右翻页"; enabled: books.contentX+books.width<books.contentWidth-1; onClicked: books.contentX=Math.min(books.contentWidth-books.width,books.contentX+books.width*.9) }
             }
             Rectangle {
-                x: 0; y: cabinet.bookWidth*1.42+56; width: parent.width; height: 21; color: "#735035"
+                objectName: "shelfPlank"; x: 0; y: cabinet.bookWidth*1.42+56; width: parent.width; height: 38; color: "#735035"
                 gradient: Gradient { GradientStop { position: 0; color: "#a67c51" } GradientStop { position: .18; color: "#805836" } GradientStop { position: 1; color: "#493020" } }
                 Repeater { model: 5; Rectangle { required property int index; x: 0; y: 3+index*3; width: parent.width; height: 1; color: index%2 ? "#258b5d38" : "#30d5ac70" } }
                 Rectangle { anchors.top: parent.bottom; width: parent.width; height: 8; color: "#35000000" }
             }
             ListView {
                 id: books; objectName: "books-"+row.index
-                x: 18; y: 28; width: parent.width-36; height: parent.height-28
+                x: 18; y: 44; width: parent.width-36; height: parent.height-44
                 model: row.modelData.items; orientation: ListView.Horizontal; spacing: cabinet.spines ? 9 : 12
                 clip: true; cacheBuffer: 240; reuseItems: true
                 delegate: BookCover {

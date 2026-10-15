@@ -33,7 +33,8 @@ def steam_date(value):
 
 def vndb_fields(row):
     return {'release_date':release_date(row.get('released')),'release_date_source':'VNDB（首次发行）',
-            'metadata_url':'https://vndb.org/'+row['id'],'matched_name':row.get('title','')}
+            'metadata_url':'https://vndb.org/'+row['id'],'matched_name':row.get('title',''),
+            'background_url':next((s.get('url') for s in row.get('screenshots',[]) if s.get('url')),''),'background_source':'VNDB 截图'}
 
 def lookup(game):
     appid=str(game.get('steam_appid') or game.get('metadata_steam_appid') or '')
@@ -44,20 +45,23 @@ def lookup(game):
             raw=data['data'];date=steam_date(raw.get('release_date'))
             tags=normalize_tags([row.get('description','') for row in raw.get('genres',[])],vocabulary([]))[:MAX_TAGS]
             result={'release_date':date,'release_date_source':'Steam','tags':tags,'tags_source':'Steam','metadata_url':'https://store.steampowered.com/app/'+appid+'/',
-                    'matched_name':raw.get('name') or game['name']}
+                    'matched_name':raw.get('name') or game['name'],'background_url':raw.get('background_raw') or raw.get('background') or raw.get('header_image',''),'background_source':'Steam'}
         if result.get('release_date'):return result
     # The fast pass uses VNDB for known visual novels, including unreleased Steam entries.
     tags=normalize_tags(game.get('source_tags') or game.get('tags',[]),vocabulary([]))
     if game.get('category')!='视觉小说' and '视觉小说' not in tags:return result
     try:
         data=fetch('https://api.vndb.org/kana/vn',{'filters':['search','=',game['name'][:150]],
-            'fields':'title,alttitle,titles.title,titles.latin,aliases,released','results':5,'sort':'searchrank'})
+            'fields':'title,alttitle,titles.title,titles.latin,aliases,released,screenshots.url','results':5,'sort':'searchrank'})
     except Exception:
         if result:return result
         raise
     row=best_match(data.get('results',[]),[game['name']],threshold=.96)
     if not row:return result
-    return {**result,**vndb_fields(row)}
+    fields=vndb_fields(row)
+    if not fields.get('background_url'):
+        fields.pop('background_url',None);fields.pop('background_source',None)
+    return {**result,**fields}
 
 def complete(store,idents=None):
     """Fill missing dates/tags, cache read-only requests, persist once after all workers."""

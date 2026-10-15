@@ -285,7 +285,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
                 Item { Layout.fillWidth: win.width>=1250 }
-                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible || alternativeDesign; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppButton { id: layoutControl; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
                 AppButton { id: personalControl; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
                 Item { Layout.fillWidth: win.width<1250 }

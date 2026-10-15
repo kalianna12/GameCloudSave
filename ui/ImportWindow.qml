@@ -90,7 +90,7 @@ ApplicationWindow {
             spacing: 12
             Label { text: "即将导入 "+importer.pendingIds.length+" 款游戏。要一起查询缺失的资料和封面吗？"; Layout.fillWidth: true; wrapMode: Text.Wrap }
             CheckBox { id: enrich; objectName: "enrichAfterImport"; text: "导入后预览资料补全"; checked: true }
-            Label { text: enrich.checked ? "导入后查询发行日期、分类、标签、系列和缺失封面。查看预览，再决定应用哪些结果。" : "仅导入现有资料；以后可从侧栏“资料补全”查询。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+            Label { text: enrich.checked ? "查询日期、分类、标签、系列、封面与横幅，预览后应用。" : "仅导入现有资料；以后可从侧栏“资料补全”查询。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
             CheckBox { id: enrichAi; text: "DeepSeek 辅助补充缺失资料"; enabled: enrich.checked && backend.settings.has_ai_key; checked: backend.settings.has_ai_key }
             Label { visible: !backend.settings.has_ai_key; text: "没有 DeepSeek Key 也能使用资料库查询。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         }
@@ -98,7 +98,7 @@ ApplicationWindow {
             AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
             AppButton { text: enrich.checked ? "导入并查询" : "仅导入"; highlighted: true; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
             onRejected: importOptions.close()
-            onAccepted: { importOptions.close();backend.importSelected(importer.pendingIds,{preview:enrich.checked,dates:true,tags:true,covers:true,use_ai:enrichAi.checked && enrich.checked});if(enrich.checked) importer.hide() }
+            onAccepted: { importOptions.close();backend.importSelected(importer.pendingIds,{preview:enrich.checked,dates:true,tags:true,covers:true,backgrounds:true,use_ai:enrichAi.checked && enrich.checked});if(enrich.checked) importer.hide() }
         }
     }
 }

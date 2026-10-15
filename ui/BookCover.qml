@@ -53,7 +53,9 @@ Item {
     CoverEffects { id: effect; anchors.fill: parent; surface: jacket; identity: book.game.id || ""; tiltLimit: 12; controllerFocused: selected && backend.controllerMode; suspended: book.suspended }
     TapHandler { onTapped: book.chosen(); onDoubleTapped: book.opened() }
     TitleLabel {
-        objectName: "bookTitle"; x: 5; y: book.coverWidth*1.42+23; width: book.spines ? 60 : book.coverWidth
-        text: book.game.name || ""; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 12; scrolling: book.suspended
+        objectName: "bookTitle"; x: 5; y: book.coverWidth*1.42+17; width: book.spines ? 60 : book.coverWidth; height: 24
+        text: book.game.name || ""; elide: Text.ElideRight; color: book.selected ? "#fff1c8" : "#ecd5b6"; font.pixelSize: book.spines ? 10 : 11; scrolling: book.suspended
+        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+        background: Rectangle { radius: 3; color: book.selected ? "#5c432a" : "#3b291e"; border.color: book.selected ? Theme.accent : "#886848" }
     }
 }

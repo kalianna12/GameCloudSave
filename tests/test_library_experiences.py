@@ -87,6 +87,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             root.grabWindow().save(str(output/f'{design}-{width}.png'))
         root.setWidth(1440);root.setHeight(940);spin(180)
         if design=='shelf':
+            plank=next(item for item in walk(scene) if item.objectName()=='shelfPlank' and item.isVisible())
+            title=next(item for item in walk(scene) if item.objectName()=='bookTitle' and item.isVisible())
+            pt=title.mapToScene(QPointF(0,0));pb=plank.mapToScene(QPointF(0,0))
+            assert pb.y()<=pt.y() and pt.y()+title.height()<=pb.y()+plank.height(),(pt,pb,title.height(),plank.height())
             book=next(item for item in walk(scene) if item.metaObject().className().startswith('BookCover') and item.isVisible())
             p=book.mapToScene(QPointF(30,60));QTest.mouseMove(root,QPoint(round(p.x()),round(p.y())));spin(300)
             assert book.property('raised') and book.property('lift')==22
@@ -112,6 +116,19 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             app.sendEvent(root,event);spin(80);assert scene.property('zoom')>zoom
             import math
             assert math.isfinite(scene.property('panX')) and math.isfinite(scene.property('panY'))
+            invoke(scene,'celebrate');spin(150);assert scene.property('lucky')
+            root.grabWindow().save(str(output/'atlas-lucky.png'));spin(650);assert not scene.property('lucky')
+            experience.setProperty('groupMode','series');spin(200)
+            for group in data(scene,'graph')['labels']:
+                dated=[n['game'].get('release_date','') for n in data(scene,'graph')['nodes'] if n['group']==group['name'] and n['game'].get('release_date')]
+                assert dated==sorted(dated),dated
+            root.grabWindow().save(str(output/'atlas-series.png'))
+            experience.setProperty('groupMode','year');spin(200);root.grabWindow().save(str(output/'atlas-year.png'))
+            experience.setProperty('groupMode','category');spin(150)
+        if design=='cinema':
+            ribbon=scene.findChild(QObject,'cinemaCategories');chip=next(item for item in walk(ribbon) if item.inherits('QQuickAbstractButton') and item.isVisible() and item.property('modelData') is not None and data(item,'modelData').get('value'))
+            value=data(chip,'modelData')['value'];click(root,chip);assert experience.property('groupValue')==value
+            experience.setProperty('groupValue','');spin(150)
         # Dice samples the filtered group without repeats and never launches a game.
         experience.setProperty('groupMode','series');spin(80)
         groups=data(experience,'groups');group=next(g for g in groups if len(g['items'])>=2)

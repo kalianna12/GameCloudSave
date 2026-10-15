@@ -34,6 +34,7 @@ ApplicationWindow {
         if(nextScope!==queryScope) { stableRows.clear();selected=({});hasQuery=false;ownsQuery=false;queryScope=nextScope }
         scopeIds=ids || [];var values=options || {}
         dates.checked=values.dates!==false;tags.checked=values.tags!==false;covers.checked=values.covers!==false
+        backgrounds.checked=values.backgrounds!==false
         ai.checked=values.use_ai!==undefined ? values.use_ai && backend.settings.has_ai_key : backend.settings.has_ai_key
         show();raise();requestActivate()
         if(autoStart) Qt.callLater(startQuery)
@@ -41,7 +42,7 @@ ApplicationWindow {
     function startQuery() {
         if(backend.busy) return
         selected=({});stableRows.clear();hasQuery=true;ownsQuery=true
-        backend.previewEnrichment(scopeIds,{dates:dates.checked,tags:tags.checked,covers:covers.checked,use_ai:ai.checked})
+        backend.previewEnrichment(scopeIds,{dates:dates.checked,tags:tags.checked,covers:covers.checked,backgrounds:backgrounds.checked,use_ai:ai.checked})
     }
     function ids() { return backend.enrichmentResults.filter(function(row) { return !row.applied && window.selected[row.id] && Object.keys(row.fields).length>0 }).map(function(row) { return row.id }) }
     function selectCandidates() { var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=!row.applied && Object.keys(row.fields).length>0 });selected=next }
@@ -52,6 +53,7 @@ ApplicationWindow {
         if(fields.tags) output.push("标签："+fields.tags.join("、")+"（"+source.tags+"）")
         if(fields.series) output.push("系列："+fields.series+"（"+source.series+"）")
         if(fields.cover) output.push("封面："+(row.cover_name || row.name)+"（"+source.cover+"）")
+        if(fields.background) output.push("横幅："+source.background)
         return (row.applied ? "已处理所选补全\n" : "")+(output.length ? output.join("\n") : "已有资料完整，或暂未找到足够确定的补全结果")
     }
     Connections {
@@ -81,7 +83,8 @@ ApplicationWindow {
             CheckBox { id: dates; text: "发行日期"; checked: true; enabled: !backend.busy }
             CheckBox { id: tags; text: "分类、标签与系列"; checked: true; enabled: !backend.busy }
             CheckBox { id: covers; text: "缺失封面"; checked: true; enabled: !backend.busy }
-            CheckBox { id: ai; text: "DeepSeek 补充缺失资料"; enabled: !backend.busy && backend.settings.has_ai_key; checked: backend.settings.has_ai_key }
+            CheckBox { id: backgrounds; objectName: "enrichBackgrounds"; text: "横幅背景"; checked: true; enabled: !backend.busy }
+            CheckBox { id: ai; text: "DeepSeek 辅助识别与分类"; enabled: !backend.busy && backend.settings.has_ai_key; checked: backend.settings.has_ai_key }
         }
         RowLayout {
             Layout.fillWidth: true
@@ -90,7 +93,7 @@ ApplicationWindow {
         }
         RowLayout {
             Layout.fillWidth: true
-            AppButton { objectName: "startEnrichment"; text: window.hasQuery ? "重新查询缺失项" : "开始补全查询"; highlighted: true; enabled: !backend.busy && backend.games.length>0 && (dates.checked || tags.checked || covers.checked); onClicked: window.startQuery() }
+            AppButton { objectName: "startEnrichment"; text: window.hasQuery ? "重新查询缺失项" : "开始补全查询"; highlighted: true; enabled: !backend.busy && backend.games.length>0 && (dates.checked || tags.checked || covers.checked || backgrounds.checked); onClicked: window.startQuery() }
             AppButton { objectName: "stopEnrichment"; text: "停止查询"; visible: window.ownsQuery && backend.enrichmentProgress.running; enabled: backend.enrichmentProgress.phase.indexOf("正在停止")<0; onClicked: backend.cancelEnrichment() }
             Item { Layout.fillWidth: true }
             Label { text: window.hasQuery ? window.candidateCount+" 款可补全 / "+backend.enrichmentResults.length+" 款已处理" : "查询后在下方查看新增内容"; color: Theme.secondary }
@@ -122,10 +125,10 @@ ApplicationWindow {
                         Label { visible: record.notes.length>0; text: record.notes.join("；"); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                     }
                     ColumnLayout {
-                        visible: !!record.coverPreviewUrl || !!record.coverBeforeUrl
-                        Layout.preferredWidth: 86; Layout.fillWidth: false
-                        Image { source: record.coverPreviewUrl || record.coverBeforeUrl; asynchronous: true; fillMode: Image.PreserveAspectFit; Layout.preferredWidth: 86; Layout.preferredHeight: 120; sourceSize: Qt.size(258,360) }
-                        Label { text: record.coverPreviewUrl ? "待补全封面" : "保留已有封面"; font.pixelSize: 10; color: Theme.secondary; Layout.alignment: Qt.AlignHCenter }
+                        visible: !!record.backgroundPreviewUrl || !!record.coverPreviewUrl || !!record.coverBeforeUrl
+                        Layout.preferredWidth: record.backgroundPreviewUrl ? 160 : 86; Layout.fillWidth: false
+                        Image { source: record.backgroundPreviewUrl || record.coverPreviewUrl || record.coverBeforeUrl; asynchronous: true; fillMode: Image.PreserveAspectFit; Layout.preferredWidth: record.backgroundPreviewUrl ? 160 : 86; Layout.preferredHeight: record.backgroundPreviewUrl ? 90 : 120; sourceSize: Qt.size(480,360) }
+                        Label { text: record.backgroundPreviewUrl ? "待补全横幅" : record.coverPreviewUrl ? "待补全封面" : "保留已有封面"; font.pixelSize: 10; color: Theme.secondary; Layout.alignment: Qt.AlignHCenter }
                     }
                 }
             }

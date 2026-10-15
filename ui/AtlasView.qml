@@ -1,17 +1,24 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import "ExperienceData.js" as Data
 Item {
     id: atlas
     property var games: []
     property var game: ({})
     property string groupMode: "category"
-    property var graph: Data.atlas(games,groupMode)
+    property string order: "release_asc"
+    property var graph: Data.atlas(games,groupMode,order)
+    readonly property string layoutIdentity: graph.nodes.map(function(n) { return n.game.id+":"+n.x+":"+n.y }).join("|")
     property real zoom: 1
     property real panX: 0
     property real panY: 0
     property bool controllerFocused: false
+    property real selectionGlow: 0
+    property real luckyProgress: 1
+    readonly property bool lucky: luckyAnimation.running
+    property string lastSelectedId: ""
     readonly property bool compact: height<450
     readonly property var selectedNode: graph.nodes.find(function(n) { return n.game.id===game.id }) || null
     signal selected(string ident)
@@ -23,23 +30,28 @@ Item {
         panX=Math.max(-graph.width*zoom+80,Math.min(map.width-80,panX));panY=Math.max(-graph.height*zoom+80,Math.min(map.height-80,panY))
     }
     function fit() {
+        cameraX.stop();cameraY.stop()
         zoom=Math.max(.12,Math.min(1,(map.width-70)/graph.width,(map.height-60)/graph.height))
         panX=(map.width-graph.width*zoom)/2;panY=(map.height-graph.height*zoom)/2
     }
     function startView() {
-        zoom=Math.max(.58,Math.min(.85,(map.width-70)/graph.width))
+        cameraX.stop();cameraY.stop();zoom=.9
         var node=selectedNode || graph.nodes[0]
-        panX=node ? map.width/2-node.x*zoom : 0;panY=node ? map.height/2-node.y*zoom : 0
+        panX=node ? Math.min(32,map.width/2-node.x*zoom) : 0;panY=node ? Math.min(48,map.height/2-node.y*zoom) : 0
     }
     function zoomAt(factor,x,y) {
+        cameraX.stop();cameraY.stop()
         var next=Math.max(.12,Math.min(2.6,zoom*factor)),ratio=next/zoom
         panX=x-(x-panX)*ratio;panY=y-(y-panY)*ratio;zoom=next;limitPan()
     }
     function reveal() {
         if(!selectedNode) return
         var x=selectedNode.x*zoom+panX,y=selectedNode.y*zoom+panY
-        if(x<55 || x>map.width-55 || y<70 || y>map.height-70) { panX=map.width/2-selectedNode.x*zoom;panY=map.height/2-selectedNode.y*zoom }
+        if(x<80 || x>map.width-80 || y<100 || y>map.height-105) panTo(map.width/2-selectedNode.x*zoom,map.height/2-selectedNode.y*zoom)
     }
+    function panTo(x,y) { cameraX.stop();cameraY.stop();if(Theme.motion && visible && Window.window && Window.window.active) { cameraX.to=x;cameraY.to=y;cameraX.restart();cameraY.restart() } else { panX=x;panY=y } }
+    function firstGame() { return graph.nodes.length ? graph.nodes[0].game : null }
+    function celebrate() { if(!Theme.motion || !selectedNode) return;panTo(map.width/2-selectedNode.x*zoom,map.height/2-selectedNode.y*zoom);luckyAnimation.restart() }
     function navigate(direction) {
         if(!selectedNode) { if(games.length) selected(games[0].id);return true }
         var best=null,score=Infinity,origin=selectedNode
@@ -54,12 +66,21 @@ Item {
         selected(best.game.id);reveal();return true
     }
     function page(direction) { zoomAt(direction>0 ? 1.25 : .8,map.width/2,map.height/2) }
-    onGraphChanged: Qt.callLater(startView)
-    onGameChanged: { links.requestPaint();Qt.callLater(reveal) }
+    onLayoutIdentityChanged: Qt.callLater(startView)
+    onGraphChanged: links.requestPaint()
+    onGameChanged: { links.requestPaint();Qt.callLater(reveal);if(game.id!==lastSelectedId) { lastSelectedId=game.id || "";if(Theme.motion) selectedAnimation.restart() } }
     onZoomChanged: links.requestPaint()
     onPanXChanged: links.requestPaint()
     onPanYChanged: links.requestPaint()
     Component.onCompleted: Qt.callLater(startView)
+    NumberAnimation { id: cameraX; target: atlas; property: "panX"; duration: 260; easing.type: Easing.OutCubic }
+    NumberAnimation { id: cameraY; target: atlas; property: "panY"; duration: 260; easing.type: Easing.OutCubic }
+    NumberAnimation { id: selectedAnimation; target: atlas; property: "selectionGlow"; from: 1; to: 0; duration: 420 }
+    NumberAnimation { id: luckyAnimation; target: atlas; property: "luckyProgress"; from: 0; to: 1; duration: 620; easing.type: Easing.OutCubic }
+    onSelectionGlowChanged: links.requestPaint()
+    onVisibleChanged: if(!visible) { cameraX.stop();cameraY.stop();selectedAnimation.stop();luckyAnimation.stop() }
+    Connections { target: Theme; function onMotionChanged() { if(!Theme.motion) { cameraX.stop();cameraY.stop();selectedAnimation.stop();luckyAnimation.stop();atlas.selectionGlow=0;atlas.luckyProgress=1 } } }
+    Connections { target: atlas.Window.window; function onActiveChanged() { if(!atlas.Window.window.active) { cameraX.stop();cameraY.stop();selectedAnimation.stop();luckyAnimation.stop() } } }
     Item {
         id: map; objectName: "atlasMap"; anchors { top: parent.top; bottom: parent.bottom; left: parent.left; right: inspector.left; rightMargin: 16 } clip: true
         onWidthChanged: Qt.callLater(atlas.reveal)
@@ -83,7 +104,8 @@ Item {
                     var ax=edge.a.x*atlas.zoom+atlas.panX,ay=edge.a.y*atlas.zoom+atlas.panY,bx=edge.b.x*atlas.zoom+atlas.panX,by=edge.b.y*atlas.zoom+atlas.panY
                     if(Math.max(ax,bx)<0 || Math.min(ax,bx)>width || Math.max(ay,by)<0 || Math.min(ay,by)>height) return
                     var selected=edge.a.game.id===atlas.game.id || edge.b.game.id===atlas.game.id
-                    c.strokeStyle=selected ? Theme.accent : "#46607a";c.globalAlpha=selected ? .9 : .48;c.lineWidth=selected ? 1.8 : 1
+                    if(!selected && edge.a.group!==edge.b.group) return
+                    c.strokeStyle=selected ? "#ffe2a0" : edge.color;c.globalAlpha=selected ? .85 : .24;c.lineWidth=selected ? 1.8+atlas.selectionGlow : 1
                     c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke()
                 });c.globalAlpha=1
             }
@@ -92,9 +114,13 @@ Item {
             x: atlas.panX; y: atlas.panY; scale: atlas.zoom; transformOrigin: Item.TopLeft
             Repeater {
                 model: atlas.graph.labels
-                Label {
+                Item {
                     required property var modelData
-                    x: modelData.x-width/2; y: modelData.y; text: modelData.name+"  "+modelData.count; color: "#b7cde5"; font.pixelSize: 22; font.weight: Font.DemiBold
+                    readonly property color clusterColor: modelData.color
+                    x: modelData.x; y: modelData.y; width: modelData.width; height: modelData.height
+                    Rectangle { anchors.fill: parent; radius: 50; color: Qt.rgba(parent.clusterColor.r,parent.clusterColor.g,parent.clusterColor.b,.025) }
+                    Rectangle { x: 24; y: 50; width: Math.min(160,parent.width-48); height: 1; color: modelData.color; opacity: .4 }
+                    Label { x: 24; y: 16; width: parent.width-48; height: 30; text: modelData.name+"  "+modelData.count; color: modelData.color; font.pixelSize: 18; font.weight: Font.DemiBold; elide: Text.ElideRight }
                 }
             }
             Repeater {
@@ -102,28 +128,35 @@ Item {
                 Item {
                     id: node
                     required property var modelData
-                    x: modelData.x-38; y: modelData.y-50; width: 76; height: 110
+                    objectName: "atlasNode-"+modelData.game.id
+                    x: modelData.x-72; y: modelData.y-86; width: 144; height: 174
                     readonly property bool current: modelData.game.id===atlas.game.id
                     readonly property bool onScreen: (x+width)*atlas.zoom+atlas.panX>0 && x*atlas.zoom+atlas.panX<map.width && (y+height)*atlas.zoom+atlas.panY>0 && y*atlas.zoom+atlas.panY<map.height
                     visible: onScreen
-                    Rectangle { anchors.centerIn: parent; width: node.current ? 28 : 13; height: width; radius: width/2; color: node.current ? Theme.accent : "#87a6c8"; visible: atlas.zoom<.42 && !node.current }
+                    Rectangle { anchors.centerIn: parent; width: 13; height: width; radius: width/2; color: node.modelData.color; visible: atlas.zoom<.52 && !node.current }
                     Loader {
-                        anchors.fill: parent; active: node.onScreen && (atlas.zoom>=.42 || node.current)
+                        anchors.fill: parent; active: node.onScreen && (atlas.zoom>=.52 || node.current)
                         sourceComponent: Item {
-                            Rectangle { width: 76; height: 94; radius: 8; color: "#243d59"; border.color: node.current ? Theme.accent : "#6383a7"; border.width: node.current ? 3 : 1
+                            Rectangle { x: 21; y: -6; width: 102; height: 124; radius: 12; color: node.current ? "#18ffda84" : "transparent"; border.color: node.current ? "#ffe2a0" : "transparent"; border.width: 1; opacity: .5+atlas.selectionGlow*.5 }
+                            Rectangle { x: 28; width: 88; height: 112; radius: 8; color: "#243d59"; border.color: node.current ? "#ffe2a0" : node.modelData.color; border.width: node.current ? 3 : 2
+                                scale: nodeHover.hovered && Theme.motion ? 1.04 : 1;Behavior on scale { NumberAnimation { duration: Theme.motion ? 140 : 0 } }
                                 Image { anchors.fill: parent; anchors.margins: 5; source: node.modelData.game.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectCrop; sourceSize.width: 180 }
                                 Label { visible: !node.modelData.game.coverUrl; anchors.fill: parent; anchors.margins: 6; text: node.modelData.game.name; color: "white"; wrapMode: Text.Wrap; font.pixelSize: 13; maximumLineCount: 4; elide: Text.ElideRight }
                             }
-                            Label { x: -25; y: 100; width: 126; text: node.modelData.game.name; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13; color: node.current ? "#ffffff" : "#b9cee5" }
+                            TitleLabel { objectName: "atlasNodeTitle"; x: 0; y: 121; width: 144; height: 32; text: node.modelData.game.name; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: node.current ? "#fff0cd" : "#d2deed"; scrolling: drag.active }
+                            Label { y: 157; width: 144; height: 14; text: node.modelData.game.release_date || "日期未知"; color: node.modelData.color; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 10 }
                         }
                     }
+                    Rectangle { visible: node.current && atlas.lucky; x: 72-width/2; y: 54-height/2; width: 90+atlas.luckyProgress*110; height: width; radius: width/2; color: "transparent"; border.color: "#ffe2a0"; border.width: 3; opacity: 1-atlas.luckyProgress }
+                    Repeater { model: node.current && atlas.lucky ? 8 : 0; Rectangle { required property int index; readonly property real angle: index*Math.PI/4; x: 72+Math.cos(angle)*(60+atlas.luckyProgress*65)-2; y: 54+Math.sin(angle)*(60+atlas.luckyProgress*65)-2; width: 4; height: 4; rotation: 45; color: "#ffdfa0"; opacity: 1-atlas.luckyProgress } }
                     TapHandler { gesturePolicy: TapHandler.DragThreshold; onTapped: atlas.selected(node.modelData.game.id);onDoubleTapped: atlas.detailsRequested(node.modelData.game) }
-                    HoverHandler { cursorShape: Qt.PointingHandCursor; enabled: !backend.controllerMode }
+                    HoverHandler { id: nodeHover; cursorShape: Qt.PointingHandCursor; enabled: !backend.controllerMode }
                 }
             }
         }
         DragHandler {
             id: drag; objectName: "atlasDrag"; target: null; acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onActiveChanged: if(active) { cameraX.stop();cameraY.stop() }
             onTranslationChanged: function(delta) { atlas.panX+=delta.x;atlas.panY+=delta.y;atlas.limitPan() }
         }
         WheelHandler { objectName: "atlasZoom"; target: null; onWheel: function(event) { atlas.zoomAt(Math.pow(1.15,event.angleDelta.y/120),event.x,event.y);event.accepted=true } }
@@ -134,10 +167,12 @@ Item {
             AppButton { objectName: "atlasZoomIn"; text: "+"; width: 38; onClicked: atlas.zoomAt(1.25,map.width/2,map.height/2) }
             Label { text: Math.round(atlas.zoom*100)+"%"; color: "#b9cee5"; anchors.verticalCenter: parent.verticalCenter }
         }
-        Label { visible: atlas.groupMode!=="all"; anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 14; text: "连线：同"+({series:"系列",category:"类别",tags:"标签"}[atlas.groupMode] || ""); color: "#b9cee5"; font.pixelSize: 12 }
+        Label { visible: atlas.groupMode!=="all"; anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 14; text: "连线：同"+({series:"系列",category:"类别",tags:"标签",year:"发行年份"}[atlas.groupMode] || ""); color: "#b9cee5"; font.pixelSize: 12 }
     }
     ColumnLayout {
         id: inspector; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; width: atlas.width<900 ? 210 : 260; spacing: atlas.compact ? 7 : 12
+        Label { visible: atlas.lucky; text: "✦ 幸运之选"; color: "#ffe2a0"; font.pixelSize: 18; font.weight: Font.DemiBold }
+        Label { visible: !!atlas.selectedNode && !atlas.lucky; text: atlas.selectedNode ? atlas.selectedNode.group : ""; color: atlas.selectedNode ? atlas.selectedNode.color : Theme.secondary; font.pixelSize: 14 }
         Image { Layout.fillWidth: true; Layout.fillHeight: true; Layout.maximumHeight: atlas.compact ? 150 : 330; Layout.minimumHeight: atlas.compact ? 70 : 100; source: atlas.game.coverHighUrl || atlas.game.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectFit; sourceSize.width: 480 }
         Label { text: atlas.game.name || "没有匹配的游戏"; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: atlas.compact ? 2 : 3; elide: Text.ElideRight; color: Theme.text; font.pixelSize: atlas.compact ? 18 : 21; font.weight: Font.DemiBold }
         Label { text: [atlas.game.series,atlas.game.release_date].filter(Boolean).join("\n"); visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }

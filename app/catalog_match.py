@@ -16,6 +16,18 @@ def simplified(value):
             if function(0x0804,0x02000000,value,-1,buffer,length):return buffer.value
     return value
 
+@lru_cache(maxsize=2048)
+def traditional(value):
+    if os.name=='nt':
+        function=ctypes.windll.kernel32.LCMapStringW
+        function.argtypes=[ctypes.c_uint32,ctypes.c_uint32,ctypes.c_wchar_p,ctypes.c_int,ctypes.c_wchar_p,ctypes.c_int]
+        function.restype=ctypes.c_int
+        length=function(0x0404,0x04000000,value,-1,None,0)
+        if length:
+            buffer=ctypes.create_unicode_buffer(length)
+            if function(0x0404,0x04000000,value,-1,buffer,length):return buffer.value
+    return value
+
 def title_key(value):
     value=simplified(unicodedata.normalize('NFKC',value).casefold())
     # Standalone Roman installment numbers are equivalent to Arabic numbers.
@@ -83,4 +95,9 @@ def search_queries(names):
         cjk=re.match(r'[\u3400-\u9fff]{8,}',name)
         if cjk:fragment=cjk[0][:6]
         if fragment and fragment not in result:result.append(fragment)
-    return result[:5]
+    # Keep script variants for querying: normalization used for *matching* must
+    # not deduplicate 愛/爱 before a database has had a chance to search them.
+    for name in names[:2]:
+        for variant in (traditional(name),simplified(name)):
+            if variant and variant not in result:result.append(variant)
+    return result[:8]

@@ -41,7 +41,7 @@ def search(store,query,provider='steam',use_ai=False,cancel=None):
             query=identified.get('english_name') or query
     from services import read_json,write_json,protect
     cache=read_json(store.profile/'cover-search.json',{})
-    cache_key='titles-v2:'+provider+':'+key(query)
+    cache_key='titles-v3-artwork:'+provider+':'+key(query)
     if cancel and cancel.is_set():return []
     if provider=='custom':cache_key+=':'+hashlib.sha256(store.settings.get('custom_cover_url','').encode()).hexdigest()[:16]
     cached=cache.get(cache_key)
@@ -74,11 +74,12 @@ def search(store,query,provider='steam',use_ai=False,cancel=None):
             for item in parser.results:
                 appid=item['appid'];rows.append({'id':'steam:'+appid,'name':item['name'],'provider':'steam','appid':appid,'image':'https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/'+appid+'/library_600x900.jpg','fallback':'','page':'https://store.steampowered.com/app/'+appid+'/'})
     elif provider=='vndb':
-        data=fetch_json('https://api.vndb.org/kana/vn',json.dumps({'filters':['search','=',query],'fields':'title,alttitle,titles.title,titles.latin,aliases,released,image.url,image.thumbnail','results':20,'sort':'searchrank'}).encode(),{'Content-Type':'application/json'})
+        data=fetch_json('https://api.vndb.org/kana/vn',json.dumps({'filters':['search','=',query],'fields':'title,alttitle,titles.title,titles.latin,aliases,released,image.url,image.thumbnail,screenshots.url','results':20,'sort':'searchrank'}).encode(),{'Content-Type':'application/json'})
         for item in data.get('results',[]):
             image=item.get('image') or {}
             rows.append({'id':'vndb:'+item['id'],'name':item['title'],'aliases':titles(item),'released':item.get('released',''),
-                         'provider':'vndb','image':image.get('url',''),'fallback':image.get('thumbnail',''),'page':'https://vndb.org/'+item['id']})
+                         'provider':'vndb','image':image.get('url',''),'fallback':image.get('thumbnail',''),'page':'https://vndb.org/'+item['id'],
+                         'background_url':next((s.get('url') for s in item.get('screenshots',[]) if s.get('url')),'')})
     elif provider=='custom':
         from urllib.parse import quote
         endpoint=store.settings.get('custom_cover_url','')

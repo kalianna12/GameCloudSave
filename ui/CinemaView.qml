@@ -7,6 +7,8 @@ Item {
     property var games: []
     property var game: ({})
     property var media: ({})
+    property var categories: []
+    property string categoryValue: ""
     property bool controllerFocused: false
     property bool launching: false
     property bool playing: false
@@ -16,6 +18,7 @@ Item {
     readonly property int selectedIndex: games.findIndex(function(g) { return g.id===game.id })
     readonly property bool canPlay: !!media.videoUrl && !launching && visible && !!Window.window && Window.window.visible && Window.window.active && backend.watchInfo.running===0
     signal selected(string ident)
+    signal categorySelected(string value)
     signal detailsRequested(var game)
     signal launchRequested(var game)
     signal cloudRequested(var game)
@@ -33,19 +36,18 @@ Item {
     function move(step) { if(games.length) selected(games[Math.max(0,Math.min(games.length-1,selectedIndex+step))].id) }
     function page(step) { move(step*Math.max(1,Math.floor(film.width/124))) }
     function reveal() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) }
-    onGameChanged: { playing=false;videoFailed=false;Qt.callLater(function() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) });if(Theme.motion) reveal.restart() }
+    onGameChanged: { playing=false;videoFailed=false;Qt.callLater(function() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) }) }
     onMediaChanged: { playing=false;videoFailed=false }
     onCanPlayChanged: { if(!canPlay) playing=false;syncVideo() }
     onVisibleChanged: if(!visible) playing=false
     Rectangle { anchors.fill: parent; color: "#100e14"; radius: 8 }
-    Image {
+    CinemaBackdrop {
         id: backdrop; anchors.fill: parent
-        source: cinema.game.backgroundUrl || cinema.media.backgroundUrl || ""; asynchronous: true; cache: true
-        fillMode: Image.PreserveAspectCrop; sourceSize.width: 1600; opacity: .8
+        source: cinema.game.backgroundUrl || cinema.media.backgroundUrl || ""
+        preloadSources: [-1,1,2].map(function(step) { var game=cinema.games[cinema.selectedIndex+step] || {};return game.backgroundUrl || (backend.libraryMedia[game.id] || {}).backgroundUrl || "" }).filter(Boolean)
     }
-    NumberAnimation { id: reveal; target: backdrop; property: "opacity"; from: .3; to: .8; duration: 240 }
     Image {
-        visible: !backdrop.source.toString() || backdrop.status===Image.Error
+        visible: !backdrop.ready
         anchors { top: parent.top; bottom: filmBand.top; right: parent.right; rightMargin: 30; topMargin: 24; bottomMargin: 24 }
         width: Math.min(parent.width*.44,height/.72); source: cinema.game.coverHighUrl || cinema.game.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectFit; sourceSize.width: 900
     }
@@ -86,11 +88,22 @@ Item {
         Label { visible: cinema.videoFailed; text: "预告片无法播放，可更新媒体后重试"; color: "#e4c7aa"; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12 }
     }
     Item {
-        id: filmBand; objectName: "cinemaFilmBand"; x: 0; width: parent.width; height: Math.min(170,Math.max(120,cinema.height*.3)); anchors.bottom: parent.bottom
+        id: filmBand; objectName: "cinemaFilmBand"; x: 0; width: parent.width; height: Math.min(208,Math.max(150,cinema.height*.34)); anchors.bottom: parent.bottom
         Rectangle { anchors.fill: parent; color: "#80100e14" }
-        Repeater { model: Math.ceil(filmBand.width/20); Rectangle { required property int index; x: index*20+5; y: 6; width: 8; height: 5; radius: 1; color: "#65516c" } }
         ListView {
-            id: film; objectName: "cinemaFilmstrip"; x: 18; y: 24; width: parent.width-36; height: parent.height-48
+            id: categoryFilm; objectName: "cinemaCategories"; x: 18; y: 0; width: parent.width-36; height: 34; orientation: ListView.Horizontal; spacing: 16; clip: true
+            model: [{name:"全部",value:"",count:0}].concat(cinema.categories.map(function(g) { return {name:g.name,value:g.name,count:g.items.length} }))
+            delegate: AbstractButton {
+                required property var modelData
+                width: label.implicitWidth+8; height: 32; Accessible.name: modelData.name; hoverEnabled: !backend.controllerMode
+                contentItem: Label { id: label; text: modelData.name+(modelData.count ? " "+modelData.count : ""); color: cinema.categoryValue===modelData.value ? "#ffe2a0" : "#beb0c8"; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter }
+                background: Item { Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: "#ffe2a0"; visible: cinema.categoryValue===modelData.value } }
+                onClicked: cinema.categorySelected(modelData.value)
+            }
+        }
+        Repeater { model: Math.ceil(filmBand.width/20); Rectangle { required property int index; x: index*20+5; y: 40; width: 8; height: 5; radius: 1; color: "#65516c" } }
+        ListView {
+            id: film; objectName: "cinemaFilmstrip"; x: 18; y: 54; width: parent.width-36; height: parent.height-78
             model: cinema.games; orientation: ListView.Horizontal; spacing: 12; clip: true; reuseItems: true; cacheBuffer: 240
             delegate: Item {
                 required property var modelData; required property int index

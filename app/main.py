@@ -172,6 +172,7 @@ class Bridge(QObject):
         if row is not None:
             row=dict(row)
             row['coverPreviewUrl']=QUrl.fromLocalFile(row['fields']['cover']).toString() if row['fields'].get('cover') else ''
+            row['backgroundPreviewUrl']=QUrl.fromLocalFile(row['fields']['background']).toString() if row['fields'].get('background') else ''
             old=row.get('before_cover','')
             row['coverBeforeUrl']=old if old.startswith(('http://','https://')) else QUrl.fromLocalFile(old).toString() if old else ''
             position=next((i for i,item in enumerate(self._enrichment) if item['id']==row['id']),None)
@@ -456,7 +457,7 @@ class Bridge(QObject):
             self.progressChanged.emit()
             self.matchesChanged.emit()
         if action in ('import','import-selected','library-edit','enrichment-apply','classification-apply','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
-            if action in ('import','import-selected'):self._media_loaded=False
+            if action in ('import','import-selected','enrichment-apply'):self._media_loaded=False
             self._games_cache=None
             self.gamesChanged.emit()
             if action=='import-selected':

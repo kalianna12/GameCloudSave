@@ -87,6 +87,16 @@ class CatalogRetryTests(unittest.TestCase):
         with patch('cover_sources.fetch_json',return_value=data):rows=search(self.store,'美少女万华镜异闻 雪女','vndb')
         self.assertEqual(rows[0]['score'],1);self.assertEqual(rows[0]['released'],'2024-04-26')
         self.assertEqual(rows[0]['image'],'') # A missing image must not hide available metadata.
+    def test_japanese_title_with_simplified_character_gets_script_retry(self):
+        self.store.games[0].update(name='真爱の百合は赤く染まる',category='视觉小说',tags=['视觉小说'])
+        record={'id':'vndb:v26232','name':'Manakashi no Yuri wa Akaku Somaru','aliases':['真愛の百合は赤く染まる'],'released':'2019-11-08','provider':'vndb','score':0,'image':'','page':'https://vndb.org/v26232'}
+        queries=[]
+        def search(store,name,provider,*args):
+            queries.append((name,provider));return [record] if name=='真愛の百合は赤く染まる' and provider=='vndb' else []
+        with patch('library_metadata.lookup',return_value={}),patch('cover_sources.search',side_effect=search):row=self.run_preview()['rows'][0]
+        self.assertIn(('真愛の百合は赤く染まる','vndb'),queries)
+        self.assertEqual(row['fields']['release_date'],'2019-11-08')
+        self.assertEqual(self.store.games[0]['name'],'真爱の百合は赤く染まる')
     def test_cancelling_first_pass_does_not_start_retry(self):
         cancel=threading.Event()
         def metadata(game):cancel.set();return {}
