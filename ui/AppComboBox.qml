@@ -39,7 +39,7 @@ C.ComboBox {
         text: "▾"; font.pixelSize: 14; color: Theme.secondary
     }
     background: Rectangle {
-        radius: 9; color: control.hovered ? Theme.hover : control.quiet ? "transparent" : Theme.surface
+        radius: Theme.controlRadius; color: control.hovered ? Theme.hover : control.quiet ? "transparent" : Theme.surface
         border.color: control.activeFocus ? Theme.accent : control.quiet ? "transparent" : Theme.outline
         border.width: control.activeFocus ? 2 : 1
         opacity: control.enabled ? 1 : .6

@@ -70,12 +70,12 @@ ApplicationWindow {
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 5
                 Label { text: "资料补全"; font.pixelSize: 28; font.bold: true }
-                Label { text: window.scopeIds.length ? "为所选 "+window.scopeIds.length+" 款游戏补齐资料和缺失封面" : "为全部游戏补齐资料和缺失封面"; color: Theme.secondary }
+                Label { text: window.scopeIds.length ? "已选 "+window.scopeIds.length+" 款游戏" : "全部游戏"; color: Theme.secondary }
             }
             Item { Layout.fillWidth: true }
             AppButton { objectName: "enrichmentClose"; text: "关闭"; onClicked: window.close() }
         }
-        Label { text: "已有资料和封面保留。先查询并查看预览，再选择要应用的游戏。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Label { text: "只补缺失内容，查询后预览。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         Flow {
             Layout.fillWidth: true; spacing: 12
             CheckBox { id: dates; text: "发行日期"; checked: true; enabled: !backend.busy }
@@ -85,7 +85,7 @@ ApplicationWindow {
         }
         RowLayout {
             Layout.fillWidth: true
-            Label { text: backend.settings.has_ai_key ? "资料库优先，DeepSeek 只补充缺失的分类、标签和系列。" : "尚未设置 DeepSeek Key，仍可使用资料库查询。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12 }
+            Label { visible: !backend.settings.has_ai_key; text: "未设置 DeepSeek Key"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12 }
             AppButton { text: "DeepSeek 设置"; enabled: !backend.busy; onClicked: aiSettings.openSettings() }
         }
         RowLayout {

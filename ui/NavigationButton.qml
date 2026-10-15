@@ -9,7 +9,7 @@ AbstractButton {
     hoverEnabled: !backend.controllerMode
     Accessible.name: text
     background: Rectangle {
-        radius: 10
+        radius: Theme.radius
         color: control.selected ? Theme.selection : control.hovered ? Theme.hover : "transparent"
         border.color: control.activeFocus ? Theme.accent : "transparent"
         Rectangle { x: 0; anchors.verticalCenter: parent.verticalCenter; width: 3; height: 18; radius: 1.5; color: Theme.accent; visible: control.selected }

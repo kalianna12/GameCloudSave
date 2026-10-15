@@ -60,8 +60,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             AppButton { text: "应用所选分类"; highlighted: true; enabled: !backend.busy && Object.keys(manager.selected).length>0; onClicked: manager.applySelected() }
         }
-        Label { text: "Steam / Playnite 标签优先，规范别名后最多 6 个；DeepSeek 只补缺失标签，最多 3 个，预览后应用。首页风格行至少需 3 款游戏；全部标签可在“按标签浏览”查看。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
-        Label { text: "规范词库："+backend.tagVocabulary.join("、"); color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11 }
+        Label { text: "建议仅补缺失内容，应用前可修改。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         ListView { id: list; Layout.fillWidth: true; Layout.fillHeight: true; model: backend.organizerResults; clip: true; spacing: 3
             delegate: ItemDelegate { required property var modelData; width: ListView.view.width; height: 78
                 contentItem: RowLayout {

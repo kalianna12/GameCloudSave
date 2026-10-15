@@ -13,7 +13,9 @@ QtObject {
     readonly property color onAccent: palette.onAccent || "#10200a"
     readonly property bool dark: palette.dark !== false
     readonly property bool motion: palette.motion !== false
-    readonly property color outline: Qt.rgba(border.r,border.g,border.b,.48)
+    readonly property color outline: Qt.rgba(border.r,border.g,border.b,palette.outlineOpacity || .48)
+    readonly property int radius: palette.radius || 10
+    readonly property int controlRadius: Math.max(3,radius-1)
     readonly property color selection: Qt.rgba(accent.r,accent.g,accent.b,dark ? .12 : .1)
     readonly property int cardFooterHeight: 90
     readonly property real coverAspect: 1.38

@@ -13,7 +13,7 @@ Rectangle {
     signal cloudRequested()
     signal removeRequested()
     signal favoriteRequested()
-    radius: 10
+    radius: Theme.radius
     color: hover.hovered && !scrolling ? Qt.lighter(Theme.surface,1.08) : Theme.surface
     border.color: selected ? Theme.accent : hover.hovered && !scrolling ? Theme.outline : "transparent"
     border.width: selected ? 3 : 1
@@ -51,13 +51,13 @@ Rectangle {
         CoverEffects { id: coverEffect; anchors.fill: parent; z: 5; surface: poster; identity: card.game.id || ""; controllerFocused: card.selected && backend.controllerMode; suspended: card.scrolling }
         IconButton { z: 6; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; width: 32; height: 32; iconName: "star"; overArtwork: true; accent: !!card.game.favorite; visible: card.game.favorite || hover.hovered; hint: card.game.favorite ? "取消收藏" : "收藏"; enabled: !backend.busy; onClicked: card.favoriteRequested() }
     }
-    ColumnLayout {
+    Item {
+        height: 82
         x: 10; y: coverArea.height+8; width: parent.width-20
-        spacing: 6
-        Label { objectName: "gameTitle"; text: card.game.name; Layout.fillWidth: true; Layout.preferredHeight: 32; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 13; font.weight: Font.DemiBold; ToolTip.visible: hover.hovered && !card.scrolling; ToolTip.delay: 800; ToolTip.text: text }
+        TitleLabel { objectName: "gameTitle"; scrolling: card.scrolling; text: card.game.name; width: parent.width; height: 32; maximumLineCount: 2; wrapMode: Text.Wrap; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 13; font.weight: Font.DemiBold; }
         RowLayout {
             objectName: "gameActions"
-            Layout.fillWidth: true; spacing: 0
+            y: 38; width: card.width-20; height: 34; spacing: 0
             Repeater {
                 model: ["play","settings","cloud","delete"]
                 Item {

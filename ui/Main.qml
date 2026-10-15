@@ -20,6 +20,12 @@ ApplicationWindow {
     property int coverSize: backend.settings.cover_size
     property int columnCount: backend.settings.columns
     property int gridGap: backend.settings.gap
+    property int homeCoverSize: backend.settings.home_cover_size || 176
+    property int homeGap: backend.settings.home_gap || 14
+    property bool homeRecentPreview: backend.settings.home_recent_preview !== false
+    readonly property string libraryDesign: backend.settings.library_design || "classic"
+    readonly property bool alternativeDesign: libraryDesign!=="classic"
+    onLibraryDesignChanged: if(libraryReady) Qt.callLater(function() { home.resetSelection();gridScroll.stop();grid.currentIndex=grid.count ? 0 : -1;grid.contentY=0 })
     property bool installedOnly: backend.settings.installed_only
     property string searchQuery: ""
     property string platformFilter: "all"
@@ -39,15 +45,15 @@ ApplicationWindow {
         navigationHistory=navigationHistory.slice(0,-1)
         searchDelay.stop();search.text=previous.search;searchQuery=previous.search;searchDelay.stop()
         libraryMode=previous.mode;librarySort=previous.sort || (previous.mode==="recent" ? "recent" : "name");groupFilter=previous.category;seriesFilter=previous.series
-        Qt.callLater(function() { if(win.homeVisible) home.restorePosition(previous.y);else { grid.currentIndex=Math.min(grid.count-1,previous.gridIndex || 0);grid.contentY=previous.gridY || 0;grid.forceActiveFocus() } })
+        Qt.callLater(function() { if(win.alternativeDesign) win.focusContent();else if(win.homeVisible) home.restorePosition(previous.y);else { grid.currentIndex=Math.min(grid.count-1,previous.gridIndex || 0);grid.contentY=previous.gridY || 0;grid.forceActiveFocus() } })
     }
     function libraryFocus() {
         var item=activeFocusItem
-        while(item) { if(item===home || item===grid) return true;item=item.parent }
+        while(item) { if(item===home || item===grid || item===experienceLoader.item) return true;item=item.parent }
         return !activeFocusItem || activeFocusItem===contentItem
     }
-    function focusContent() { if(homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() }
-    function focusFirstContent() { if(homeVisible) home.focusFirst();else if(grid.count) grid.navigateFocus(0);else grid.forceActiveFocus() }
+    function focusContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusContent();else if(homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() }
+    function focusFirstContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusFirst();else if(homeVisible) home.focusFirst();else if(grid.count) grid.navigateFocus(0);else grid.forceActiveFocus() }
     function previewSidebar(index) {
         var modes=["home","all","recent","favorites","series"]
         if(index<0 || index>=modes.length) return
@@ -62,7 +68,8 @@ ApplicationWindow {
     }
     function controllerInput(command) {
         if(!win.active || backend.popupActive()) return false
-        if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else home.forceActiveFocus();return true }
+        if(launchTransition.running) { if(command==="back") launchTransition.cancel();return true }
+        if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
         var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
         var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
@@ -91,14 +98,21 @@ ApplicationWindow {
             }
             return true
         }
-        if(command==="next" || command==="previous") return false
+        if(alternativeDesign && experienceLoader.item) return experienceLoader.item.controllerInput(command)
+        if(command==="next" || command==="previous") {
+            if(!libraryFocus()) focusContent()
+            var pageDirection=command==="next" ? 1 : -1
+            if(homeVisible && home.currentShelf()) home.currentShelf().pageSelection(pageDirection)
+            else if(grid.count) grid.navigateFocus(Math.max(0,Math.min(grid.count-1,grid.currentIndex+pageDirection*grid.effectiveColumns*Math.max(1,Math.floor(grid.height/grid.cellHeight)))))
+            return true
+        }
         if(!libraryFocus()) {
             if(["up","down","left","right"].indexOf(command)<0) return true
             focusContent()
         }
         if(!homeVisible) grid.adoptFocusedCard()
         if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
-        if(command==="up" && (homeVisible ? home.focusedSection===0 : grid.currentIndex<grid.effectiveColumns)) { focusControls(filters,filterFocusIndex);return true }
+        if(command==="up" && (homeVisible ? home.atTop : grid.currentIndex<grid.effectiveColumns)) { focusControls(filters,filterFocusIndex);return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
             else if(grid.count) {
@@ -172,7 +186,8 @@ ApplicationWindow {
     function openImport() { guideDialog.close(); importWindow.openImporter() }
     function openBatch() { guideDialog.close();batchWindow.openBatch() }
     function openSetup() { guideDialog.close();setupWizard.openWizard() }
-    function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly}) }
+    function restoreLayout() { var s=backend.settings;coverSize=s.cover_size;columnCount=s.columns;gridGap=s.gap;installedOnly=s.installed_only;homeCoverSize=s.home_cover_size || 176;homeGap=s.home_gap || 14;homeRecentPreview=s.home_recent_preview!==false }
+    function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly,home_cover_size:homeCoverSize,home_gap:homeGap,home_recent_preview:homeRecentPreview}) }
     ControllerKeyboard {
         id: searchKeyboard; objectName: "controllerKeyboard"
         width: Math.min(820,win.width-48); anchors.centerIn: parent
@@ -180,7 +195,13 @@ ApplicationWindow {
         onSubmitted: function(value) { search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
         onCancelled: search.forceActiveFocus()
     }
-    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48) }
+    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: win.alternativeDesign; onLaunchRequested: function(game) { win.launchGame(game) } }
+    function launchGame(game) {
+        if(!game || !game.id || backend.busy || launchTransition.running) return
+        if(!alternativeDesign || !Theme.motion) { backend.launch(game.id);return }
+        launchTransition.begin(game,libraryDesign)
+    }
+    LaunchTransition { id: launchTransition; anchors.fill: parent; z: 500; onCommitted: function(game) { backend.launch(game.id) } }
     EnrichmentWindow { id: enrichmentWindow }
     Connections { target: backend; function onEnrichmentRequested(ids,options) { win.openEnrichment(ids,options,true) } }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
@@ -214,7 +235,6 @@ ApplicationWindow {
                 NavigationButton { objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
-                NavigationButton { width: 184; iconName: "grid"; text: "批量确认"; onClicked: win.openBatch() }
                 NavigationButton { width: 184; iconName: "help"; text: "使用指南"; onClicked: guideDialog.open() }
                 NavigationButton { width: 184; iconName: "settings"; text: "管理分类与系列"; onClicked: libraryManager.openManager() }
             }
@@ -238,7 +258,7 @@ ApplicationWindow {
             Switch {
                 id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
                 onToggled: backend.saveSettings({watch:checked})
-                ToolTip.visible: hovered; ToolTip.text: backend.watchInfo.message
+                ToolTip.visible: !backend.controllerMode && hovered; ToolTip.text: backend.watchInfo.message
                 Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.accent; visible: watchControl.activeFocus }
             }
             AppButton { id: importControl; text: "导入游戏"; highlighted: true; onClicked: win.openImport() }
@@ -265,15 +285,28 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
                 Item { Layout.fillWidth: win.width>=1250 }
-                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible || alternativeDesign; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppButton { id: layoutControl; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
                 AppButton { id: personalControl; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
                 Item { Layout.fillWidth: win.width<1250 }
             }
         }
+        Loader {
+            id: experienceLoader; objectName: "experienceLoader"; active: win.alternativeDesign; visible: active
+            Layout.fillWidth: true; Layout.fillHeight: true
+            sourceComponent: LibraryExperience {
+                objectName: "libraryExperience"; design: win.libraryDesign; games: win.shownGames; coverSize: homeCoverSize; launching: launchTransition.running
+                onBoundaryRequested: function(direction) { if(direction==="up") win.focusControls(win.filterControls,win.filterFocusIndex);else { var index=Math.max(0,["home","all","recent","favorites","series"].indexOf(win.libraryMode));win.focusControls([navHome,navAll,navRecent,navFavorites,navSeries],index) } }
+                onDetailsRequested: function(game) { win.openGame(game) }
+                onLaunchRequested: function(game) { win.launchGame(game) }
+                onCloudRequested: function(game) { selectGame(game);historyTabs.currentIndex=0;backend.history(activeId);historyDialog.open() }
+                onRemoveRequested: function(game) { selectGame(game);deleteDialog.open() }
+            }
+        }
         LibraryHome {
-            id: home; objectName: "libraryHome"; visible: homeVisible
+            id: home; objectName: "libraryHome"; visible: homeVisible && libraryDesign==="classic"
             Layout.fillWidth: true; Layout.fillHeight: true; sections: homeRows
+            coverSize: homeCoverSize; cardGap: homeGap; recentPreview: homeRecentPreview
             onBrowseRequested: function(mode,value) { win.navigate(mode,value) }
             onDetailsRequested: function(game) { win.openGame(game) }
             onLaunchRequested: function(game) { backend.launch(game.id) }
@@ -303,7 +336,7 @@ ApplicationWindow {
                 var commands={};commands[Qt.Key_Left]="left";commands[Qt.Key_Right]="right";commands[Qt.Key_Up]="up";commands[Qt.Key_Down]="down";commands[Qt.Key_Return]="activate";commands[Qt.Key_Enter]="activate";commands[Qt.Key_Escape]="back"
                 if(commands[event.key]) event.accepted=win.controllerInput(commands[event.key])
             }
-            visible: !homeVisible
+            visible: !homeVisible && libraryDesign==="classic"
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
             property int layoutColumns: Math.max(1, Math.min(Math.max(1,Math.floor(width / (160 + gridGap))), columnCount > 0 ? columnCount : Math.round(width / (coverSize + gridGap))))
@@ -345,13 +378,13 @@ ApplicationWindow {
         }
         RowLayout {
             Layout.fillWidth: true
-            BusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
+            AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
             ProgressBar { visible: backend.matching; Layout.preferredWidth: 140; indeterminate: backend.matching && backend.matchProgress.done===0; from: 0; to: Math.max(1,backend.matchProgress.total); value: backend.matchProgress.done }
             Label { visible: backend.matching; text: backend.matchProgress.done+" / "+backend.matchProgress.total; font.pixelSize: 12; color: Theme.secondary }
             AppButton { visible: backend.matching; text: backend.matchProgress.cancelled ? "正在停止" : "停止查找"; enabled: !backend.matchProgress.cancelled; onClicked: backend.cancelMatching() }
             Rectangle { visible: !backend.busy; width: 6; height: 6; radius: 3; color: Theme.accent }
-            Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
-            Label { objectName: "watchStatus"; visible: backend.settings.watch; text: backend.watchInfo.message; color: backend.watchInfo.failed ? Theme.accent : Theme.secondary; font.pixelSize: 11; Layout.minimumWidth: 0; Layout.maximumWidth: win.width<1100 ? 130 : 300; elide: Text.ElideRight; ToolTip.visible: watchStatusHover.hovered; ToolTip.text: text+"\n点击调整自动备份、上传和保留份数"; HoverHandler { id: watchStatusHover; cursorShape: Qt.PointingHandCursor } TapHandler { onTapped: win.openSettingsPage(1) } }
+            Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
+            Label { objectName: "watchStatus"; visible: backend.settings.watch; text: backend.watchInfo.message; color: backend.watchInfo.failed ? Theme.accent : Theme.secondary; font.pixelSize: 11; Layout.minimumWidth: 0; Layout.maximumWidth: win.width<1100 ? 130 : 300; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && watchStatusHover.hovered; ToolTip.text: text+"\n点击调整自动备份、上传和保留份数"; HoverHandler { id: watchStatusHover; cursorShape: Qt.PointingHandCursor } TapHandler { onTapped: win.openSettingsPage(1) } }
             AppButton { visible: backend.watchInfo.failed>0; text: "重试自动备份/上传"; enabled: backend.settings.watch && !backend.watchInfo.working; onClicked: backend.retryAutoBackups() }
             Label { visible: backend.gamepadConnected; text: "A 查看  B 返回  X 收藏  Y 存档  Menu 启动"; color: Theme.secondary; font.pixelSize: 11 }
         }
@@ -393,7 +426,7 @@ ApplicationWindow {
         id: settingsDialog; objectName: "settingsDialog"; title: "系统设置 · " + backend.settings.computer
         anchors.centerIn: parent; width: Math.min(850, win.width - 70); height: Math.min(600, win.height - 60)
         modal: true
-        onRejected: { coverSize=backend.settings.cover_size; columnCount=backend.settings.columns; gridGap=backend.settings.gap; installedOnly=backend.settings.installed_only }
+        onRejected: restoreLayout()
         Overlay.modal: Rectangle { color: "#bb000000" }
         contentItem: ScrollView {
             clip: true
@@ -425,19 +458,22 @@ ApplicationWindow {
                 RowLayout { Label { text: "监听间隔（秒）"; Layout.fillWidth: true } CompactSpinBox { id: watchInterval; from: 2; to: 60; stepSize: 1; value: backend.settings.watch_interval } }
                 RowLayout { Label { text: "每款游戏本机自动备份保留份数"; Layout.fillWidth: true } CompactSpinBox { id: autoKeep; objectName: "autoSnapshotKeep"; from: 1; to: 100; value: backend.settings.auto_snapshot_keep || 5 } }
                 CheckBox { id: autoUpload; text: "自动备份后上传云端"; enabled: watchSwitch.checked }
-                Label { text: "运行期间只检查进程，确认退出后才备份并上传。选择存档目录后会从安装目录识别实际 EXE，无法识别时在游戏设置中指定。默认保留最近 5 份本机自动备份，手动备份不限制，云端不随此上限清理；上传失败保留本地并提示重试。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                Label { text: "仅清理本机自动备份，手动备份和云端存档保留。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 AppButton { text: "设置云端连接与备份文件夹"; Layout.fillWidth: true; onClicked: win.openCloud() }
                 Label { text: backend.settings.cloud_folder ? "云端文件夹："+backend.settings.cloud_folder : "尚未设置云端，可先使用本地备份。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                Label { text: "传输超时、重试次数和按电脑分目录，可在云端窗口的传输选项中设置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 }
                 ColumnLayout {
                 visible: settingsTabs.currentIndex===2; Layout.fillWidth: true; spacing: 12
-                Label { text: "修改后立即预览，点击保存保留布局。"; color: Theme.secondary }
+                Label { text: "游戏库主页"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                RowLayout { Label { text: "封面大小"; Layout.fillWidth: true } CompactSpinBox { objectName: "homeCoverSize"; from: 120; to: 280; stepSize: 8; value: homeCoverSize; onValueModified: homeCoverSize=value } }
+                RowLayout { Label { text: "封面间距"; Layout.fillWidth: true } CompactSpinBox { objectName: "homeGap"; from: 8; to: 32; stepSize: 2; value: homeGap; onValueModified: homeGap=value } }
+                CheckBox { objectName: "homePreviewToggle"; text: "最近游戏大预览"; checked: homeRecentPreview; onToggled: homeRecentPreview=checked }
+                Label { text: "内页游戏列表"; font.pixelSize: 16; font.weight: Font.DemiBold }
                 RowLayout { Label { text: "封面大小"; Layout.fillWidth: true } NodeSlider { objectName: "coverSlider"; value: coverSize; Layout.preferredWidth: 260; onMoved: { coverSize=Math.round(value); columnCount=0 } } }
                 RowLayout { Label { text: "每行游戏数（0 为自动）"; Layout.fillWidth: true } CompactSpinBox { from: 0; to: 10; value: columnCount; onValueModified: columnCount=value } }
                 RowLayout { Label { text: "卡片间距"; Layout.fillWidth: true } CompactSpinBox { from: 8; to: 48; stepSize: 2; value: gridGap; onValueModified: gridGap=value } }
                 CheckBox { text: "仅显示已安装游戏"; checked: installedOnly; onToggled: installedOnly=checked }
-                AppButton { text: "恢复默认布局"; onClicked: { coverSize=210; columnCount=0; gridGap=22; installedOnly=false } }
+                AppButton { text: "恢复默认布局"; onClicked: { coverSize=210; columnCount=0; gridGap=22; installedOnly=false;homeCoverSize=176;homeGap=14;homeRecentPreview=true } }
                 }
                 ColumnLayout {
                 visible: settingsTabs.currentIndex===3; Layout.fillWidth: true; spacing: 12
@@ -454,7 +490,7 @@ ApplicationWindow {
         footer: DialogButtonBox {
             AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
             AppButton { text: "保存本机设置"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
-            onRejected: { coverSize=backend.settings.cover_size; columnCount=backend.settings.columns; gridGap=backend.settings.gap; installedOnly=backend.settings.installed_only; settingsDialog.close() }
+            onRejected: { restoreLayout();settingsDialog.close() }
             onAccepted: {
                 backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked,close_to_tray:traySwitch.checked,watch_interval:watchInterval.value,auto_snapshot_keep:autoKeep.value}); saveLayout(); settingsDialog.close()
             }

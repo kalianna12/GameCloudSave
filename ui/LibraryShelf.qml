@@ -8,6 +8,12 @@ Item {
     property bool keyboardFocused: false
     property string selectedId: ""
     property bool syncing: false
+    property int coverSize: 176
+    property int cardGap: 14
+    property bool recentPreview: true
+    readonly property bool showPreview: section.kind==="recent" && recentPreview && width>=760
+    readonly property real tileWidth: section.kind==="tiles" ? Math.round(coverSize*1.34) : section.kind==="recent" ? Math.round(coverSize*.9) : coverSize
+    readonly property real scrollTarget: horizontal.running ? horizontal.to : list.contentX
     readonly property int selectionIndex: list.currentIndex
     property var selectedRecord: items.count ? items.get(Math.min(items.count-1,Math.max(0,list.currentIndex))).record : ({})
     signal selectionFocused()
@@ -16,7 +22,7 @@ Item {
     signal launchRequested(var game)
     signal cloudRequested(var game)
     signal verticalScroll(real delta)
-    implicitHeight: section.kind==="tiles" ? 220 : section.kind==="recent" ? 300 : 320
+    implicitHeight: section.kind==="tiles" ? 220*coverSize/176 : section.kind==="recent" ? 300*coverSize/176 : 320*coverSize/176
     ListModel { id: items; dynamicRoles: true }
     function sync() {
         var savedId=selectedId;syncing=true
@@ -41,8 +47,8 @@ Item {
         Label { text: shelf.section.title || ""; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.text }
         Item { Layout.fillWidth: true }
         AppButton { text: "查看全部"; flat: true; onClicked: shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") }
-        IconButton { iconName: "arrow-left"; width: 32; height: 32; hint: "向左浏览"; enabled: shelf.section.kind==="recent" ? list.currentIndex>0 : list.contentX>1; onClicked: shelf.move(-1) }
-        IconButton { iconName: "arrow-right"; width: 32; height: 32; hint: "向右浏览"; enabled: shelf.section.kind==="recent" ? list.currentIndex<items.count-1 : list.contentX+list.width<list.contentWidth-1; onClicked: shelf.move(1) }
+        IconButton { objectName: "shelfPrevious"; iconName: "arrow-left"; width: 32; height: 32; hint: "向左浏览"; enabled: shelf.scrollTarget>1; onClicked: shelf.move(-1) }
+        IconButton { objectName: "shelfNext"; iconName: "arrow-right"; width: 32; height: 32; hint: "向右浏览"; enabled: shelf.scrollTarget+list.width<list.contentWidth-1; onClicked: shelf.move(1) }
     }
     // Section subtitles repeat browsing instructions; keep the cover shelf quiet.
     function selectedGame() { return section.kind==="tiles" ? null : selectedRecord }
@@ -59,13 +65,14 @@ Item {
         if(Math.abs(destination-previousX)>.5) { horizontal.to=destination;horizontal.restart() }
     }
     function move(direction) {
-        if(section.kind==="recent") { moveSelection(direction);shelf.selectionFocused() }
-        else { horizontal.to=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),list.contentX+direction*list.width*.8));horizontal.restart() }
+        var step=Math.max(tileWidth+cardGap,Math.floor((list.width+cardGap)/(tileWidth+cardGap))*(tileWidth+cardGap))
+        horizontal.to=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),scrollTarget+direction*step));horizontal.restart()
     }
+    function pageSelection(direction) { moveSelection(direction*Math.max(1,Math.floor(list.width/(tileWidth+cardGap)))) }
     GameTile {
-        objectName: "recentHero"; visible: shelf.section.kind==="recent" && items.count>0
+        objectName: "recentHero"; visible: shelf.showPreview && items.count>0
         anchors { left: parent.left; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }
-        width: Math.min(470,shelf.width*.45); game: shelf.selectedRecord; featured: true; selected: false; scrolling: shelf.outerMoving
+        width: Math.min(470*coverSize/176,shelf.width*.45); game: shelf.selectedRecord; featured: true; selected: false; scrolling: shelf.outerMoving
         onDetailsRequested: function(game) { shelf.selectionFocused();shelf.detailsRequested(game) }
         onLaunchRequested: function(game) { shelf.launchRequested(game) }
         onCloudRequested: function(game) { shelf.cloudRequested(game) }
@@ -74,21 +81,20 @@ Item {
     ListView {
         id: list; objectName: "shelf-"+shelf.section.id
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }
-        anchors.leftMargin: shelf.section.kind==="recent" ? Math.min(470,shelf.width*.45)+14 : 0
-        orientation: ListView.Horizontal; spacing: 14; clip: true; model: items
+        anchors.leftMargin: shelf.showPreview ? Math.min(470*coverSize/176,shelf.width*.45)+cardGap : 0
+        orientation: ListView.Horizontal; spacing: shelf.cardGap; clip: true; model: items
         reuseItems: true; cacheBuffer: 160; flickDeceleration: 2400; maximumFlickVelocity: 2800
         onCurrentIndexChanged: if(!shelf.syncing && currentIndex>=0 && currentIndex<items.count) shelf.selectedId=items.get(currentIndex).record.id
-        onMovementEnded: if(shelf.section.kind==="recent") { var index=indexAt(contentX+Math.min(80,width/3),height/2);if(index>=0) currentIndex=index }
         delegate: Item {
             required property var record; required property int index
-            width: shelf.section.kind==="tiles" ? 236 : shelf.section.kind==="recent" ? 158 : 176
+            width: shelf.tileWidth
             height: list.height
             Loader {
                 anchors.fill: parent; sourceComponent: shelf.section.kind==="tiles" ? browseTile : gameTile
                 Component { id: browseTile; BrowseTile { record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex; onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() } onClicked: { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.browseRequested(record.target,record.value) } } }
                 Component { id: gameTile; GameTile {
                     game: parent.parent.record; featured: false; scrolling: shelf.outerMoving || list.moving || horizontal.running
-                    selectOnly: shelf.section.kind==="recent"; selected: parent.parent.index===list.currentIndex && shelf.keyboardFocused
+                    selectOnly: shelf.showPreview; selected: parent.parent.index===list.currentIndex && shelf.keyboardFocused
                     onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }
                     onSelectionRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }
                     onDetailsRequested: function(game) { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.detailsRequested(game) }
@@ -102,7 +108,6 @@ Item {
             onWheel: function(event) {
                 if(event.modifiers & Qt.ShiftModifier || event.angleDelta.x) {
                     horizontal.stop();list.contentX=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),list.contentX-(event.angleDelta.x || event.angleDelta.y)))
-                    if(shelf.section.kind==="recent") { var index=list.indexAt(list.contentX+Math.min(80,list.width/3),list.height/2);if(index>=0) list.currentIndex=index }
                     event.accepted=true
                 }
                 else { shelf.verticalScroll(event.pixelDelta.y ? -event.pixelDelta.y : -event.angleDelta.y/120*88);event.accepted=true }

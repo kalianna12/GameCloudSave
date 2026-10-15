@@ -120,7 +120,7 @@ ApplicationWindow {
                         contentItem: ColumnLayout {
                             Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
                             RowLayout {
-                                BusyIndicator { implicitWidth: 20; implicitHeight: 20; running: ["running","saving","uploading"].indexOf(modelData.status)>=0; visible: running }
+                                AppBusyIndicator { implicitWidth: 20; implicitHeight: 20; running: ["running","saving","uploading"].indexOf(modelData.status)>=0; visible: running }
                                 Label { text: matcher.label(modelData.status)+"  ·  "+modelData.candidates.length+" 个候选"; color: modelData.status==="failed" ? "#f29c8e" : Theme.secondary; font.pixelSize: 12 }
                             }
                         }
@@ -186,7 +186,7 @@ ApplicationWindow {
             }
         }
         RowLayout {
-            BusyIndicator { running: backend.busy; visible: running; implicitWidth: 26; implicitHeight: 26 }
+            AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 26; implicitHeight: 26 }
             Label { text: backend.status; Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary }
             AppButton { text: "关闭"; onClicked: matcher.close() }
         }

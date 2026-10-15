@@ -51,13 +51,19 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     assert backend.libraryMetadata('0')['release_date']=='2021-04-23','Hidden metadata must remain editable'
     for width,height,suffix in [(1440,940,'desktop'),(900,650,'compact'),(1920,1080,'wide')]:
         root.setWidth(width);root.setHeight(height);spin(250)
+        checked_cards=0;grid_top=grid.mapToScene(QPoint(0,0)).y()
         for item in walk(root.contentItem()):
             if item.objectName()=='gameActions' and item.isVisible():
                 card=item.parentItem().parentItem()
-                assert abs(card.height()-card.width()*1.38-90)<1
-                assert item.y()+item.height()<=item.parentItem().height()+1
+                card_top=card.mapToScene(card.boundingRect().topLeft()).y()
+                card_bottom=card.mapToScene(card.boundingRect().bottomRight()).y()
+                if card_top<grid_top-1 or card_bottom>grid_top+grid.height()+1:continue
+                checked_cards+=1
+                assert abs(card.height()-card.width()*1.38-90)<1,(width,card.width(),card.height(),grid.property('cellHeight'))
+                assert item.y()+item.height()<=item.parentItem().height()+1,(width,item.y(),item.height(),item.parentItem().metaObject().className(),item.parentItem().height(),card.width(),card.height())
                 assert item.mapToScene(item.boundingRect().bottomRight()).y()<=card.mapToScene(card.boundingRect().bottomRight()).y()+1
                 assert not any('发行：' in str(child.property('text') or '') or ' / 已安装' in str(child.property('text') or '') for child in walk(card))
+        assert checked_cards>0,'No complete visible action cards were checked'
         # Header controls remain on screen, and the reduced card footer has no empty metadata rows.
         for name in ['search','watchControl','platformFilter','librarySort']:
             item=root.findChild(QObject,name);point=item.mapToScene(item.boundingRect().topLeft())

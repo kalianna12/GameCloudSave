@@ -9,11 +9,13 @@ Dialog {
     Overlay.modal: Rectangle { color: "#bb000000" }
     property var game: ({})
     property int selectedAction: 0
+    property bool useLaunchTransition: false
+    signal launchRequested(var game)
     readonly property var actions: ["启动游戏",game.favorite ? "取消收藏" : "收藏","本地备份","本地备份并上传","关闭"]
     title: game.name || "游戏"
     function showGame(record) { game=record;selectedAction=0;open() }
     function choose(index) {
-        if(index===0) backend.launch(game.id)
+        if(index===0) { if(useLaunchTransition) launchRequested(game);else backend.launch(game.id) }
         else if(index===1) { backend.toggleFavorite(game.id);game=Object.assign({},game,{favorite:!game.favorite}) }
         else if(index===2) backend.localSave(game.id)
         else if(index===3) backend.cloudSave(game.id)
@@ -39,6 +41,6 @@ Dialog {
             model: menu.actions
             AppButton { required property int index; required property string modelData; text: modelData; Layout.fillWidth: true; enabled: menu.usable(index); highlighted: menu.selectedAction===index; onClicked: menu.choose(index) }
         }
-        Label { text: "A 确认 · B 返回。路径、标签等编辑请使用鼠标。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+        Label { text: "A 确认  B 返回"; Layout.fillWidth: true; color: Theme.secondary }
     }
 }

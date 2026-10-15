@@ -46,9 +46,8 @@ Item {
             opacity: tile.featured || hover.hovered && !tile.scrolling || tile.activeFocus ? 1 : 0
             enabled: opacity>.5
             Behavior on opacity { NumberAnimation { duration: Theme.motion && !tile.scrolling ? 120 : 0 } }
-            Rectangle { anchors.fill: parent; visible: !tile.featured; color: Theme.surface }
             Rectangle { anchors.fill: parent; visible: tile.featured; gradient: Gradient { GradientStop { position: 0; color: "#00000000" } GradientStop { position: .36; color: "#aa000000" } GradientStop { position: 1; color: "#ed000000" } } }
-            Label { visible: tile.featured; x: 16; y: 15; width: parent.width-32; text: tile.game.name || ""; font.pixelSize: 16; font.weight: Font.DemiBold; color: "white"; elide: Text.ElideRight }
+            TitleLabel { objectName: "featuredGameTitle"; scrolling: tile.scrolling; visible: tile.featured; x: 16; y: 15; width: parent.width-32; text: tile.game.name || ""; font.pixelSize: 16; font.weight: Font.DemiBold; color: "white"; elide: Text.ElideRight; }
             Row {
                 anchors.left: tile.featured ? parent.left : undefined; anchors.leftMargin: 16
                 anchors.horizontalCenter: tile.featured ? undefined : parent.horizontalCenter
@@ -62,7 +61,6 @@ Item {
     Column {
         visible: !tile.featured
         anchors { left: parent.left; right: parent.right; top: coverArea.bottom; topMargin: 9 }
-        Label { objectName: "gameTitle"; width: parent.width; text: tile.game.name || ""; font.pixelSize: tile.featured ? 16 : 13; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight }
+        TitleLabel { objectName: "gameTitle"; scrolling: tile.scrolling; width: parent.width; text: tile.game.name || ""; font.pixelSize: tile.featured ? 16 : 13; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; }
     }
-    ToolTip.visible: hover.hovered && !scrolling; ToolTip.delay: 900; ToolTip.text: game.name || ""
 }

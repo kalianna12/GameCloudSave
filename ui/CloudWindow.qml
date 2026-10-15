@@ -175,7 +175,7 @@ ApplicationWindow {
             }
         }
         RowLayout {
-            BusyIndicator { implicitWidth: 26; implicitHeight: 26; running: backend.busy; visible: running }
+            AppBusyIndicator { implicitWidth: 26; implicitHeight: 26; running: backend.busy; visible: running }
             Label { text: backend.status; Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary }
             AppButton { text: "关闭"; onClicked: cloud.close() }
         }

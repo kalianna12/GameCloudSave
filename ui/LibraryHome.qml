@@ -4,6 +4,10 @@ import QtQuick.Window
 FocusScope {
     id: home
     property var sections: []
+    property int coverSize: 176
+    property int cardGap: 14
+    property bool recentPreview: true
+    readonly property bool atTop: focusedSection===0
     property int focusedSection: 0
     readonly property var currentFocus: Window.window ? Window.window.activeFocusItem : null
     readonly property bool cardFocus: activeFocus && (currentFocus===home || !!currentFocus && currentFocus.libraryTile===true)
@@ -73,6 +77,7 @@ FocusScope {
             required property var record
             required property int index
             width: ListView.view.width; height: implicitHeight; section: record; outerMoving: list.moving || vertical.running
+            coverSize: home.coverSize; cardGap: home.cardGap; recentPreview: home.recentPreview
             keyboardFocused: home.cardFocus && home.focusedSection===index
             onSelectionFocused: { home.focusedSection=index;home.forceActiveFocus() }
             onBrowseRequested: function(mode,value) { home.browseRequested(mode,value) }

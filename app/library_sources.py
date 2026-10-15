@@ -36,6 +36,7 @@ def release_date(value):
 def playnite_metadata(raw):
     platform=platform_for(raw);external=str(raw.get('GameId') or '')
     fields={'platform':platform,'external_id':external,'plugin_id':guid(raw.get('PluginId')),'import_source':'playnite','provenance_version':2}
+    if isinstance(raw.get('BackgroundImage'),str):fields['playnite_background']=raw['BackgroundImage']
     if isinstance(raw.get('Name'),str) and raw['Name'].strip():fields['source_name']=raw['Name'].strip()[:200]
     if platform=='steam' and external.isdigit():fields['steam_appid']=external
     for link in raw.get('Links') or []:

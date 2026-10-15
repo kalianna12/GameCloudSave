@@ -12,7 +12,7 @@ Item {
     property point cursorPoint: Qt.point(width/2,height/2)
     property bool pointerFresh: false
     property real controllerCue: 0
-    readonly property bool available: Theme.motion && !suspended && visible && !!Window.window && Window.window.active
+    readonly property bool available: Theme.motion && !suspended && visible && !!Window.window && Window.window.visible && Window.window.active
     readonly property bool pointerActive: available && !backend.controllerMode && pointer.hovered && pointerFresh
     readonly property bool hot: available && (pointerActive || backend.controllerMode && controllerFocused)
     readonly property real yaw: !hot ? 0 : pointerActive ? Math.max(-1,Math.min(1,cursorPoint.x/Math.max(1,width)*2-1))*tiltLimit : -tiltLimit*.32*controllerCue

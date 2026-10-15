@@ -4,7 +4,11 @@ PALETTES={
  'dark':{'name':'碳灰','dark':True,'background':'#181a1c','sidebar':'#202326','surface':'#282c30','hover':'#353b41','border':'#454d56','text':'#f3f5f7','secondary':'#a9b4bf','accent':'#80c942'},
  'light':{'name':'浅色','dark':False,'background':'#f1f3f5','sidebar':'#e5e9ee','surface':'#ffffff','hover':'#e6edf3','border':'#bac5cf','text':'#19232e','secondary':'#526474','accent':'#397cbd'},
  'midnight':{'name':'午夜蓝','dark':True,'background':'#121d2b','sidebar':'#18263a','surface':'#203248','hover':'#2e4662','border':'#425b78','text':'#edf5ff','secondary':'#a8c0dc','accent':'#72b7ec'},
- 'violet':{'name':'深紫','dark':True,'background':'#201b29','sidebar':'#292333','surface':'#332c40','hover':'#443954','border':'#65577a','text':'#f5f0fc','secondary':'#beb1cf','accent':'#b59de3'}}
+ 'violet':{'name':'深紫','dark':True,'background':'#201b29','sidebar':'#292333','surface':'#332c40','hover':'#443954','border':'#65577a','text':'#f5f0fc','secondary':'#beb1cf','accent':'#b59de3'},
+ 'amber':{'name':'琥珀','dark':True,'background':'#211c17','sidebar':'#2a241d','surface':'#342d24','hover':'#463b2e','border':'#71604b','text':'#f4eadc','secondary':'#c3b29c','accent':'#e6b96c','radius':6,'outlineOpacity':.5},
+ 'forest':{'name':'松林','dark':True,'background':'#14221f','sidebar':'#1b2b26','surface':'#24372f','hover':'#30483e','border':'#536f60','text':'#edf4ee','secondary':'#adc3b6','accent':'#99c5a2','radius':14,'outlineOpacity':.42},
+ 'paper':{'name':'纸白','dark':False,'background':'#f4f2ed','sidebar':'#e8e5dd','surface':'#fffef9','hover':'#e2e7df','border':'#b0b5a8','text':'#343630','secondary':'#686d61','accent':'#587565','radius':3,'outlineOpacity':.78},
+ 'sakura':{'name':'樱雾','dark':False,'background':'#f5eff2','sidebar':'#ebe1e7','surface':'#fffafd','hover':'#eadce4','border':'#c1aab7','text':'#3d303a','secondary':'#796272','accent':'#a44e72','radius':12,'outlineOpacity':.6}}
 def luminance(value):
     rgb=[int(value[i:i+2],16)/255 for i in (1,3,5)]
     rgb=[channel/12.92 if channel<=.04045 else ((channel+.055)/1.055)**2.4 for channel in rgb]

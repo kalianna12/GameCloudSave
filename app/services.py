@@ -81,7 +81,9 @@ class Store:
                     'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True})
+        defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers')
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
+        if self.settings.get('library_design') not in ('classic','shelf','cinema','atlas'):self.settings['library_design']='classic'
         if self.settings.get('cover_source')=='igdb':self.settings['cover_source']='steam'
         self.games = read_json(self.root / 'library.json', [])
         self.groups=read_json(self.root/'groups.json',[])
@@ -99,6 +101,12 @@ class Store:
         values = dict(values)
         if 'auto_snapshot_keep' in values and (type(values['auto_snapshot_keep'])!=int or not 1<=values['auto_snapshot_keep']<=100):
             raise ValueError('自动存档保留份数须为 1 到 100，手动存档不受限制')
+        for key,low,high in [('home_cover_size',120,280),('home_gap',8,32)]:
+            if key in values and (type(values[key])!=int or not low<=values[key]<=high):raise ValueError('首页布局数值超出范围')
+        if 'home_recent_preview' in values and type(values['home_recent_preview'])!=bool:raise ValueError('首页预览设置无效')
+        if 'library_design' in values and values['library_design'] not in ('classic','shelf','cinema','atlas'):raise ValueError('游戏库设计不存在')
+        if 'experience_group' in values and values['experience_group'] not in ('all','category','series','tags'):raise ValueError('分组方式不存在')
+        if 'shelf_arrangement' in values and values['shelf_arrangement'] not in ('covers','books'):raise ValueError('书柜排列方式不存在')
         password = values.pop('password', '')
         ai_key = values.pop('ai_key', '')
         values.pop('igdb_secret',None)

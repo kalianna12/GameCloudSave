@@ -15,7 +15,7 @@ T.TextField {
         visible: !control.text.length && !control.preeditText.length
     }
     background: Rectangle {
-        radius: 9; color: Theme.surface
+        radius: Theme.controlRadius; color: Theme.surface
         border.color: control.activeFocus ? Theme.accent : Theme.outline
         border.width: control.activeFocus ? 2 : 1
     }

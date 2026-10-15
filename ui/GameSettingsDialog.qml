@@ -68,7 +68,7 @@ Dialog {
                 RowLayout { Layout.fillWidth: true; AppTextField { id: monitor; Layout.fillWidth: true; placeholderText: "监听进程：自动识别，失败时指定实际游戏 EXE" } AppButton { text: "选择进程"; enabled: !backend.busy; onClicked: { var path=backend.pickFile("exe");if(path) monitor.text=path } } }
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
                 Label { text: "云端连接"; font.bold: true }
-                Label { text: "DAV 连接与备份文件夹由所有游戏共用，各游戏存档会分开保存。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+                Label { text: "所有游戏共用此连接。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                 Label { text: backend.settings.dav_url || "尚未配置云端连接"; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                 Label { text: "备份文件夹："+(backend.settings.cloud_folder || "尚未选择"); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: Theme.secondary }
                 AppButton { text: "设置 DAV 连接与文件夹"; enabled: !backend.busy; onClicked: dialog.cloudRequested() }
@@ -105,7 +105,7 @@ Dialog {
                 AppTextField { id: series; Layout.fillWidth: true; onTextEdited: dialog.mark("series") }
             }
         }
-        RowLayout { BusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 } }
+        RowLayout { AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 } }
     }
     footer: Item {
         implicitHeight: 60

@@ -30,10 +30,11 @@ class LibraryFeatures(unittest.TestCase):
         self.assertEqual(before,json.dumps(self.store.games))
     def test_ai_groups_validate_ids_and_preview_only(self):
         self.store.save_settings({'ai_key':'dummy'})
-        result={'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'items':[{'id':'a','groups':['视觉小说'],'series':'9-nine'}]})}}]}
+        result={'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'items':[{'id':game['id'],'category':'视觉小说','tags':[],'series':'9-nine' if game['id'] in ('a','b') else ''} for game in self.store.games]})}}]}
         with patch('library_organizer.urlopen',side_effect=lambda *args,**kwargs:io.BytesIO(json.dumps(result).encode())):
             rows=suggestions(self.store,True);self.assertEqual(rows[0]['groups'],['视觉小说']);self.assertNotIn('groups',self.store.games[0])
         result['choices'][0]['message']['content']=json.dumps({'items':[{'id':'unknown','groups':[]}]})
+        self.store.settings['ai_model']='uncached-fixture'
         with patch('library_organizer.urlopen',side_effect=lambda *args,**kwargs:io.BytesIO(json.dumps(result).encode())):
             with self.assertRaises(ValueError):suggestions(self.store,True)
     def test_builtin_and_custom_themes_reject_code_and_low_contrast(self):

@@ -28,9 +28,12 @@ V2.2 增加收藏、最近游玩、自定义分类、系列、规则/DeepSeek �
 
 ## 开发
 
+本机源码预览可双击 workspace 下的 `启动源码版.bat`，使用隔离的 `test-data/source-preview`。当前源码保留原版默认布局，并提供书柜、影院、星图三个可选布局；见 [设计与体验说明](docs/首页适配与主题扩展.md)。源码改动尚未同步到便携程序或安装包。
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\pip.exe install -r requirements-dev.txt
+$env:GAMECLOUD_DATA = "$PWD\test-data\source-preview"
 .\.venv\Scripts\python.exe app/main.py
 ```
 

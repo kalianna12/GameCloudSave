@@ -19,7 +19,7 @@ Dialog {
         AppTextField { id: key; objectName: "enrichmentAiKey"; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: backend.settings.has_ai_key ? "已保存，留空保持" : "填写 DeepSeek API Key" }
         Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
         RowLayout {
-            BusyIndicator { visible: backend.busy; running: visible; implicitWidth: 24; implicitHeight: 24 }
+            AppBusyIndicator { visible: backend.busy; running: visible; implicitWidth: 24; implicitHeight: 24 }
             AppButton { text: "保存并测试连接"; highlighted: true; enabled: !backend.busy && !!model.text && (!!key.text || backend.settings.has_ai_key); onClicked: backend.testAi({ai_enabled:true,ai_model:model.text,ai_key:key.text}) }
         }
     }

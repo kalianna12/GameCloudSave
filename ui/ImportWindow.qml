@@ -76,7 +76,7 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar {}
             Label { visible: list.count===0; anchors.centerIn: parent; text: "读取或扫描后，在这里预览并选择游戏"; color: Theme.secondary }
         }
-        RowLayout { BusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary } }
+        RowLayout { AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary } }
     }
     Dialog { id: duplicateDialog; title: "核对可能重复的游戏"; anchors.centerIn: parent; modal: true; standardButtons: Dialog.Ok | Dialog.Cancel
         Label { text: "所选项包含可能重复的游戏。确认它们是不同作品后再导入。" }

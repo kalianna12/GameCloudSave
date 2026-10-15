@@ -15,7 +15,7 @@ Button {
         elide: Text.ElideRight
     }
     background: Rectangle {
-        radius: 9
+        radius: Theme.controlRadius
         color: control.highlighted && control.enabled ? Theme.accent : control.down || control.checked ? Theme.hover : control.hovered ? Theme.hover : control.flat ? "transparent" : Theme.surface
         border.width: control.activeFocus ? 2 : 1
         border.color: control.activeFocus || control.highlighted && control.enabled ? Theme.accent : control.flat ? "transparent" : Theme.outline

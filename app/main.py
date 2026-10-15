@@ -32,6 +32,8 @@ class Bridge(QObject):
     notificationReady = Signal(str,str,bool)
     operationCompleted = Signal(str,bool)
     inputModeChanged = Signal()
+    mediaReady = Signal(object)
+    mediaChanged = Signal()
     enrichmentChanged = Signal()
     enrichmentReady = Signal(object,int,int,str)
     enrichmentRequested = Signal('QVariantList','QVariantMap')
@@ -72,6 +74,8 @@ class Bridge(QObject):
         self._watch_closed=False
         self._watch_message='等待游戏启动';self._watch_ready_count=0;self._watch_last_info={}
         self._games_cache = None
+        self._library_media={};self._media_pending=False;self._media_loaded=False;self._media_source=None
+        self.mediaReady.connect(self.receiveMedia)
         self._cloud_path = ''
         self._preview = {}
         self._matches = list(store.match_report)
@@ -292,6 +296,43 @@ class Bridge(QObject):
     def theme(self):
         from themes import resolve
         return resolve(self.store.settings)
+    @Property('QVariantList',constant=True)
+    def themePresets(self):
+        from themes import PALETTES
+        return [{'id':name,**palette} for name,palette in PALETTES.items()]
+    @Property('QVariantList',constant=True)
+    def libraryDesigns(self):
+        from themes import PALETTES
+        return [{**item,'palette':PALETTES[item['theme']]} for item in [
+            {'id':'classic','name':'原版','theme':'dark','detail':'首页陈列与游戏网格'},
+            {'id':'shelf','name':'书柜 · SHELF','theme':'amber','detail':'实体层架 · 抽取封面与书脊'},
+            {'id':'cinema','name':'影院 · CINEMA','theme':'violet','detail':'沉浸背景 · 胶片与预告片'},
+            {'id':'atlas','name':'星图 · ATLAS','theme':'midnight','detail':'拖动缩放 · 关系与随机探索'}]]
+
+    @Property('QVariantMap',notify=mediaChanged)
+    def libraryMedia(self):return self._library_media
+
+    @Property(bool,notify=mediaChanged)
+    def mediaLoading(self):return self._media_pending
+
+    @Slot()
+    @Slot(bool)
+    def loadLibraryMedia(self,refresh=False):
+        source=(self.store.settings.get('library',''),self.store.settings.get('playnite',''))
+        if self._media_pending or self._media_loaded and not refresh and source==self._media_source:return
+        from playnite_media import discover
+        self._media_pending=True
+        self._media_source=source;self.mediaChanged.emit()
+        settings=dict(self.store.settings);games=[dict(game) for game in self.store.games]
+        def work():
+            try:result=discover(settings,games)
+            except Exception:result={}
+            self.mediaReady.emit(result)
+        self.pool.submit(work)
+
+    @Slot(object)
+    def receiveMedia(self,media):
+        self._library_media=media;self._media_pending=False;self._media_loaded=True;self.mediaChanged.emit()
     @Property('QVariantList',notify=gamesChanged)
     def groups(self):return self.store.groups
     @Property('QVariantList',notify=changed)
@@ -415,6 +456,7 @@ class Bridge(QObject):
             self.progressChanged.emit()
             self.matchesChanged.emit()
         if action in ('import','import-selected','library-edit','enrichment-apply','classification-apply','group-edit','launch','watch', 'remove', 'game-settings','apply-match','apply-matches','workflow') and not error:
+            if action in ('import','import-selected'):self._media_loaded=False
             self._games_cache=None
             self.gamesChanged.emit()
             if action=='import-selected':
