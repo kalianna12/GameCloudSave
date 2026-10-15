@@ -196,10 +196,11 @@ ApplicationWindow {
     Rectangle {
         width: 200; anchors.top: parent.top; anchors.bottom: parent.bottom
         color: Theme.sidebar
+        Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.outline }
         Row {
-            x: 16; y: 24; spacing: 10
-            Image { source: "icons/app.svg"; width: 28; height: 28; sourceSize: Qt.size(84,84) }
-            Label { text: "GameCloudSave"; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 12; font.bold: true }
+            x: 18; y: 25; spacing: 10
+            Image { source: "icons/app.svg"; width: 30; height: 30; sourceSize: Qt.size(90,90) }
+            Label { text: "GameCloudSave"; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.text }
         }
         ScrollView { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 84; bottom: parent.bottom; bottomMargin: 80 }
             clip: true
@@ -209,7 +210,7 @@ ApplicationWindow {
                 NavigationButton { id: navRecent; objectName: "navRecent"; width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: win.navigate("recent","") }
                 NavigationButton { id: navFavorites; objectName: "navFavorites"; width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: win.navigate("favorites","") }
                 NavigationButton { id: navSeries; objectName: "navSeries"; width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
-                Rectangle { width: 184; height: 1; color: Theme.border }
+                Item { width: 184; height: 18; Rectangle { anchors.centerIn: parent; width: 160; height: 1; color: Theme.outline } }
                 NavigationButton { objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
@@ -223,27 +224,27 @@ ApplicationWindow {
 
     ColumnLayout {
         anchors { left: parent.left; leftMargin: 232; right: parent.right; rightMargin: 32; top: parent.top; topMargin: 28; bottom: parent.bottom; bottomMargin: 18 }
-        spacing: 18
+        spacing: 20
         RowLayout {
             Layout.fillWidth: true
             AppButton { id: backButton; objectName: "libraryBack"; text: "返回"; visible: libraryMode!=="home" || searchTokens.length>0; onClicked: win.goBack() }
-            ColumnLayout {
-                spacing: 4
-                Label { text: searchTokens.length ? "搜索结果" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: 30; font.bold: true; color: Theme.text }
-                Label { text: shownGames.length+" 款游戏"; color: Theme.secondary; font.pixelSize: 12 }
+            RowLayout {
+                spacing: 12
+                Label { text: searchTokens.length ? "搜索结果" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: win.width<1100 ? 23 : 28; font.weight: Font.DemiBold; color: Theme.text }
+                Label { text: shownGames.length.toString(); color: Theme.secondary; font.pixelSize: 12; leftPadding: 9; rightPadding: 9; topPadding: 4; bottomPadding: 4; background: Rectangle { radius: 8; color: Theme.surface } }
             }
             Item { Layout.fillWidth: true }
-            AppTextField { id: search; objectName: "search"; clip: true; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索名称、标签、系列…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
+            AppTextField { id: search; objectName: "search"; clip: true; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索游戏、标签…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
             Switch {
                 id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
                 onToggled: backend.saveSettings({watch:checked})
                 ToolTip.visible: hovered; ToolTip.text: backend.watchInfo.message
                 Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.accent; visible: watchControl.activeFocus }
             }
-            AppButton { id: importControl; text: "导入游戏"; onClicked: win.openImport() }
+            AppButton { id: importControl; text: "导入游戏"; highlighted: true; onClicked: win.openImport() }
         }
         GridLayout {
-            Layout.fillWidth: true; columns: win.width<1700 ? 1 : 2
+            Layout.fillWidth: true; columns: win.width<1250 ? 1 : 2
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
                 Layout.fillWidth: true
@@ -256,17 +257,18 @@ ApplicationWindow {
                         visible: installedControl.activeFocus
                     }
                 }
-                AppComboBox { id: platformControl; objectName: "platformFilter"; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 140; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
-                AppComboBox { id: sourceControl; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 130; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
-                AppComboBox { id: seriesControl; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 140; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
+                AppComboBox { id: platformControl; objectName: "platformFilter"; quiet: true; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 130; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
+                AppComboBox { id: sourceControl; quiet: true; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 120; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
+                AppComboBox { id: seriesControl; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
             RowLayout {
                 Layout.fillWidth: true; spacing: 10
-                AppComboBox { id: sortControl; objectName: "librarySort"; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
-                AppButton { id: layoutControl; text: "布局"; onClicked: win.openSettingsPage(2) }
-                AppButton { id: personalControl; text: "个性化"; onClicked: personalization.openPersonalization() }
-                Item { Layout.fillWidth: win.width<1200 }
+                Item { Layout.fillWidth: win.width>=1250 }
+                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: !homeVisible; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppButton { id: layoutControl; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
+                AppButton { id: personalControl; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
+                Item { Layout.fillWidth: win.width<1250 }
             }
         }
         LibraryHome {
@@ -292,7 +294,8 @@ ApplicationWindow {
                 var destination=contentY
                 if(win.activeFocusItem && win.activeFocusItem!==grid) win.activeFocusItem.focus=false
                 forceActiveFocus();contentY=previousY
-                gridScroll.to=destination;gridScroll.restart()
+                if(Math.abs(destination-previousY)>.5) { gridScroll.to=destination;gridScroll.restart() }
+                else contentY=destination
                 if(previousIndex!==currentIndex) backend.navigationMoved()
             }
             NumberAnimation { id: gridScroll; target: grid; property: "contentY"; duration: Theme.motion ? 190 : 0; easing.type: Easing.OutCubic }
@@ -303,11 +306,11 @@ ApplicationWindow {
             visible: !homeVisible
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
-            property int layoutColumns: Math.max(1, Math.min(Math.floor(width / (196 + gridGap)), columnCount > 0 ? columnCount : Math.floor(width / (coverSize + gridGap))))
+            property int layoutColumns: Math.max(1, Math.min(Math.max(1,Math.floor(width / (160 + gridGap))), columnCount > 0 ? columnCount : Math.round(width / (coverSize + gridGap))))
             readonly property int effectiveColumns: Math.max(1,Math.floor((width+.001)/cellWidth))
-            cellWidth: columnCount>0 ? Math.floor(width / layoutColumns) : Math.min(width,coverSize+gridGap)
+            cellWidth: Math.floor(width / layoutColumns)
             property real cardWidth: cellWidth - gridGap
-            cellHeight: cardWidth * 1.38 + 144 + gridGap
+            cellHeight: cardWidth * Theme.coverAspect + Theme.cardFooterHeight + gridGap
             model: libraryModel
             cacheBuffer: cellHeight*2
             reuseItems: true

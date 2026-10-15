@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     gradient=QLinearGradient(0,0,480,680);gradient.setColorAt(0,QColor('#174c76'));gradient.setColorAt(1,QColor('#122034'));paint.fillRect(image.rect(),gradient)
     paint.setPen(QColor('#90c7e0'));paint.drawRect(20,20,439,639);paint.setPen(QColor('#80c942'));paint.drawEllipse(75,155,330,330)
     paint.setPen(QColor('white'));paint.setFont(QFont('Segoe UI',26,QFont.Bold));paint.drawText(48,110,'GAME CLOUD');paint.drawText(138,345,'SAVE');paint.end();image.save(str(cover))
-    for index in range(8):
+    for index in range(24):
         ident=str(index);store.games.append({'id':ident,'name':f'Cover motion {index}','category':'视觉小说','tags':['悬疑'],'cover':str(cover)})
         store.local[ident]={'installed':True}
     backend=Bridge(store);engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend)
@@ -45,6 +45,18 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     shine=effect.findChild(QObject,'coverShine');assert shine.isVisible() and effect.property('yaw')!=0
     output=ROOT/'test-data/cover-motion';output.mkdir(exist_ok=True);root.grabWindow().save(str(output/'controller-shine.png'))
     spin(1800);assert not shine.isVisible(),'Shine must finish, not loop on selection'
+    assert effect.property('yaw')==0 and effect.property('pitch')==0,'Controller cue must settle flat'
+    # Rapid controller changes must reset the previous surface, including interrupted cues.
+    for command in ['right']*4+['left']*4:
+        dispatch(app,root,backend,command);spin(20)
+        current=[item for item in walk(root.contentItem()) if item.objectName()=='coverEffects' and item.isVisible()]
+        assert sum(bool(item.property('hot')) for item in current)==1,(command,grid.property('currentIndex'),backend.controllerMode,[(item.property('identity'),item.property('hot'),item.property('available'),item.property('controllerFocused'),item.property('suspended')) for item in current])
+        assert all(item.property('yaw')==0 and item.property('pitch')==0 for item in current if not item.property('hot'))
+    dispatch(app,root,backend,'left');spin(20)
+    assert not any(item.property('hot') for item in current),'Sidebar focus left a cover active'
+    dispatch(app,root,backend,'right');spin(20)
+    assert sum(bool(item.property('hot')) for item in current)==1
+    spin(900)
     frames=[];root.frameSwapped.connect(lambda:frames.append(time.monotonic()));spin(300)
     assert len(frames)<=6,('Selected cover continues rendering while idle',len(frames))
     idle_frames=len(frames)
@@ -52,12 +64,36 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     backend.setControllerMode(False);point=effect.mapToScene(QPointF(effect.width()*.82,effect.height()*.22))
     QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(100)
     assert effect.property('hot') and effect.property('yaw')>0 and effect.property('pitch')>0
+    # Capture angles during movement, without giving an animation time to catch up after stopping.
+    samples=[]
+    for fraction in [.12,.3,.5,.7,.88,.65,.35,.1]:
+        point=effect.mapToScene(QPointF(effect.width()*fraction,effect.height()*.2))
+        QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(16)
+        angle=effect.property('yaw');samples.append(angle)
+        assert abs(angle-(fraction*2-1)*18)<.8,(fraction,angle)
+    assert max(samples)>12 and min(samples)<-12,samples
+    point=effect.mapToScene(QPointF(effect.width()*.88,effect.height()*.2))
+    QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(16)
     spin(450);root.grabWindow().save(str(output/'mouse-tilt.png'))
+    backend.setControllerMode(True);spin(20)
+    assert all(item.property('yaw')==0 for item in current if not item.property('hot'))
+    backend.setControllerMode(False);spin(20)
+    assert not effect.property('hot') and effect.property('yaw')==0,'Old mouse coordinates survived mode switch'
+    point=effect.mapToScene(QPointF(effect.width()*.7,effect.height()*.4))
+    QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(30)
+    root.hide();spin(50);assert effect.property('yaw')==0 and effect.property('pitch')==0
+    root.show();root.requestActivate();spin(80)
     store.settings['animations']=False;backend.settingsChanged.emit();spin(100)
     assert not effect.property('hot') and effect.property('yaw')==0 and effect.property('pitch')==0 and not shine.isVisible()
     store.settings['animations']=True;backend.settingsChanged.emit();spin(50)
     # Directly suspending the effect models the scrolling guard without synthesizing a flick.
     effect.setProperty('suspended',True);spin();assert not effect.property('hot') and not shine.isVisible()
+    effect.setProperty('suspended',False);spin()
+    assert effect.property('yaw')==0 and effect.property('pitch')==0
+    point=effect.mapToScene(QPointF(effect.width()*.35,effect.height()*.4))
+    QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(30)
+    effect.setProperty('identity','recycled-fixture');spin(30)
+    assert not effect.property('hot') and effect.property('yaw')==0,'Recycled cover retained pointer tilt'
     # The star keeps its own click; the rest of the cover opens the same three-tab settings.
     card=effect.parentItem().parentItem();clicked=[]
     card.settingsRequested.connect(lambda:clicked.append('settings'))
@@ -70,7 +106,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     QTest.mouseClick(root,Qt.LeftButton,pos=QPoint(round(point.x()),round(point.y())));spin(250)
     assert clicked==['favorite','settings'] and root.findChild(QObject,'gameDialog').property('visible'),clicked
     assert root.findChild(QObject,'gameSettingsTabs').property('count')==3
-    report={'one_shot_shine':True,'mouse_tilt':True,'reduced_motion':True,'scroll_guard':True,'cover_settings_click':True,'favorite_click_isolated':True,'idle_frames_in_300ms':idle_frames}
+    report={'one_shot_shine':True,'continuous_mouse_angles':samples,'controller_settles_flat':True,'rapid_navigation_resets':True,'mode_switch_reset':True,'inactive_reset':True,'recycled_reset':True,'reduced_motion':True,'scroll_guard':True,'cover_settings_click':True,'favorite_click_isolated':True,'idle_frames_in_300ms':idle_frames}
     (output/'report.json').write_text(json.dumps(report),encoding='utf-8')
     assert not any(term in message for message in messages for term in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign')),messages
     backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine)

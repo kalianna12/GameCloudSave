@@ -15,10 +15,10 @@ Button {
         elide: Text.ElideRight
     }
     background: Rectangle {
-        radius: 5
-        color: control.highlighted && control.enabled ? Theme.accent : control.down || control.checked ? Theme.hover : control.hovered ? Theme.hover : Theme.surface
+        radius: 9
+        color: control.highlighted && control.enabled ? Theme.accent : control.down || control.checked ? Theme.hover : control.hovered ? Theme.hover : control.flat ? "transparent" : Theme.surface
         border.width: control.activeFocus ? 2 : 1
-        border.color: control.activeFocus || control.highlighted && control.enabled ? Theme.accent : Theme.border
+        border.color: control.activeFocus || control.highlighted && control.enabled ? Theme.accent : control.flat ? "transparent" : Theme.outline
         opacity: control.enabled ? 1 : 0.6
     }
     Rectangle {

@@ -16,7 +16,7 @@ Item {
     signal launchRequested(var game)
     signal cloudRequested(var game)
     signal verticalScroll(real delta)
-    implicitHeight: section.kind==="tiles" ? 220 : section.kind==="recent" ? 318 : 338
+    implicitHeight: section.kind==="tiles" ? 220 : section.kind==="recent" ? 300 : 320
     ListModel { id: items; dynamicRoles: true }
     function sync() {
         var savedId=selectedId;syncing=true
@@ -38,13 +38,13 @@ Item {
     RowLayout {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: 32; spacing: 8
-        Label { text: shelf.section.title || ""; font.pixelSize: 22; font.bold: true; color: Theme.text }
+        Label { text: shelf.section.title || ""; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.text }
         Item { Layout.fillWidth: true }
-        AppButton { text: "查看全部"; onClicked: shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") }
+        AppButton { text: "查看全部"; flat: true; onClicked: shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") }
         IconButton { iconName: "arrow-left"; width: 32; height: 32; hint: "向左浏览"; enabled: shelf.section.kind==="recent" ? list.currentIndex>0 : list.contentX>1; onClicked: shelf.move(-1) }
         IconButton { iconName: "arrow-right"; width: 32; height: 32; hint: "向右浏览"; enabled: shelf.section.kind==="recent" ? list.currentIndex<items.count-1 : list.contentX+list.width<list.contentWidth-1; onClicked: shelf.move(1) }
     }
-    Label { y: 37; width: parent.width; text: shelf.section.subtitle || ""; color: Theme.secondary; font.pixelSize: 11; elide: Text.ElideRight }
+    // Section subtitles repeat browsing instructions; keep the cover shelf quiet.
     function selectedGame() { return section.kind==="tiles" ? null : selectedRecord }
     function selectFirst() { horizontal.stop();list.currentIndex=items.count ? 0 : -1;list.positionViewAtBeginning() }
     function activateSelected() { if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else detailsRequested(selectedRecord) }
@@ -55,7 +55,8 @@ Item {
         if(previousIndex!==list.currentIndex) backend.navigationMoved()
         var previousX=list.contentX
         list.positionViewAtIndex(list.currentIndex,ListView.Contain)
-        horizontal.to=list.contentX;list.contentX=previousX;horizontal.restart()
+        var destination=list.contentX;list.contentX=previousX
+        if(Math.abs(destination-previousX)>.5) { horizontal.to=destination;horizontal.restart() }
     }
     function move(direction) {
         if(section.kind==="recent") { moveSelection(direction);shelf.selectionFocused() }
@@ -63,8 +64,8 @@ Item {
     }
     GameTile {
         objectName: "recentHero"; visible: shelf.section.kind==="recent" && items.count>0
-        anchors { left: parent.left; top: parent.top; topMargin: shelf.section.subtitle ? 66 : 48; bottom: parent.bottom; bottomMargin: 18 }
-        width: Math.min(470,shelf.width*.45); game: shelf.selectedRecord; featured: true; selected: false
+        anchors { left: parent.left; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }
+        width: Math.min(470,shelf.width*.45); game: shelf.selectedRecord; featured: true; selected: false; scrolling: shelf.outerMoving
         onDetailsRequested: function(game) { shelf.selectionFocused();shelf.detailsRequested(game) }
         onLaunchRequested: function(game) { shelf.launchRequested(game) }
         onCloudRequested: function(game) { shelf.cloudRequested(game) }
@@ -72,7 +73,7 @@ Item {
     NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 180 : 0; easing.type: Easing.OutCubic }
     ListView {
         id: list; objectName: "shelf-"+shelf.section.id
-        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: shelf.section.subtitle ? 66 : 48; bottom: parent.bottom; bottomMargin: 18 }
+        anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }
         anchors.leftMargin: shelf.section.kind==="recent" ? Math.min(470,shelf.width*.45)+14 : 0
         orientation: ListView.Horizontal; spacing: 14; clip: true; model: items
         reuseItems: true; cacheBuffer: 160; flickDeceleration: 2400; maximumFlickVelocity: 2800
@@ -86,7 +87,7 @@ Item {
                 anchors.fill: parent; sourceComponent: shelf.section.kind==="tiles" ? browseTile : gameTile
                 Component { id: browseTile; BrowseTile { record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex; onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() } onClicked: { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.browseRequested(record.target,record.value) } } }
                 Component { id: gameTile; GameTile {
-                    game: parent.parent.record; featured: false; scrolling: shelf.outerMoving || list.moving
+                    game: parent.parent.record; featured: false; scrolling: shelf.outerMoving || list.moving || horizontal.running
                     selectOnly: shelf.section.kind==="recent"; selected: parent.parent.index===list.currentIndex && shelf.keyboardFocused
                     onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }
                     onSelectionRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }

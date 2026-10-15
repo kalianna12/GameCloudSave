@@ -39,7 +39,8 @@ FocusScope {
         vertical.stop();list.currentIndex=focusedSection;list.positionViewAtIndex(focusedSection,ListView.Contain)
         var destination=list.contentY
         list.contentY=previousY
-        vertical.duration=Theme.motion ? 190 : 0;vertical.to=destination;vertical.restart()
+        if(Math.abs(destination-previousY)>.5) { vertical.duration=Theme.motion ? 190 : 0;vertical.to=destination;vertical.restart() }
+        else list.contentY=destination
         if(previousSection!==focusedSection) backend.navigationMoved()
         var shelf=home.currentShelf()
         if(shelf && (direction==="left" || direction==="right")) shelf.moveSelection(direction==="left" ? -1 : 1)

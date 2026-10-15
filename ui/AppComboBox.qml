@@ -6,6 +6,7 @@ C.ComboBox {
     property int controllerIndex: 0
     property bool controllerBrowsing: false
     property bool wrapOptions: false
+    property bool quiet: false
     function controllerInput(command) {
         if(command!=="activate" && command!=="back" && command!=="up" && command!=="down") return false
         if(!popup.visible) {
@@ -38,8 +39,8 @@ C.ComboBox {
         text: "▾"; font.pixelSize: 14; color: Theme.secondary
     }
     background: Rectangle {
-        radius: 5; color: control.hovered ? Theme.hover : Theme.surface
-        border.color: control.activeFocus ? Theme.accent : Theme.border
+        radius: 9; color: control.hovered ? Theme.hover : control.quiet ? "transparent" : Theme.surface
+        border.color: control.activeFocus ? Theme.accent : control.quiet ? "transparent" : Theme.outline
         border.width: control.activeFocus ? 2 : 1
         opacity: control.enabled ? 1 : .6
     }

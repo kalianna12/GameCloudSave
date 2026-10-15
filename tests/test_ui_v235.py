@@ -48,8 +48,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     root.setProperty('libraryMode','all');root.setProperty('librarySort','release_asc');root.setWidth(1800);spin()
     root.findChild(QObject,'watchControl').setProperty('checked',True);root.findChild(QObject,'watchControl').forceActiveFocus();spin()
     root.grabWindow().save(str(output/'library-green-focus.png'))
-    for item in walk(root.contentItem()):
-        if item.objectName()=='gameReleaseDate' and item.isVisible():assert not item.property('truncated')
+    assert not any(item.objectName()=='gameReleaseDate' for item in walk(root.contentItem()))
     search=root.findChild(QObject,'search');search.forceActiveFocus();dispatch(app,root,backend,'activate');spin()
     keyboard=root.findChild(QObject,'controllerKeyboard');assert keyboard.property('visible')
     root.grabWindow().save(str(output/'keyboard-letters.png'))
@@ -100,4 +99,4 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     assert imported['release_date']=='2022-01-02' and imported['tags']==['角色扮演']
     assert not any(word in message for message in messages for word in ['TypeError','ReferenceError','Binding loop','Cannot assign']),messages
     backend.timer.stop();backend.pool.shutdown(wait=True);shiboken6.delete(engine)
-print('PASS: full long-path options and details, compact date labels, 900px sorting, green focus, keyboard pages, single-game metadata editing; QML clean')
+print('PASS: full long-path options and details, compact cards, 900px sorting, green focus, keyboard pages, single-game metadata editing; QML clean')
