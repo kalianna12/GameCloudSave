@@ -12,7 +12,7 @@ from urllib.request import urlopen
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.4.0');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.5.0');args=parser.parse_args()
 import re
 if not re.fullmatch(r'\d+(\.\d+){0,2}',args.version):raise ValueError('Invalid version')
 release=ROOT/'dist/GameCloudSave';output=ROOT/'build/installer-payload';output.mkdir(parents=True,exist_ok=True)
@@ -62,7 +62,7 @@ with zipfile.ZipFile(release/'source.zip','w',zipfile.ZIP_DEFLATED) as zipped:
         if not name or name.startswith(('data/','test-data/','dist/','build/','.venv/','.git/','.codex/')):continue
         source=(ROOT/name).resolve()
         if not source.is_relative_to(ROOT) or not source.is_file():continue
-        if source.suffix.lower() not in ('.py','.qml','.svg','.json','.md','.ps1','.bat','.txt','.toml','.yaml','.ico','.wav') and source.name not in ('LICENSE','.gitignore'):continue
+        if source.suffix.lower() not in ('.py','.qml','.js','.svg','.json','.md','.ps1','.bat','.txt','.toml','.yaml','.ico','.wav') and source.name not in ('LICENSE','.gitignore'):continue
         zipped.write(source,name)
 with zipfile.ZipFile(output/'payload.zip','w',zipfile.ZIP_STORED) as zipped:
     for file in release.rglob('*'):

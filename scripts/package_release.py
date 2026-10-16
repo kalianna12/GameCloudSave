@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse,hashlib,re,shutil,zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.4.0');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.5.0');args=parser.parse_args()
 if not re.fullmatch(r'\d+\.\d+\.\d+',args.version):raise ValueError('Invalid release version')
 program=ROOT/'dist/GameCloudSave';installer=ROOT/('dist/installers/GameCloudSave-Setup-V'+args.version+'.exe')
 for file in (program/'GameCloudSave.exe',program/'Uninstall.exe',program/'source.zip',program/'使用说明.txt',installer):

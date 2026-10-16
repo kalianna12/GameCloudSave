@@ -96,6 +96,9 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             pt=title.mapToScene(QPointF(0,0));pb=plank.mapToScene(QPointF(0,0))
             assert pb.y()<=pt.y() and pt.y()+title.height()<=pb.y()+plank.height(),(pt,pb,title.height(),plank.height())
             book=next(item for item in walk(scene) if item.metaObject().className().startswith('BookCover') and item.isVisible())
+            # OS hover delivery requires an active test window and a fresh entry
+            # after the responsive resize checks (a prior window may own focus).
+            root.requestActivate();QTest.mouseMove(root,QPoint(220,15));spin(120)
             p=book.mapToScene(QPointF(30,60));QTest.mouseMove(root,QPoint(round(p.x()),round(p.y())));spin(300)
             assert book.property('raised') and book.property('lift')==22
             root.grabWindow().save(str(output/'shelf-hover.png'))

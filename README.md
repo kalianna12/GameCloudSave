@@ -1,12 +1,12 @@
-# GameCloudSave V2.4.0
+# GameCloudSave V2.5.0
 
 Windows 游戏库与存档备份管理器，Python + PySide6 / Qt Quick。支持 Playnite、Steam/Epic/Ubisoft 已安装游戏、本地 EXE/BAT/CMD 扫描；先保存本地快照，再通过 rclone WebDAV 上传到 AList。
 
-从 [V2.4.0 发行页](https://github.com/kalianna12/GameCloudSave/releases/tag/v2.4.0) 下载安装包或便携包。安装版运行 `GameCloudSave-Setup-V2.4.0.exe`；便携包完整解压后运行 `GameCloudSave.exe`，无需另装 Python。当前本机便携目录仍可双击上级目录的 `启动新版.bat`。
+从 [V2.5.0 发行页](https://github.com/kalianna12/GameCloudSave/releases/tag/v2.5.0) 下载安装包或便携包。安装版运行 `GameCloudSave-Setup-V2.5.0.exe`；便携包完整解压后运行 `GameCloudSave.exe`，无需另装 Python。当前本机便携目录仍可双击上级目录的 `启动新版.bat`。
 
-V2.4.0 整合单游戏的三个设置页面、批量资料/封面补全预览、导入选择、首轮漏查后的名称重试、VNDB 日期、规范标签和主题统一焦点。手柄侧栏选中即显示，内页按实际网格导航，搜索可打开应用内键盘。已有资料保留，候选需预览后应用。
+V2.5.0 保留原版默认布局，新增书柜 SHELF、影院 CINEMA、星图 ATLAS，支持分组、随机选游戏、木材与日光、Playnite 媒体和动态星云。整合退出后一次自动备份、本机自动备份默认保留 5 份、页内封面/横幅搜索、资料补全预览、全屏、启动窗口交接和手柄导航修复。存档时间跟随电脑时区；已有资料保留，候选需预览后应用。
 
-[完整发布说明](docs/V2.4.0发布说明.md) · [安装、更新和卸载说明](docs/安装与便携使用说明.txt)
+[完整发布说明](docs/V2.5.0发布说明.md) · [安装、更新和卸载说明](docs/安装与便携使用说明.txt)
 
 V2.3.3 修复重复焦点高亮，首页与子页面支持平滑手柄滚动。手柄操作隐藏鼠标并暂停悬停，移动鼠标恢复；导航提示音可在个性化中关闭。沿用固定标签词库和已有分类保护。[本轮说明与验证](docs/V2.3.3输入与网络.md)
 
@@ -28,7 +28,7 @@ V2.2 增加收藏、最近游玩、自定义分类、系列、规则/DeepSeek �
 
 ## 开发
 
-本机源码预览可双击 workspace 下的 `启动源码版.bat`，使用隔离的 `test-data/source-preview`。当前源码保留原版默认布局，并提供书柜、影院、星图三个可选布局；见 [设计与体验说明](docs/首页适配与主题扩展.md)。源码改动尚未同步到便携程序或安装包。
+本机源码预览可双击 workspace 下的 `启动源码版.bat`，使用隔离的 `test-data/source-preview`。V2.5.0 已将本轮源码改动纳入便携程序和安装包；见 [设计与体验说明](docs/首页适配与主题扩展.md)。后续日常修改仍仅测试源码，发行文件以对应版本标签为准。
 
 ```powershell
 python -m venv .venv
@@ -47,9 +47,9 @@ $env:GAMECLOUD_DATA = "$PWD\test-data\source-preview"
 .\.venv\Scripts\python.exe tests/test_library_v22.py
 .\.venv\Scripts\python.exe tests/test_library_ui_v22.py
 .\.venv\Scripts\python.exe tests/test_wizard_batch_v21.py
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.4.0
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.4.0
-.\.venv\Scripts\python.exe scripts/package_release.py --version 2.4.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.5.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.5.0
+.\.venv\Scripts\python.exe scripts/package_release.py --version 2.5.0
 ```
 
 构建脚本从当前虚拟环境打包 Qt、Python、rclone、卸载程序、许可证和 source.zip，无需目标电脑安装 Python。安装包按用户安装，默认创建桌面和开始菜单快捷方式，卸载保留个人数据。构建安装包需网络获取第三方许可文本。

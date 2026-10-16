@@ -1,7 +1,7 @@
 """Install/run/uninstall the real EXEs under an isolated workspace test folder."""
 from pathlib import Path
 import os,json,subprocess,time,sys,zipfile,uuid,argparse
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.4.0');version=parser.parse_args().version
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.5.0');version=parser.parse_args().version
 ROOT=Path(__file__).resolve().parents[1]
 test=ROOT/'test-data'/('installer-v'+version+'-'+uuid.uuid4().hex[:8]);test.mkdir()
 target=test/'installed';desktop=test/'desktop';menu=test/'menu';profile=test/'localappdata';profile.mkdir()
@@ -26,7 +26,7 @@ with zipfile.ZipFile(target/'source.zip') as zipped:
     names=zipped.namelist();assert 'app/themes.py' in names and 'installer/setup.py' in names and 'docs/theme.schema.json' in names
     assert zipped.read('ui/sounds/navigation.wav') == (ROOT/'ui/sounds/navigation.wav').read_bytes()
     assert zipped.read('app/input_feedback.py') == (ROOT/'app/input_feedback.py').read_bytes()
-    for name in ('app/library_enrichment.py','app/catalog_match.py','ui/GameSettingsDialog.qml','ui/EnrichmentWindow.qml','ui/ControllerKeyboard.qml','ui/Main.qml'):
+    for name in ('app/library_enrichment.py','app/catalog_match.py','app/time_display.py','app/game_watcher.py','ui/GameSettingsDialog.qml','ui/EnrichmentWindow.qml','ui/ControllerKeyboard.qml','ui/Main.qml','ui/ExperienceData.js','ui/WoodMaterials.js','ui/InlineImageBrowser.qml','ui/CinemaVideo.qml'):
         assert zipped.read(name)==(ROOT/name).read_bytes(),name+' is stale in the source archive'
     assert not any(name.startswith(('data/','test-data/','.venv/','dist/','build/')) or name.endswith('.dpapi') for name in names)
 report['uninstall_seconds']=run([target/'Uninstall.exe','--silent','--report',test/'uninstall.json'])
