@@ -292,6 +292,7 @@ def apply(store,rows,idents):
                 if not path.is_relative_to((store.root/'backgrounds').resolve()) or not path.is_file() or not landscape(path):skipped+=1;continue
                 game['background_source']=row['sources'].get(key,'资料库')
             game[key]=value;updated=True
+            if row['sources'].get(key)=='手动' and key in ('release_date','tags','category','series'):game[key+'_manual']=True
         changed+=updated
         if updated and row.get('metadata_steam_appid') and not game.get('metadata_steam_appid'):game['metadata_steam_appid']=row['metadata_steam_appid']
     if changed:

@@ -98,10 +98,26 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             backend.setControllerMode(True);invoke(experience,'focusFirst');dispatch(app,root,backend,'right');spin(400)
             assert not book.property('raised'),'Old book retained its pointer lift'
             backend.setControllerMode(False);QTest.mouseMove(root,QPoint(220,15));save(backend,{'shelf_arrangement':'books'})
+            volume=book.findChild(QObject,'bookVolume');assert not volume.isVisible(),'A closed spine must not expose an edge-on cover'
+            for local in [QPointF(55,90),QPointF(25,36),QPointF(25,book.height()-10)]:
+                point=book.mapToScene(local);QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(100)
+                assert not book.property('raised'),('Empty space picked up a book',local)
+            point=book.mapToScene(QPointF(25,90));QTest.mouseMove(root,QPoint(round(point.x()),round(point.y())));spin(300)
+            assert book.property('raised') and volume.isVisible(),'Only the real spine should pick up the cover'
+            point=volume.mapToScene(QPointF(0,0));bounds=scene.mapToScene(QPointF(0,0));assert point.y()>=bounds.y(),'Raised cover was clipped at the shelf top'
+            QTest.mouseMove(root,QPoint(220,15));spin(300);assert not volume.isVisible()
             jacket=book.findChild(QObject,'bookJacket');left=jacket.mapToScene(QPointF(0,0));right=jacket.mapToScene(QPointF(jacket.width(),0))
             assert abs(right.y()-left.y())<jacket.height()*.2,('Closed book has a diagonal roll',left,right,jacket.height())
             root.grabWindow().save(str(output/'shelf-spines.png'))
         if design=='atlas':
+            sky=scene.findChild(QObject,'atlasSky');phase=sky.property('phase');spin(180);assert sky.property('phase')>phase
+            save(backend,{'animations':False});phase=sky.property('phase');spin(180);assert sky.property('phase')==phase
+            save(backend,{'animations':True})
+            backend._sessions.active['fixture']={};backend.watchStateChanged.emit();spin(40)
+            phase=sky.property('phase');spin(180);assert sky.property('phase')==phase,'Sky must pause while a game is running'
+            backend._sessions.active.clear();backend.watchStateChanged.emit()
+            root.hide();spin(40);phase=sky.property('phase');spin(180);assert sky.property('phase')==phase,'Hidden sky kept animating'
+            root.show();root.requestActivate();spin(120)
             graph=data(scene,'graph');assert len(graph['nodes'])==len(store.games) and len({n['game']['id'] for n in graph['nodes']})==len(store.games)
             for edge in graph['edges']:assert edge['a']['game']['category']==edge['b']['game']['category']==edge['label']
             map_item=scene.findChild(QObject,'atlasMap');before=(scene.property('panX'),scene.property('panY'))

@@ -34,7 +34,7 @@ Item {
         return true
     }
     function move(step) { if(games.length) selected(games[Math.max(0,Math.min(games.length-1,selectedIndex+step))].id) }
-    function page(step) { move(step*Math.max(1,Math.floor(film.width/124))) }
+    function page(step) { move(step*Math.max(1,Math.floor(film.width/(Math.max(64,(film.height-24)*.7)+12)))) }
     function reveal() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) }
     onGameChanged: { playing=false;videoFailed=false;Qt.callLater(function() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) }) }
     onMediaChanged: { playing=false;videoFailed=false }
@@ -107,10 +107,11 @@ Item {
             model: cinema.games; orientation: ListView.Horizontal; spacing: 12; clip: true; reuseItems: true; cacheBuffer: 240
             delegate: Item {
                 required property var modelData; required property int index
-                width: 112; height: film.height
+                width: Math.max(64,(film.height-24)*.7); height: film.height
                 Rectangle {
                     width: parent.width; height: parent.height-24; radius: 3; color: "#28212d"; border.color: modelData.id===cinema.game.id ? Theme.accent : "#55465c"; border.width: modelData.id===cinema.game.id ? 3 : 1
-                    Image { anchors.fill: parent; anchors.margins: 4; source: modelData.backgroundUrl || modelData.coverUrl || ""; fillMode: Image.PreserveAspectFit; asynchronous: true; sourceSize.width: 240 }
+                    clip: true
+                    Image { objectName: "cinemaPoster"; anchors.fill: parent; anchors.margins: 2; source: modelData.coverHighUrl || modelData.coverUrl || ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 240 }
                     HoverHandler { id: filmHover; enabled: !backend.controllerMode }
                     TapHandler { onTapped: cinema.selected(modelData.id);onDoubleTapped: cinema.detailsRequested(modelData) }
                     scale: filmHover.hovered && Theme.motion ? .96 : 1

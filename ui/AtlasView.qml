@@ -35,9 +35,11 @@ Item {
         panX=(map.width-graph.width*zoom)/2;panY=(map.height-graph.height*zoom)/2
     }
     function startView() {
-        cameraX.stop();cameraY.stop();zoom=.9
+        cameraX.stop();cameraY.stop()
         var node=selectedNode || graph.nodes[0]
-        panX=node ? Math.min(32,map.width/2-node.x*zoom) : 0;panY=node ? Math.min(48,map.height/2-node.y*zoom) : 0
+        var cluster=node ? graph.labels.find(function(g) { return g.name===node.group }) : null
+        zoom=cluster ? Math.max(.55,Math.min(.9,(map.width-70)/cluster.width,(map.height-60)/cluster.height)) : .9
+        panX=cluster ? (map.width-cluster.width*zoom)/2-cluster.x*zoom : 0;panY=cluster ? (map.height-cluster.height*zoom)/2-cluster.y*zoom : 0
     }
     function zoomAt(factor,x,y) {
         cameraX.stop();cameraY.stop()
@@ -86,16 +88,7 @@ Item {
         onWidthChanged: Qt.callLater(atlas.reveal)
         onHeightChanged: Qt.callLater(atlas.reveal)
         Rectangle { anchors.fill: parent; color: "#101b2e"; radius: 8 }
-        Canvas {
-            id: stars; anchors.fill: parent; onWidthChanged: requestPaint();onHeightChanged: requestPaint()
-            onPaint: {
-                var c=getContext("2d");c.clearRect(0,0,width,height)
-                for(var y=16;y<height;y+=28) for(var x=16;x<width;x+=28) {
-                    var f=(Math.sin(x*12.9898+y*78.233)*43758.5453)%1
-                    c.fillStyle=f>.3 ? "#657e9b" : "#2c4059";c.fillRect(x+f*9,y+f*7,f>.3 ? 1.5 : 1,1)
-                }
-            }
-        }
+        AtlasSky { anchors.fill: parent; offsetX: atlas.panX; offsetY: atlas.panY }
         Canvas {
             id: links; objectName: "atlasRelations"; anchors.fill: parent
             onPaint: {
@@ -118,8 +111,11 @@ Item {
                     required property var modelData
                     readonly property color clusterColor: modelData.color
                     x: modelData.x; y: modelData.y; width: modelData.width; height: modelData.height
-                    Rectangle { anchors.fill: parent; radius: 50; color: Qt.rgba(parent.clusterColor.r,parent.clusterColor.g,parent.clusterColor.b,.025) }
-                    Rectangle { x: 24; y: 50; width: Math.min(160,parent.width-48); height: 1; color: modelData.color; opacity: .4 }
+                    Canvas {
+                        id: clusterCloud; anchors.centerIn: parent; width: Math.min(640,parent.width); height: Math.min(640,parent.height)
+                        transform: Scale { origin.x: clusterCloud.width/2; origin.y: clusterCloud.height/2; xScale: clusterCloud.parent.width/clusterCloud.width; yScale: clusterCloud.parent.height/clusterCloud.height }
+                        onPaint: { var c=getContext("2d"),r=Math.max(width,height)*.6,g=c.createRadialGradient(width/2,height/2,0,width/2,height/2,r);g.addColorStop(0,Qt.rgba(parent.clusterColor.r,parent.clusterColor.g,parent.clusterColor.b,.12));g.addColorStop(1,"transparent");c.clearRect(0,0,width,height);c.fillStyle=g;c.fillRect(0,0,width,height) }
+                    }
                     Label { x: 24; y: 16; width: parent.width-48; height: 30; text: modelData.name+"  "+modelData.count; color: modelData.color; font.pixelSize: 18; font.weight: Font.DemiBold; elide: Text.ElideRight }
                 }
             }
@@ -133,9 +129,9 @@ Item {
                     readonly property bool current: modelData.game.id===atlas.game.id
                     readonly property bool onScreen: (x+width)*atlas.zoom+atlas.panX>0 && x*atlas.zoom+atlas.panX<map.width && (y+height)*atlas.zoom+atlas.panY>0 && y*atlas.zoom+atlas.panY<map.height
                     visible: onScreen
-                    Rectangle { anchors.centerIn: parent; width: 13; height: width; radius: width/2; color: node.modelData.color; visible: atlas.zoom<.52 && !node.current }
+                    Rectangle { anchors.centerIn: parent; width: 13; height: width; radius: width/2; color: node.modelData.color; visible: atlas.zoom<.34 && !node.current }
                     Loader {
-                        anchors.fill: parent; active: node.onScreen && (atlas.zoom>=.52 || node.current)
+                        anchors.fill: parent; active: node.onScreen && (atlas.zoom>=.34 || node.current)
                         sourceComponent: Item {
                             Rectangle { x: 21; y: -6; width: 102; height: 124; radius: 12; color: node.current ? "#18ffda84" : "transparent"; border.color: node.current ? "#ffe2a0" : "transparent"; border.width: 1; opacity: .5+atlas.selectionGlow*.5 }
                             Rectangle { x: 28; width: 88; height: 112; radius: 8; color: "#243d59"; border.color: node.current ? "#ffe2a0" : node.modelData.color; border.width: node.current ? 3 : 2

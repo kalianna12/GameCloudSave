@@ -13,16 +13,16 @@ Item {
     signal chosen()
     signal opened()
     implicitWidth: spines ? 66 : coverWidth+14
-    implicitHeight: coverWidth*1.42+52
+    implicitHeight: coverWidth*1.42+88
     z: raised ? 10 : 0
     Rectangle {
-        x: 8; y: book.coverWidth*1.42-3; width: book.spines ? 46 : book.coverWidth+14; height: 13
+        x: 8; y: book.coverWidth*1.42+33; width: book.spines ? 46 : book.coverWidth+14; height: 13
         radius: 6; color: "#66000000"; opacity: book.raised ? .3 : .7
         scale: book.raised ? .88 : 1
         Behavior on opacity { NumberAnimation { duration: Theme.motion ? 180 : 0 } }
     }
     Rectangle {
-        visible: book.spines; x: 6; y: 12-book.lift; width: 46; height: book.coverWidth*1.42; radius: 3
+        objectName: "bookSpine"; visible: book.spines; x: 6; y: 48-book.lift; width: 46; height: book.coverWidth*1.42; radius: 3
         color: Theme.surface; border.color: book.selected ? Theme.accent : Theme.border; border.width: book.selected ? 3 : 1
         opacity: book.raised ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: Theme.motion ? 150 : 0 } }
@@ -32,7 +32,7 @@ Item {
         Rectangle { x: 8; y: parent.height-14; width: 30; height: 2; color: Theme.accent; opacity: .65 }
     }
     Item {
-        id: volume; objectName: "bookVolume"; x: book.spines && !book.raised ? 45 : 6; y: 12-book.lift
+        id: volume; objectName: "bookVolume"; x: 6; y: 48-book.lift; visible: !book.spines || book.raised
         width: book.coverWidth; height: width*1.42
         transform: [Rotation { origin.x: 0; origin.y: volume.height/2; axis.y: 1; axis.x: 0; axis.z: 0; angle: book.opening+(book.spines ? 0 : effect.yaw*.35) },Rotation { origin.x: volume.width/2; origin.y: volume.height; angle: !book.spines && book.raised && Theme.motion ? -3 : 0 }]
         Behavior on y { NumberAnimation { duration: Theme.motion ? 240 : 0; easing.type: Easing.OutBack; easing.overshoot: .65 } }
@@ -50,10 +50,13 @@ Item {
         }
     }
     Behavior on opening { NumberAnimation { duration: Theme.motion ? 230 : 0; easing.type: Easing.OutCubic } }
-    CoverEffects { id: effect; anchors.fill: parent; surface: jacket; identity: book.game.id || ""; tiltLimit: 12; controllerFocused: selected && backend.controllerMode; suspended: book.suspended }
-    TapHandler { onTapped: book.chosen(); onDoubleTapped: book.opened() }
+    CoverEffects {
+        id: effect; x: 6; y: 48; width: book.spines ? 46 : book.coverWidth; height: book.coverWidth*1.42
+        surface: jacket; identity: book.game.id || ""; tiltLimit: 12; controllerFocused: selected && backend.controllerMode; suspended: book.suspended
+        TapHandler { onTapped: book.chosen(); onDoubleTapped: book.opened() }
+    }
     TitleLabel {
-        objectName: "bookTitle"; x: 5; y: book.coverWidth*1.42+17; width: book.spines ? 60 : book.coverWidth; height: 24
+        objectName: "bookTitle"; x: 5; y: book.coverWidth*1.42+53; width: book.spines ? 60 : book.coverWidth; height: 24
         text: book.game.name || ""; elide: Text.ElideRight; color: book.selected ? "#fff1c8" : "#ecd5b6"; font.pixelSize: book.spines ? 10 : 11; scrolling: book.suspended
         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
         background: Rectangle { radius: 3; color: book.selected ? "#5c432a" : "#3b291e"; border.color: book.selected ? Theme.accent : "#886848" }

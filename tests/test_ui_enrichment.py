@@ -125,6 +125,35 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     assert backend.enrichmentResults[0]['second_pass'] and backend.enrichmentResults[0]['fields']['release_date']=='2002-03-04'
     assert (store.root/'library.json').read_bytes()==before and not store.games[-1].get('release_date')
     store.games.pop();backend._games_cache=None;backend.gamesChanged.emit()
+    # A failed title stays in this window: search a chosen catalog, stage a
+    # verified match, or type missing fields. Neither action saves until Apply.
+    from enrichment_manual import base
+    store.games.append({'id':'manual','name':'Edited title','category':'其他','tags':[],'cover':''})
+    backend._games_cache=None;backend.gamesChanged.emit()
+    _,manual_row,_=base(store,'manual');backend.receiveEnrichment(manual_row,1,1,'Finished')
+    window.setProperty('ownsQuery',True);invoke(window,'sync');invoke(window,'openManual',backend.enrichmentResults[-1]);spin(200)
+    pane=window.findChild(QObject,'manualEnrichmentPane');assert pane.isVisible()
+    assert pane.findChild(QObject,'manualQuery').property('text')=='Edited title'
+    for provider in ('google','bing','ign','steamgriddb','gog','epic'):
+        assert backend.enrichmentBrowserUrl('Title & name',provider).startswith('https://')
+    before=(store.root/'library.json').read_bytes();tick_count=len(ticks)
+    with patch('cover_sources.search',side_effect=lambda *args:(time.sleep(.18) or [{'id':'vndb:v1','provider':'vndb','name':'Original title','released':'1999-02-03','image':''}])):
+        invoke(pane,'search');idle();spin()
+    assert pane.findChild(QObject,'manualCandidates').property('count')==1 and len(ticks)>tick_count
+    backend.previewEnrichmentCandidate('manual','vndb:v1');idle();spin(100)
+    assert not window.property('manualId') and backend.enrichmentResults[-1]['fields']['release_date']=='1999-02-03'
+    assert (store.root/'library.json').read_bytes()==before
+    invoke(window,'openManual',backend.enrichmentResults[-1]);spin(100)
+    pane.findChild(QObject,'manualDate').setProperty('text','2001-03-04')
+    pane.findChild(QObject,'manualSeries').setProperty('text','Manually checked series')
+    pane.findChild(QObject,'manualCover').setProperty('text',str(art))
+    window.setWidth(920);spin(150);window.grabWindow().save(str(output/'manual-small.png'))
+    invoke(pane,'stage');idle();spin(100)
+    assert (store.root/'library.json').read_bytes()==before
+    proposal=backend.enrichmentResults[-1];assert proposal['fields']['release_date']=='2001-03-04' and proposal['fields']['cover']
+    assert proposal['sources']['release_date']=='手动' and window.property('selected').toVariant()['manual']
+    backend.applyEnrichment(['manual']);idle();assert store.games[-1]['release_date']=='2001-03-04'
+    store.games.pop();backend._games_cache=None;backend.gamesChanged.emit()
     timer.stop();window.hide();root.requestActivate();spin()
     # Import explicitly offers preview enrichment and a plain import without network work.
     invoke(root,'openImport');spin();importer=root.findChild(QObject,'importWindow')

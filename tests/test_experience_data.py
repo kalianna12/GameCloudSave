@@ -43,4 +43,13 @@ class Relations(unittest.TestCase):
         self.assertEqual([n['game']['id'] for n in self.graph(games,'series')['nodes']],['early','later','unknown'])
         self.assertEqual([n['game']['id'] for n in self.graph(games,'series','release_desc')['nodes']],['later','early','unknown'])
         year=self.graph(games,'year');self.assertEqual([g['name'] for g in year['labels']],['2010年','2020年','日期未知'])
+    def test_constellations_have_stable_varied_silhouettes(self):
+        games=[{'id':str(i),'name':str(i),'series':['Orion','Lyra','Swan'][i//7]} for i in range(21)]
+        graph=self.graph(games,'series');self.assertEqual(graph,self.graph(games,'series'))
+        shapes=[]
+        for group in graph['labels']:
+            nodes=[n for n in graph['nodes'] if n['group']==group['name']]
+            shapes.append([(round(n['x']-group['x']),round(n['y']-group['y'])) for n in nodes])
+            self.assertGreater(len({round(n['y']) for n in nodes}),4)
+        self.assertEqual(len({str(shape) for shape in shapes}),3)
 if __name__=='__main__':unittest.main()

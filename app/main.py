@@ -171,6 +171,10 @@ class Bridge(QObject):
     def receiveEnrichment(self,row,done,total,phase):
         if row is not None:
             row=dict(row)
+            row['notes']=list(dict.fromkeys(row.get('notes',[])))
+            from library_enrichment import missing
+            game=next((g for g in self.store.games if g['id']==row['id']),None)
+            row['missing']=missing(self.store,game) if game else {}
             row['coverPreviewUrl']=QUrl.fromLocalFile(row['fields']['cover']).toString() if row['fields'].get('cover') else ''
             row['backgroundPreviewUrl']=QUrl.fromLocalFile(row['fields']['background']).toString() if row['fields'].get('background') else ''
             old=row.get('before_cover','')
@@ -203,6 +207,22 @@ class Bridge(QObject):
         from library_enrichment import apply
         self._enrichment_applied=set(idents)
         self.job('enrichment-apply',lambda:apply(self.store,self._enrichment,list(idents)))
+
+    @Slot(str,str)
+    def previewEnrichmentCandidate(self,ident,candidate_id):
+        if self._busy or self._cover_target!='enrichment:'+ident:return
+        record=next((dict(r) for r in self._cover_results if r['id']==candidate_id),None)
+        if record is None:return
+        from enrichment_manual import candidate
+        previous=next((r for r in self._enrichment if r['id']==ident),None)
+        self.job('enrichment-manual',lambda:candidate(self.store,ident,record,previous))
+
+    @Slot(str,'QVariantMap')
+    def previewEnrichmentValues(self,ident,fields):
+        if self._busy:return
+        from enrichment_manual import values
+        previous=next((r for r in self._enrichment if r['id']==ident),None)
+        self.job('enrichment-manual',lambda:values(self.store,ident,dict(fields),previous))
 
     @Slot(str,str,str,bool)
     def searchGameCovers(self,ident,query,provider,use_ai):
@@ -388,10 +408,17 @@ class Bridge(QObject):
             self.enrichmentChanged.emit()
         elif action=='enrichment-apply':
             self._status=result
+            from library_enrichment import missing
+            known={g['id']:g for g in self.store.games}
             for row in self._enrichment:
-                if row['id'] in self._enrichment_applied:row['applied']=True
+                if row['id'] in self._enrichment_applied:
+                    row['applied']=True
+                    row['missing']=missing(self.store,known[row['id']]) if row['id'] in known else {}
             self._enrichment_progress['phase']=result
             self.enrichmentChanged.emit()
+        elif action=='enrichment-manual':
+            self.receiveEnrichment(result,self._enrichment_progress['done'],self._enrichment_progress['total'],'手动补全已加入预览')
+            self._status='已加入预览，应用所选补全后保存'
         elif action == 'import':
             self._status = f'已导入 {result} 款游戏'
         elif action in ('list','cloud-mkdir'):
@@ -592,6 +619,13 @@ class Bridge(QObject):
         from urllib.parse import quote
         source=next((row for row in PROVIDERS if row['id']==provider),{})
         return source.get('url','').replace('{query}',quote(query[:200]+' game cover'))
+
+    @Slot(str,str,result=str)
+    def enrichmentBrowserUrl(self,query,provider):
+        from cover_sources import PROVIDERS
+        from urllib.parse import quote
+        source=next((row for row in PROVIDERS if row['id']==provider),{})
+        return source.get('url','').replace('{query}',quote(query[:200]))
 
     @Slot(str,str,str)
     def useCoverUrl(self,scope,ident,url):
