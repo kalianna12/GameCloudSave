@@ -548,7 +548,7 @@ ApplicationWindow {
                 AppButton { text: "重试上传"; onClicked: backend.retry(activeId) }
                 AppButton { text: "刷新记录"; onClicked: { if(historyTabs.currentIndex===0) backend.history(activeId); else backend.refreshCloudHistory(activeId) } }
             }
-            TabBar { id: historyTabs; Layout.fillWidth: true; TabButton { text: "本机版本" } TabButton { text: "云端 / 其他设备" } }
+            TabBar { id: historyTabs; objectName: "historyTabs"; Layout.fillWidth: true; TabButton { text: "本机版本" } TabButton { text: "云端 / 其他设备" } }
             Label { text: historyTabs.currentIndex===0 ? "按时间从新到旧排列，恢复前先备份当前存档。" : "点击刷新读取云端版本；选择恢复时下载并校验，不自动覆盖本机。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
             ListView {
                 Layout.fillWidth: true; Layout.fillHeight: true; model: historyTabs.currentIndex===0 ? backend.snapshots : backend.cloudSnapshots; clip: true
@@ -558,7 +558,7 @@ ApplicationWindow {
                     contentItem: RowLayout {
                         ColumnLayout {
                             Layout.fillWidth: true
-                            Label { text: modelData.created_at; Layout.fillWidth: true; elide: Text.ElideRight }
+                            Label { objectName: "snapshotTime"; text: backend.formatLocalTime(modelData.created_at || ""); Layout.fillWidth: true; elide: Text.ElideRight }
                             Label { text: (historyTabs.currentIndex===0 ? (modelData.event==="game_stop" || modelData.event==="game_start" ? "自动备份 · " : modelData.event==="manual" ? "手动备份 · " : "")+(modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; font.pixelSize: 12 }
                         }
                         AppButton { text: "备注"; visible: historyTabs.currentIndex===0; enabled: !backend.busy; onClicked: { noteDialog.snapshotId=modelData.id; snapshotNote.text=modelData.note || ""; noteDialog.open() } }

@@ -160,7 +160,7 @@ ApplicationWindow {
                     ColumnLayout {
                         anchors.fill: parent; anchors.margins: 12; spacing: 7
                         Label { text: "预览 · "+(backend.cloudPreview.name || "选择一个文件"); font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Label { visible: !!backend.cloudPreview.name; text: backend.cloudPreview.name ? (backend.cloudPreview.size>=0 ? cloud.fileSize(backend.cloudPreview.size)+" · " : "")+(backend.cloudPreview.modified || "") : ""; color: Theme.secondary; font.pixelSize: 11 }
+                        Label { visible: !!backend.cloudPreview.name; text: backend.cloudPreview.name ? (backend.cloudPreview.size>=0 ? cloud.fileSize(backend.cloudPreview.size)+" · " : "")+backend.formatLocalTime(backend.cloudPreview.modified || "") : ""; color: Theme.secondary; font.pixelSize: 11 }
                         RowLayout {
                             visible: !!backend.cloudPreview.name
                             Layout.fillWidth: true; Layout.fillHeight: true

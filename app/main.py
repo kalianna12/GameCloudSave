@@ -405,6 +405,10 @@ class Bridge(QObject):
     def snapshots(self): return self._history
     @Property('QVariantList', notify=changed)
     def cloudSnapshots(self):return self._cloud_history
+    @Slot(str,result=str)
+    def formatLocalTime(self,value):
+        from time_display import local_time
+        return local_time(value)
     @Property('QVariantList', notify=changed)
     def importCandidates(self):return self._imports
     @Property('QVariantList',notify=changed)
