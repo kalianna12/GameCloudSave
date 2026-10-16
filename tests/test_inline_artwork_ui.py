@@ -20,8 +20,8 @@ def spin(ms=100):
 def invoke(obj,name,*values):return QMetaObject.invokeMethod(obj,name,Q_RETURN_ARG('QVariant'),*(Q_ARG('QVariant',v) for v in values))
 def idle():
     end=time.monotonic()+12
-    while backend.busy and time.monotonic()<end:spin(25)
-    assert not backend.busy,backend.status
+    while (backend.busy or backend.artworkSearching) and time.monotonic()<end:spin(25)
+    assert not backend.busy and not backend.artworkSearching,backend.status
 def variant(value):return value.toVariant() if hasattr(value,'toVariant') else value
 def walk(item):
     yield item
@@ -86,6 +86,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     badges=[i.property('text') for i in walk(picker) if i.objectName()=='candidateBannerStatus' and i.isVisible()]
     assert '有横幅' in badges and '无横幅' in badges,badges
     choose_visible()
+    first=next(item for item in walk(picker) if item.objectName()=='chooseArtwork' and item.isVisible())
+    backend.receiveArtwork(backend._image_token,[dict(r,background_state='unknown') for r in records],False,'');spin(80)
+    assert shiboken6.isValid(first) and first.isVisible(),'A progressive result recreated the existing image card'
+    backend.receiveArtwork(backend._image_token,records,True,'');spin(80)
     root.grabWindow().save(str(output/'catalog-banners.png'));dialog.setProperty('visible',False)
     # Completion uses the same embedded search and keeps the selected image in
     # a preview on this page until explicit Apply.

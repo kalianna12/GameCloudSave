@@ -14,7 +14,7 @@ ApplicationWindow {
         if((backend.coverProviders[provider.currentIndex] || {}).kind==="browser") { browserToken=backend.beginInlineImages(scope,targetId,provider.currentValue,"cover");browserUrl=backend.artworkBrowserUrl(query.text,provider.currentValue,"cover");browserOpen=!!browserToken }
         else { browserOpen=false;backend.searchTargetArtwork(scope,targetId,query.text,provider.currentValue,"cover",ai.checked) }
     }
-    onVisibleChanged: if(!visible) browserOpen=false
+    onVisibleChanged: if(!visible) { browserOpen=false;backend.cancelArtworkSearch(scope,targetId) }
     function openSearch(kind,ident,name,source) { if(backend.busy) return;backend.clearCoverSearch();scope=kind;targetId=ident;query.text=name;provider.currentIndex=Math.max(0,backend.coverProviders.findIndex(function(row) { return row.id===(source || backend.settings.cover_source) }));show();raise();requestActivate() }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 24; spacing: 14
@@ -28,16 +28,9 @@ ApplicationWindow {
         Loader { id: browser; visible: covers.browserOpen; active: covers.visible && covers.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; source: active ? "InlineImageBrowser.qml" : ""; onLoaded: { item.token=Qt.binding(function() { return covers.browserToken });item.providerId=Qt.binding(function() { return provider.currentValue });item.searchUrl=Qt.binding(function() { return covers.browserUrl }) }
             Connections { target: browser.item; function onCollected(count) { covers.browserOpen=false } function onDismissed() { covers.browserOpen=false } }
         }
-        GridView { id: grid; visible: !covers.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; model: backend.coverSearchTarget===covers.scope+":"+covers.targetId ? backend.coverResults : []; cellWidth: width/Math.max(1,Math.floor(width/190)); cellHeight: 300
-            delegate: Item {
-                required property var modelData; width: grid.cellWidth; height: grid.cellHeight
-                ColumnLayout { anchors.fill: parent; anchors.margins: 8; spacing: 5
-                    Image { Layout.fillWidth: true; Layout.preferredHeight: 215; source: modelData.image; asynchronous: true; fillMode: Image.PreserveAspectFit; sourceSize: Qt.size(300,450); onStatusChanged: if(status===Image.Error && modelData.fallback && source.toString()!==modelData.fallback) source=modelData.fallback }
-                    Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight; font.bold: true }
-                    AppButton { text: "使用此封面"; Layout.fillWidth: true; enabled: !backend.busy; onClicked: backend.applyCover(covers.scope,covers.targetId,modelData.id) }
-                }
-            }
-            ScrollBar.vertical: ScrollBar {}
+        ProgressBar { visible: backend.artworkSearching && backend.coverSearchTarget===covers.scope+":"+covers.targetId; indeterminate: true; Layout.fillWidth: true; Layout.preferredHeight: 3 }
+        ArtworkResults { visible: !covers.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; targetKey: covers.scope+":"+covers.targetId
+            onChosen: function(ident,kind) { backend.applyCover(covers.scope,covers.targetId,ident) }
         }
         Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
     }

@@ -36,7 +36,7 @@ Item {
             browserUrl=backend.artworkBrowserUrl(query.text,provider.currentValue,artKind);browserOpen=!!browserToken
         } else { browserOpen=false;backend.searchTargetArtwork("enrichment",record.id,query.text,provider.currentValue,artKind,false) }
     }
-    onVisibleChanged: if(!visible) browserOpen=false
+    onVisibleChanged: if(!visible) { browserOpen=false;backend.cancelArtworkSearch("enrichment",record.id || "") }
     function stage() {
         backend.previewEnrichmentValues(record.id,{release_date:date.text.trim(),category:category.currentText,tags:tagText.text.split(/[,，]/).map(function(t) { return t.trim() }).filter(Boolean),series:series.text.trim(),cover:cover.text.trim(),background:background.text.trim()})
     }
@@ -87,21 +87,16 @@ Item {
                 Layout.fillWidth: true; Layout.fillHeight: true
                 TabBar { id: imageKind; objectName: "manualImageKind"; Layout.fillWidth: true; onCurrentIndexChanged: pane.browserOpen=false; TabButton { text: "封面" } TabButton { text: "横幅" } }
                 Label { text: [pane.record.fields && pane.record.fields.cover ? "已选封面" : "",pane.record.fields && pane.record.fields.background ? "已选横幅" : ""].filter(Boolean).join(" / "); visible: !!text; color: Theme.accent; Layout.fillWidth: true }
+                ProgressBar { visible: backend.artworkSearching && backend.coverSearchTarget==="enrichment:"+pane.record.id; indeterminate: true; Layout.fillWidth: true; Layout.preferredHeight: 3 }
                 Loader {
                     id: webSearch; Layout.fillWidth: true; Layout.fillHeight: true; visible: pane.browserOpen; active: pane.visible && pane.browserOpen; source: active ? "InlineImageBrowser.qml" : ""
                     onLoaded: { item.token=Qt.binding(function() { return pane.browserToken });item.providerId=Qt.binding(function() { return provider.currentValue });item.searchUrl=Qt.binding(function() { return pane.browserUrl }) }
                     Connections { target: webSearch.item; function onCollected(count) { pane.browserOpen=false } function onDismissed() { pane.browserOpen=false } }
                 }
-                GridView {
+                ArtworkResults {
                     id: candidates; objectName: "manualCandidates"; visible: !pane.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-                    model: backend.coverSearchTarget==="enrichment:"+pane.record.id ? backend.coverResults : []
-                    cellWidth: width/Math.max(1,Math.floor(width/190)); cellHeight: 300
-                    delegate: ArtworkCandidate {
-                        required property var modelData; width: candidates.cellWidth; height: candidates.cellHeight; record: modelData; completion: true; kind: pane.artKind
-                        onChosen: function(kind) { backend.previewEnrichmentArtwork(pane.record.id,modelData.id,kind) }
-                    }
-                    ScrollBar.vertical: ScrollBar {}
-                    Label { visible: candidates.count===0; anchors.centerIn: parent; width: parent.width-20; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: Theme.secondary; text: backend.busy ? "正在搜索…" : "可修改名称重试，或切换搜索来源。" }
+                    targetKey: "enrichment:"+pane.record.id; completion: true; kind: pane.artKind
+                    onChosen: function(ident,kind) { backend.previewEnrichmentArtwork(pane.record.id,ident,kind) }
                 }
             }
         }

@@ -48,7 +48,7 @@ ApplicationWindow {
     onVisibilityChanged: if(libraryReady && launchTransition.running && (visibility===Window.Hidden || visibility===Window.Minimized)) launchTransition.cancel()
     property int filterFocusIndex: 0
     property int headerFocusIndex: 0
-    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,fullscreenControl]
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
     function goBack() {
@@ -80,7 +80,7 @@ ApplicationWindow {
     function controllerInput(command) {
         if(!win.active || backend.popupActive()) return false
         if(launchTransition.running) return launchTransition.controllerInput(command)
-        if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
+        if(command==="back") { if(alternativeDesign && experienceLoader.item && experienceLoader.item.controllerBack()) return true;if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
         var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
         var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
@@ -107,6 +107,7 @@ ApplicationWindow {
                 if(filter>=0 && filters[filter]===installedControl) { installedControl.toggle();installedControl.toggled();return true }
                 if(header>=0 && headers[header]===backButton) goBack()
                 if(filter>=0 && filters[filter]===fullscreenControl) win.toggleFullScreen()
+                if(filter>=0 && filters[filter]===personalControl) personalControl.clicked()
             }
             return true
         }
@@ -220,7 +221,7 @@ ApplicationWindow {
     BatchWindow { id: batchWindow; objectName: "batchWindow" }
     SetupWizard { id: setupWizard; objectName: "setupWizard" }
     LibraryManager { id: libraryManager; objectName: "libraryManager" }
-    PersonalizationWindow { id: personalization; objectName: "personalization" }
+    PersonalizationWindow { id: personalization; objectName: "personalization"; onReturnRequested: { win.show();win.requestActivate();Qt.callLater(function() { personalControl.forceActiveFocus() }) } }
     MatchWindow { id: matchWindow; objectName: "matchWindow"; onBatchRequested: win.openBatch() }
     Component.onCompleted: { libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
@@ -297,8 +298,8 @@ ApplicationWindow {
                 Layout.fillWidth: true; spacing: 10
                 Item { Layout.fillWidth: win.width>=1250 }
                 AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
-                AppButton { id: layoutControl; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
-                AppButton { id: personalControl; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
+                AppButton { id: layoutControl; objectName: "layoutControl"; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
+                AppButton { id: personalControl; objectName: "personalControl"; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
                 AppButton { id: fullscreenControl; objectName: "fullscreenControl"; text: win.fullScreenMode ? "退出全屏" : "全屏"; flat: true; onClicked: win.toggleFullScreen(); ToolTip.visible: hovered && !backend.controllerMode; ToolTip.text: "F11 切换全屏" }
                 Item { Layout.fillWidth: win.width<1250 }
             }

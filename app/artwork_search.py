@@ -1,13 +1,16 @@
 """Manual artwork search: paired catalog assets and bounded in-page captures."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor,as_completed
 from copy import deepcopy
 from urllib.parse import urlsplit
 import hashlib
 
-def search(store,query,provider,kind='cover',use_ai=False,cancel=None):
+def search(store,query,provider,kind='cover',use_ai=False,cancel=None,on_results=lambda rows:None):
     from cover_sources import search as catalog
     from library_enrichment import cached_lookup
-    rows=catalog(store,query,provider,use_ai,cancel)[:16]
+    if cancel and cancel.is_set():return []
+    rows=[dict(row,artwork_kind=kind,background_state='loading' if row.get('provider')=='steam' and row.get('appid') else 'available' if row.get('background_url') else 'none') for row in catalog(store,query,provider,use_ai,cancel)[:16]]
+    if cancel and cancel.is_set():return []
+    on_results([dict(row) for row in rows])
     def enrich(original):
         row=dict(original)
         if row.get('provider')=='steam' and row.get('appid'):
@@ -19,7 +22,17 @@ def search(store,query,provider,kind='cover',use_ai=False,cancel=None):
         else:row['background_state']='available' if row.get('background_url') else 'none'
         row['artwork_kind']=kind
         return row
-    with ThreadPoolExecutor(max_workers=3) as pool:return list(pool.map(enrich,rows))
+    # Show catalog covers immediately. Slow metadata requests never hold the
+    # faster results; preserve ranking while publishing each completed match.
+    with ThreadPoolExecutor(max_workers=4,thread_name_prefix='artwork-detail') as pool:
+        pending={pool.submit(enrich,row):i for i,row in enumerate(rows)}
+        for future in as_completed(pending):
+            if cancel and cancel.is_set():
+                for task in pending:task.cancel()
+                break
+            rows[pending[future]]=future.result()
+            on_results([dict(row) for row in rows])
+    return rows
 
 def web_rows(records,provider,kind):
     if kind not in ('cover','background'):raise ValueError('图片类型无效')

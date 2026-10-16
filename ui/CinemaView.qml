@@ -23,6 +23,35 @@ Item {
     signal launchRequested(var game)
     signal cloudRequested(var game)
     signal removeRequested(var game)
+    signal contentRequested()
+    signal boundaryRequested(string direction)
+    function focusCategories() {
+        categoryFilm.currentIndex=Math.max(0,categoryFilm.model.findIndex(function(row) { return row.value===cinema.categoryValue }))
+        categoryFilm.positionViewAtIndex(categoryFilm.currentIndex,ListView.Contain);categoryFilm.forceActiveFocus()
+    }
+    function actionControls() { return gameActions.controllerControls().concat([favoriteButton,videoButton,muteButton,refreshButton]).filter(function(c) { return c.visible && c.enabled }) }
+    function controllerInput(command) {
+        var focus=Window.window ? Window.window.activeFocusItem : null,actions=actionControls(),index=-1,inCategories=false
+        while(focus) { if(index<0) index=actions.indexOf(focus);if(focus===categoryFilm) inCategories=true;focus=focus.parent }
+        if(inCategories) {
+            if(command==="up") { if(actions.length) actions[0].forceActiveFocus();else boundaryRequested("up") }
+            else if(command==="down") contentRequested()
+            else if(command==="left" || command==="right") {
+                if(command==="left" && categoryFilm.currentIndex===0) boundaryRequested("left")
+                else { categoryFilm.currentIndex=Math.max(0,Math.min(categoryFilm.count-1,categoryFilm.currentIndex+(command==="left" ? -1 : 1)));categoryFilm.positionViewAtIndex(categoryFilm.currentIndex,ListView.Contain);backend.navigationMoved() }
+            } else if(command==="activate") categorySelected(categoryFilm.model[categoryFilm.currentIndex].value)
+            return true
+        }
+        if(index>=0) {
+            if(command==="up") boundaryRequested("up")
+            else if(command==="down") focusCategories()
+            else if(command==="left" || command==="right") { var next=index+(command==="left" ? -1 : 1);if(next<0) boundaryRequested("left");else actions[Math.min(actions.length-1,next)].forceActiveFocus() }
+            else if(command==="activate") actions[index].clicked()
+            return true
+        }
+        if(controllerFocused && command==="up") { focusCategories();return true }
+        return false
+    }
     function syncVideo() {
         if(playing && canPlay) video.active=true
         else { if(video.item) video.item.stop();video.active=false }
@@ -72,6 +101,7 @@ Item {
             Repeater { model: (cinema.game.tags || []).filter(function(t) { return t!==cinema.game.category }).slice(0,4); Label { required property string modelData; text: modelData; color: "#dfd3e8"; font.pixelSize: 12 } }
         }
         GameActions {
+            id: gameActions
             game: cinema.game; light: true; Layout.preferredWidth: Math.min(300,parent.width); Layout.preferredHeight: cinema.compact ? 38 : 46
             onLaunchRequested: function(game) { cinema.launchRequested(game) }
             onDetailsRequested: function(game) { cinema.detailsRequested(game) }
@@ -80,10 +110,10 @@ Item {
         }
         RowLayout {
             visible: !!cinema.game.id; spacing: 14
-            IconButton { iconName: "star"; bare: true; lightIcon: true; label: cinema.game.favorite ? "已收藏" : "收藏"; width: 88; hint: label; onClicked: backend.toggleFavorite(cinema.game.id) }
-            AppButton { objectName: "cinemaVideoButton"; visible: !!cinema.media.videoUrl; enabled: cinema.canPlay; text: cinema.playing ? "停止预告" : "播放预告"; flat: true; onClicked: cinema.playing=!cinema.playing }
-            AppButton { visible: cinema.playing; text: cinema.muted ? "开启声音" : "静音"; flat: true; onClicked: { cinema.muted=!cinema.muted;if(video.item) video.item.muted=cinema.muted } }
-            AppButton { visible: !cinema.compact || !cinema.playing; text: backend.mediaLoading ? "正在读取媒体" : "更新媒体"; enabled: !backend.mediaLoading; flat: true; onClicked: backend.loadLibraryMedia(true) }
+            IconButton { id: favoriteButton; iconName: "star"; bare: true; lightIcon: true; label: cinema.game.favorite ? "已收藏" : "收藏"; width: 88; hint: label; onClicked: backend.toggleFavorite(cinema.game.id) }
+            AppButton { id: videoButton; objectName: "cinemaVideoButton"; visible: !!cinema.media.videoUrl; enabled: cinema.canPlay; text: cinema.playing ? "停止预告" : "播放预告"; flat: true; onClicked: cinema.playing=!cinema.playing }
+            AppButton { id: muteButton; visible: cinema.playing; text: cinema.muted ? "开启声音" : "静音"; flat: true; onClicked: { cinema.muted=!cinema.muted;if(video.item) video.item.muted=cinema.muted } }
+            AppButton { id: refreshButton; visible: !cinema.compact || !cinema.playing; text: backend.mediaLoading ? "正在读取媒体" : "更新媒体"; enabled: !backend.mediaLoading; flat: true; onClicked: backend.loadLibraryMedia(true) }
         }
         Label { visible: cinema.videoFailed; text: "预告片无法播放，可更新媒体后重试"; color: "#e4c7aa"; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12 }
     }
@@ -92,12 +122,17 @@ Item {
         Rectangle { anchors.fill: parent; color: "#80100e14" }
         ListView {
             id: categoryFilm; objectName: "cinemaCategories"; x: 18; y: 0; width: parent.width-36; height: 34; orientation: ListView.Horizontal; spacing: 16; clip: true
+            currentIndex: 0; activeFocusOnTab: true
             model: [{name:"全部",value:"",count:0}].concat(cinema.categories.map(function(g) { return {name:g.name,value:g.name,count:g.items.length} }))
             delegate: AbstractButton {
-                required property var modelData
+                required property var modelData; required property int index
+                objectName: "cinemaCategory-"+index
                 width: label.implicitWidth+8; height: 32; Accessible.name: modelData.name; hoverEnabled: !backend.controllerMode
                 contentItem: Label { id: label; text: modelData.name+(modelData.count ? " "+modelData.count : ""); color: cinema.categoryValue===modelData.value ? "#ffe2a0" : "#beb0c8"; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter }
-                background: Item { Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: "#ffe2a0"; visible: cinema.categoryValue===modelData.value } }
+                background: Item {
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: "#ffe2a0"; visible: cinema.categoryValue===modelData.value }
+                    SelectionFrame { objectName: "cinemaCategoryFocusRing"; selected: parent.parent.activeFocus || categoryFilm.activeFocus && categoryFilm.currentIndex===index; radius: 4 }
+                }
                 onClicked: cinema.categorySelected(modelData.value)
             }
         }

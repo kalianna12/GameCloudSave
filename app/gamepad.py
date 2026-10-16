@@ -9,9 +9,11 @@ def dispatch(app,root,bridge,command):
     popup=bridge.active_popup()
     if popup is not None and popup.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
         if QMetaObject.invokeMethod(popup,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
-    # Only the library, its explicit controller popups and combo lists are supported.
+    # Only explicit controller windows/popups, the library and combo lists are supported.
     # Never synthesize Tab/Space into native file pickers or mouse-only editors.
     if window!=root:
+        if popup is None and window.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
+            if QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
         if command=='back':
             if popup is not None:QMetaObject.invokeMethod(popup,'close')
             else:window.close();root.show();root.raise_();root.requestActivate()

@@ -26,8 +26,20 @@ FocusScope {
     signal cloudRequested(var game)
     signal removeRequested(var game)
     signal boundaryRequested(string direction)
-    function focusContent() { var item=Window.window ? Window.window.activeFocusItem : null;if(item && item!==experience) item.focus=false;experience.forceActiveFocus() }
+    function focusContent() {
+        var item=Window.window ? Window.window.activeFocusItem : null
+        // Clear nested scopes too: a film category ListView otherwise keeps
+        // its focused delegate when the containing FocusScope is restored.
+        while(item && item!==experience && item!==Window.window.contentItem) { var owner=item.parent;item.focus=false;item=owner }
+        experience.forceActiveFocus()
+    }
     function choose(ident) { if(selectedId!==ident) backend.navigationMoved();selectedId=ident;focusContent() }
+    function controllerBack() {
+        var item=Window.window ? Window.window.activeFocusItem : null
+        if(item===experience) return false
+        while(item) { if(item===experience) { focusContent();return true };item=item.parent }
+        return false
+    }
     function focusFirst() {
         if(scene.item && scene.item.resetPosition) scene.item.resetPosition()
         var first=design==="atlas" && scene.item && scene.item.firstGame ? scene.item.firstGame() : filteredGames[0]
@@ -65,6 +77,7 @@ FocusScope {
             else if(command==="activate" && controls[index]===dice) { dice.animateRoll();randomGame() }
             return true
         }
+        if(scene.item && scene.item.controllerInput && scene.item.controllerInput(command)) return true
         if(command==="next" || command==="previous") { if(scene.item) scene.item.page(command==="next" ? 1 : -1);return true }
         if(["left","right","up","down"].indexOf(command)>=0) {
             focusContent()
@@ -108,6 +121,8 @@ FocusScope {
                 function onLaunchRequested(game) { experience.launchRequested(game) }
                 function onCloudRequested(game) { experience.cloudRequested(game) }
                 function onRemoveRequested(game) { experience.removeRequested(game) }
+                function onContentRequested() { experience.focusContent() }
+                function onBoundaryRequested(direction) { if(direction==="up") grouping.forceActiveFocus();else experience.boundaryRequested(direction) }
             }
         }
         RowLayout {

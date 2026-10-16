@@ -9,9 +9,11 @@ Item {
     signal detailsRequested(var game)
     signal cloudRequested(var game)
     signal removeRequested(var game)
+    function controllerControls() { var result=[];for(var i=0;i<actionRepeater.count;i++) { var item=actionRepeater.itemAt(i);if(item && item.visible && item.enabled) result.push(item) };return result }
     RowLayout {
         anchors.fill: parent; spacing: 6
         Repeater {
+            id: actionRepeater
             model: ["play","settings","cloud","delete"]
             IconButton {
                 required property int index; required property string modelData

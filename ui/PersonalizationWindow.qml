@@ -6,14 +6,60 @@ ApplicationWindow {
     id: personal; width: 820; height: 720; minimumWidth: 540; minimumHeight: 480
     title: "个性化"; color: Theme.background; font.family: "Microsoft YaHei UI"
     Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
-    function openPersonalization() { customUrl.text=backend.settings.custom_cover_url;show();raise();requestActivate() }
+    component PadCheckBox: CheckBox {
+        property bool controllerSelectable: true
+        SelectionFrame { selected: parent.activeFocus; radius: 5 }
+    }
+    signal returnRequested()
+    onClosing: returnRequested()
+    function choices() {
+        var result=[]
+        function visit(item) { if(!item.visible) return;if(item.controllerSelectable && item.enabled) result.push(item);for(var i=0;i<item.children.length;i++) visit(item.children[i]) }
+        visit(contentItem);return result
+    }
+    function focusChoice(target) {
+        if(!target) return
+        target.forceActiveFocus()
+        var owner=target.parent
+        while(owner && owner!==scroll) owner=owner.parent
+        if(owner===scroll) {
+            var view=scroll.contentItem,p=target.mapToItem(view,0,0)
+            if(p.y<8) view.contentY=Math.max(0,view.contentY+p.y-8)
+            else if(p.y+target.height>view.height-8) view.contentY=Math.min(Math.max(0,view.contentHeight-view.height),view.contentY+p.y+target.height-view.height+8)
+        }
+    }
+    function focusDesign() { var list=choices(),selected=list.find(function(c) { return c.design && c.selected });focusChoice(selected || list[1] || list[0]) }
+    function controllerInput(command) {
+        if(command==="back") { close();return true }
+        var list=choices(),current=activeFocusItem
+        while(current && list.indexOf(current)<0) current=current.parent
+        if(!current) { focusDesign();return true }
+        if(command==="activate") {
+            if(current.checkable) { current.toggle();current.toggled() }
+            current.clicked();return true
+        }
+        if(["up","down","left","right"].indexOf(command)<0) return true
+        var origin=current.mapToItem(contentItem,current.width/2,current.height/2),best=null,cost=Infinity
+        list.forEach(function(candidate) {
+            if(candidate===current) return
+            var p=candidate.mapToItem(contentItem,candidate.width/2,candidate.height/2),dx=p.x-origin.x,dy=p.y-origin.y
+            var forward=command==="left" ? -dx : command==="right" ? dx : command==="up" ? -dy : dy
+            var cross=command==="left" || command==="right" ? Math.abs(dy) : Math.abs(dx)
+            if(forward<=1 || (command==="left" || command==="right") && cross>(candidate.height+current.height)/2) return
+            var score=forward+cross*(command==="left" || command==="right" ? 2 : .35);if(score<cost) { cost=score;best=candidate }
+        })
+        if(best) { focusChoice(best);backend.navigationMoved() }
+        return true
+    }
+    function openPersonalization() { customUrl.text=backend.settings.custom_cover_url;show();raise();requestActivate();if(backend.controllerMode) Qt.callLater(focusDesign) }
     ColumnLayout {
-        anchors.fill: parent; anchors.margins: personal.width<640 ? 20 : 28; spacing: 18
+        x: personal.width<640 ? 20 : 28; y: x
+        width: Math.max(0,personal.width-x*2); height: Math.max(0,personal.height-y*2); spacing: 18
         RowLayout {
             Layout.fillWidth: true
             Label { text: "个性化"; font.pixelSize: 28; font.weight: Font.DemiBold; color: Theme.text }
             Item { Layout.fillWidth: true }
-            AppButton { text: "关闭"; onClicked: personal.close() }
+            AppButton { property bool controllerSelectable: true; objectName: "personalClose"; text: "关闭"; onClicked: personal.close() }
         }
         ScrollView {
             id: scroll; objectName: "personalizationScroll"; Layout.fillWidth: true; Layout.fillHeight: true
@@ -33,6 +79,7 @@ ApplicationWindow {
                     Repeater {
                         model: backend.libraryDesigns
                         LibraryDesignChoice {
+                            property bool controllerSelectable: true
                             required property var modelData
                             objectName: "design-"+modelData.id; design: modelData
                             Layout.fillWidth: true; Layout.preferredHeight: 170
@@ -43,7 +90,7 @@ ApplicationWindow {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    AppButton { id: colorsToggle; objectName: "colorThemesToggle"; text: "调整配色"; flat: true; checkable: true }
+                    AppButton { id: colorsToggle; property bool controllerSelectable: true; objectName: "colorThemesToggle"; text: "调整配色"; flat: true; checkable: true }
                     Item { Layout.fillWidth: true }
                     AppButton { text: "导入配色"; flat: true; enabled: !backend.busy; onClicked: backend.importTheme() }
                 }
@@ -53,6 +100,7 @@ ApplicationWindow {
                     Repeater {
                         model: backend.themePresets
                         ThemeChoice {
+                            property bool controllerSelectable: true
                             required property var modelData
                             objectName: "theme-"+modelData.id; colors: modelData
                             Layout.fillWidth: true; Layout.minimumWidth: 120; Layout.preferredHeight: 120
@@ -67,20 +115,22 @@ ApplicationWindow {
                     Repeater {
                         model: ["#80c942","#72b7ec","#b59de3","#edb96c","#eb8598"]
                         AbstractButton {
+                            property bool controllerSelectable: true
                             required property string modelData
                             width: 38; height: 38; enabled: !backend.busy; Accessible.name: "强调色 "+modelData
                             background: Rectangle { radius: 19; color: modelData; border.width: 3; border.color: backend.settings.accent_color===modelData ? Theme.text : "transparent" }
+                            SelectionFrame { selected: parent.activeFocus; radius: 19 }
                             onClicked: backend.saveSettings({accent_color:modelData})
                         }
                     }
-                    AppButton { text: "跟随主题"; enabled: !backend.busy; onClicked: backend.saveSettings({accent_color:""}) }
+                    AppButton { property bool controllerSelectable: true; text: "跟随主题"; enabled: !backend.busy; onClicked: backend.saveSettings({accent_color:""}) }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 4
-                    CheckBox { text: "界面动效"; checked: backend.settings.animations; enabled: !backend.busy; onToggled: backend.saveSettings({animations:checked}) }
-                    CheckBox { text: "手柄导航"; checked: backend.settings.gamepad_enabled; enabled: !backend.busy; onToggled: backend.saveSettings({gamepad_enabled:checked}) }
-                    CheckBox { text: "导航提示音"; checked: backend.settings.navigation_sounds; enabled: !backend.busy; onToggled: backend.saveSettings({navigation_sounds:checked}) }
-                    CheckBox { text: "自动备份通知"; checked: backend.settings.tray_notifications; enabled: !backend.busy; onToggled: backend.saveSettings({tray_notifications:checked}) }
+                    PadCheckBox { text: "界面动效"; checked: backend.settings.animations; enabled: !backend.busy; onToggled: backend.saveSettings({animations:checked}) }
+                    PadCheckBox { text: "手柄导航"; checked: backend.settings.gamepad_enabled; enabled: !backend.busy; onToggled: backend.saveSettings({gamepad_enabled:checked}) }
+                    PadCheckBox { text: "导航提示音"; checked: backend.settings.navigation_sounds; enabled: !backend.busy; onToggled: backend.saveSettings({navigation_sounds:checked}) }
+                    PadCheckBox { text: "自动备份通知"; checked: backend.settings.tray_notifications; enabled: !backend.busy; onToggled: backend.saveSettings({tray_notifications:checked}) }
                 }
                 AppButton { id: advanced; objectName: "customCoverToggle"; text: "自定义封面来源"; flat: true; checkable: true }
                 ColumnLayout {

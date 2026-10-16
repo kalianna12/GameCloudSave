@@ -55,7 +55,11 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             dispatch(app,root,backend,'left');spin(80);assert root.activeFocusItem().objectName()=='navHome',(design,root.property('libraryMode'),root.activeFocusItem().objectName(),messages)
             dispatch(app,root,backend,'down');spin(80);assert root.property('libraryMode')=='all'
             dispatch(app,root,backend,'right');spin(80);assert experience.property('selectedId')==data(experience,'filteredGames')[0]['id']
-            dispatch(app,root,backend,'up');spin(80);assert root.activeFocusItem().objectName()=='experienceGrouping'
+            dispatch(app,root,backend,'up');spin(80)
+            if design=='cinema':
+                assert root.activeFocusItem().objectName()=='cinemaCategories' or root.activeFocusItem().objectName().startswith('cinemaCategory-')
+                dispatch(app,root,backend,'up');dispatch(app,root,backend,'up');spin(80)
+            assert root.activeFocusItem().objectName()=='experienceGrouping'
             dispatch(app,root,backend,'activate');spin(80);assert backend.popupActive()
             dispatch(app,root,backend,'down');dispatch(app,root,backend,'activate');spin(300)
             assert experience.property('groupMode')=='series' and not backend.popupActive(),(design,experience.property('groupMode'),backend.popupActive(),messages)

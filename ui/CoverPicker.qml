@@ -23,7 +23,7 @@ Item {
             browserUrl=backend.artworkBrowserUrl(query.text,provider.currentValue,artKind);browserOpen=!!browserToken
         } else { browserOpen=false;backend.searchTargetArtwork("game",gameId,query.text,provider.currentValue,artKind,ai.checked) }
     }
-    onVisibleChanged: if(!visible) browserOpen=false
+    onVisibleChanged: if(!visible) { browserOpen=false;backend.cancelArtworkSearch("game",gameId) }
     ColumnLayout {
         anchors.fill: parent; spacing: 8
         RowLayout {
@@ -52,22 +52,17 @@ Item {
             AppButton { text: "使用链接"; enabled: !backend.busy && !!imageUrl.text; onClicked: { if(picker.artKind==="background") backend.useBackgroundUrl(picker.gameId,imageUrl.text);else backend.useCoverUrl("game",picker.gameId,imageUrl.text) } }
             AppButton { text: "选择本地图片"; enabled: !backend.busy; onClicked: { if(picker.artKind==="background") backend.useLocalBackground(picker.gameId);else backend.useLocalCover("game",picker.gameId) } }
         }
+        ProgressBar { visible: backend.artworkSearching && backend.coverSearchTarget==="game:"+picker.gameId; indeterminate: true; Layout.fillWidth: true; Layout.preferredHeight: 3 }
         Loader {
             id: browser; Layout.fillWidth: true; Layout.fillHeight: true; visible: picker.browserOpen; active: picker.visible && picker.browserOpen
             source: active ? "InlineImageBrowser.qml" : ""
             onLoaded: { item.token=Qt.binding(function() { return picker.browserToken });item.providerId=Qt.binding(function() { return provider.currentValue });item.searchUrl=Qt.binding(function() { return picker.browserUrl }) }
             Connections { target: browser.item; function onCollected(count) { picker.browserOpen=false } function onDismissed() { picker.browserOpen=false } }
         }
-        GridView {
+        ArtworkResults {
             id: results; objectName: "gameCoverResults"; visible: !picker.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-            model: backend.coverSearchTarget==="game:"+picker.gameId ? backend.coverResults : []
-            cellWidth: width/Math.max(1,Math.floor(width/190)); cellHeight: 240
-            delegate: ArtworkCandidate {
-                required property var modelData; width: results.cellWidth; height: results.cellHeight; record: modelData; kind: picker.artKind
-                onChosen: function(kind) { if(kind==="background") backend.applyBackground(picker.gameId,modelData.id);else backend.applyCover("game",picker.gameId,modelData.id) }
-            }
-            ScrollBar.vertical: ScrollBar {}
-            Label { visible: results.count===0; anchors.centerIn: parent; text: backend.busy ? "正在搜索，可切换页面或关闭窗口" : "输入名称并搜索，候选封面会显示在这里"; color: Theme.secondary; width: Math.max(0,parent.width-30); wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
+            targetKey: "game:"+picker.gameId; kind: picker.artKind
+            onChosen: function(ident,kind) { if(kind==="background") backend.applyBackground(picker.gameId,ident);else backend.applyCover("game",picker.gameId,ident) }
         }
     }
 }

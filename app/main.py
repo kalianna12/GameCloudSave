@@ -41,6 +41,7 @@ class Bridge(QObject):
     finished = Signal(str, object, str)
     launchChanged=Signal()
     launchReady=Signal(str,object)
+    artworkReady=Signal(str,object,bool,str)
 
     def __init__(self, store):
         super().__init__()
@@ -66,6 +67,9 @@ class Bridge(QObject):
         self._cancel_enrichment=threading.Event()
         self._cover_target=''
         self._artwork_kind='cover';self._image_token=''
+        self._artwork_searching=False;self._artwork_cancel=threading.Event();self._artwork_future=None;self._artwork_closed=False
+        self._artwork_pool=ThreadPoolExecutor(max_workers=2,thread_name_prefix='artwork-search')
+        self.artworkReady.connect(self.receiveArtwork)
         self._icon_cache={}
         self._running = {}
         self._watch_pending=False
@@ -238,27 +242,56 @@ class Bridge(QObject):
 
     @Slot(str,str,str,str,bool)
     def searchTargetCovers(self,scope,ident,query,provider,use_ai):
-        if self._busy:return
-        self._cover_target=scope+':'+ident
-        from cover_sources import search
-        self._cover_results=[]
-        self.job('cover-search',lambda:search(self.store,query,provider,use_ai))
+        self.searchTargetArtwork(scope,ident,query,provider,'cover',use_ai)
 
     @Property(str,notify=changed)
     def artworkKind(self):return self._artwork_kind
 
+    @Property(bool,notify=changed)
+    def artworkSearching(self):return self._artwork_searching
+
+    def stopArtwork(self):
+        was_searching=self._artwork_searching
+        self._artwork_cancel.set()
+        if self._artwork_future:self._artwork_future.cancel()
+        self._image_token='';self._artwork_searching=False
+        if was_searching and not self._busy:self._status='图片搜索已停止'
+
+    @Slot(str,str)
+    def cancelArtworkSearch(self,scope,ident):
+        if self._cover_target==scope+':'+ident:self.stopArtwork();self.changed.emit()
+
+    @Slot(str,object,bool,str)
+    def receiveArtwork(self,token,rows,done,error):
+        if self._artwork_closed or not token or token!=self._image_token:return
+        self._cover_results=rows;self._artwork_searching=not done
+        if not self._busy:self._status=error or (f'找到 {len(rows)} 个图片结果' if done else f'已找到 {len(rows)} 个候选，正在并行查询横幅与资料…')
+        self.changed.emit()
+
     @Slot(str,str,str,str,str,bool)
     def searchTargetArtwork(self,scope,ident,query,provider,kind,use_ai):
-        if self._busy or kind not in ('cover','background'):return
+        if self._busy or self._artwork_closed or kind not in ('cover','background'):return
         from artwork_search import search
-        self._image_token='';self._artwork_kind=kind;self._cover_target=scope+':'+ident;self._cover_results=[]
-        self.job('cover-search',lambda:search(self.store,query,provider,kind,use_ai))
+        import uuid
+        self.stopArtwork();self._artwork_cancel=cancel=threading.Event();self._image_token=token=uuid.uuid4().hex
+        self._artwork_kind=kind;self._cover_target=scope+':'+ident if scope else '';self._cover_results=[];self._artwork_searching=True
+        self._status='正在搜索图片…';self.changed.emit()
+        def work():
+            def publish(rows):
+                if not cancel.is_set():self.artworkReady.emit(token,rows,False,'')
+            try:
+                rows=search(self.store,query,provider,kind,use_ai,cancel,on_results=publish)
+                if not cancel.is_set():self.artworkReady.emit(token,rows,True,'')
+            except Exception as error:
+                if not cancel.is_set():self.artworkReady.emit(token,[],True,str(error) if isinstance(error,ValueError) else '图片搜索失败，请重试或更换来源')
+        self._artwork_future=self._artwork_pool.submit(work)
 
     @Slot(str,str,str,str,result=str)
     def beginInlineImages(self,scope,ident,provider,kind):
         from cover_sources import PROVIDERS
         if self._busy or kind not in ('cover','background') or not any(p['id']==provider and p['kind']=='browser' for p in PROVIDERS):return ''
         import uuid
+        self.stopArtwork()
         self._image_token=uuid.uuid4().hex;self._artwork_kind=kind;self._cover_target=scope+':'+ident;self._cover_results=[]
         self._status='正在当前页面加载图片搜索';self.changed.emit();return self._image_token
 
@@ -646,7 +679,9 @@ class Bridge(QObject):
 
     @Slot()
     def clearCoverSearch(self):
-        if not self._busy:self._cover_results=[];self._cover_target='';self._image_token='';self.changed.emit()
+        self.stopArtwork()
+        if not self._busy:self._cover_results=[];self._cover_target=''
+        self.changed.emit()
 
     @Slot(str,int)
     def scanImports(self,folder,depth):
@@ -685,11 +720,7 @@ class Bridge(QObject):
 
     @Slot(str,str,bool)
     def searchCovers(self,query,provider,use_ai=False):
-        if self._busy:return
-        self._cover_target=''
-        from cover_sources import search
-        self._cover_results=[]
-        self.job('cover-search',lambda:search(self.store,query,provider,use_ai))
+        self.searchTargetArtwork('','',query,provider,'cover',use_ai)
 
     @Slot(str,str,result=str)
     def coverBrowserUrl(self,query,provider):
@@ -1356,6 +1387,7 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
         self._watch_closed=True;self.timer.stop();self._watch_pool.shutdown(wait=False,cancel_futures=True)
 

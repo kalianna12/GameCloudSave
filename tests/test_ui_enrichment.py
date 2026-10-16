@@ -20,8 +20,8 @@ def spin(ms=100):
 def invoke(obj,name,*values):return QMetaObject.invokeMethod(obj,name,Q_RETURN_ARG('QVariant'),*(Q_ARG('QVariant',v) for v in values))
 def idle():
     end=time.monotonic()+15
-    while backend.busy and time.monotonic()<end:spin(20)
-    assert not backend.busy,backend.status
+    while (backend.busy or backend.artworkSearching) and time.monotonic()<end:spin(20)
+    assert not backend.busy and not backend.artworkSearching,backend.status
 
 with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     store=Store(directory,'ui-enrichment');store.settings.update(setup_completed=True,guide_dismissed=True,watch=False,library='',playnite='',ai_enabled=False)
