@@ -9,6 +9,8 @@ Item {
     property int coverSize: 176
     property int currentRow: 0
     property bool controllerFocused: false
+    property string pickedId: ""
+    function celebrate() { pickedId=selectedId;reveal() }
     readonly property real bookWidth: Math.max(120,Math.min(230,coverSize*.9))
     readonly property real rowHeight: bookWidth*1.42+166
     readonly property int selectedIndex: currentRow<groups.length ? groups[currentRow].items.findIndex(function(g) { return g.id===selectedId }) : -1
@@ -23,7 +25,7 @@ Item {
         shelves.positionViewAtIndex(currentRow,ListView.Contain)
         var row=shelves.itemAtIndex(currentRow);if(row) row.reveal()
     }
-    onSelectedIdChanged: Qt.callLater(reveal)
+    onSelectedIdChanged: { pickedId="";Qt.callLater(reveal) }
     onGroupsChanged: { currentRow=0;Qt.callLater(reveal) }
     function navigate(direction) {
         if(!groups.length) return false
@@ -77,7 +79,8 @@ Item {
                 delegate: BookCover {
                     required property var modelData; required property int index
                     width: implicitWidth; height: books.height; game: modelData; coverWidth: cabinet.bookWidth; spines: cabinet.spines
-                    selected: cabinet.controllerFocused && cabinet.selectedId===modelData.id; suspended: books.moving || shelves.moving
+                    selected: cabinet.controllerFocused && cabinet.currentRow===row.index && cabinet.selectedId===modelData.id; picked: cabinet.pickedId===modelData.id
+                    suspended: books.moving || shelves.moving
                     onChosen: { cabinet.currentRow=row.index;cabinet.selected(modelData.id) }
                     onOpened: cabinet.detailsRequested(modelData)
                 }

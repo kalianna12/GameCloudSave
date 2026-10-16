@@ -6,8 +6,9 @@ Item {
     property bool selected: false
     property bool spines: false
     property bool suspended: false
+    property bool picked: false
     property real coverWidth: 156
-    readonly property bool raised: effect.available && (effect.pointerActive || selected && backend.controllerMode)
+    readonly property bool raised: effect.available && (effect.pointerActive || selected && (backend.controllerMode || picked))
     readonly property real lift: Theme.motion && raised ? 22 : 0
     property real opening: spines ? (raised ? -8 : -88) : 0
     signal chosen()

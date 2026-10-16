@@ -42,12 +42,12 @@ Item {
     onVisibleChanged: if(!visible) playing=false
     Rectangle { anchors.fill: parent; color: "#100e14"; radius: 8 }
     CinemaBackdrop {
-        id: backdrop; anchors.fill: parent
+        id: backdrop; objectName: "cinemaBackdrop"; anchors.fill: parent
         source: cinema.game.backgroundUrl || cinema.media.backgroundUrl || ""
         preloadSources: [-1,1,2].map(function(step) { var game=cinema.games[cinema.selectedIndex+step] || {};return game.backgroundUrl || (backend.libraryMedia[game.id] || {}).backgroundUrl || "" }).filter(Boolean)
     }
     Image {
-        visible: !backdrop.ready
+        objectName: "cinemaFallbackPoster"; visible: !backdrop.hasFrame && (!backdrop.source.toString() || backdrop.failed)
         anchors { top: parent.top; bottom: filmBand.top; right: parent.right; rightMargin: 30; topMargin: 24; bottomMargin: 24 }
         width: Math.min(parent.width*.44,height/.72); source: cinema.game.coverHighUrl || cinema.game.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectFit; sourceSize.width: 900
     }

@@ -150,9 +150,19 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         groups=data(experience,'groups');group=next(g for g in groups if len(g['items'])>=2)
         experience.setProperty('groupValue',group['name']);spin(100)
         allowed={g['id'] for g in group['items']};seen=[]
+        backend.setControllerMode(False);QTest.mouseMove(root,QPoint(220,15))
         for _ in range(len(allowed)):
             invoke(experience,'randomGame');spin(30);seen.append(experience.property('selectedId'))
         assert set(seen)==allowed and len(seen)==len(set(seen)),(design,seen,allowed)
+        if design=='shelf':
+            spin(400)
+            assert scene.property('pickedId')==experience.property('selectedId')
+            picked=[item for item in walk(scene) if item.metaObject().className().startswith('BookCover') and item.property('raised')]
+            assert len(picked)==1 and data(picked[0],'game')['id']==experience.property('selectedId'),[(data(b,'game')['id'],b.property('selected'),b.property('picked')) for b in picked]
+            assert picked[0].findChild(QObject,'bookVolume').isVisible()
+            root.grabWindow().save(str(output/'shelf-random-picked.png'))
+            old=picked[0];invoke(experience,'choose',next(ident for ident in allowed if ident!=experience.property('selectedId')));spin(300)
+            assert not old.property('raised') and not scene.property('pickedId'),'A previous random pick remained raised'
         experience.setProperty('groupValue','');experience.setProperty('groupMode','category');spin(100)
     personal=root.findChild(QObject,'personalization');invoke(personal,'openPersonalization');spin(250)
     personal.grabWindow().save(str(output/'design-picker.png'));personal.hide();root.requestActivate();spin(100)

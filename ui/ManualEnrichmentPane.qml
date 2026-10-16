@@ -7,19 +7,36 @@ Item {
     property var record: ({})
     readonly property var game: backend.games.find(function(g) { return g.id===pane.record.id }) || ({})
     readonly property bool browser: (backend.coverProviders[provider.currentIndex] || {}).kind==="browser"
+    readonly property string artKind: imageKind.currentIndex===1 ? "background" : "cover"
+    property bool browserOpen: false
+    property string browserToken: ""
+    property url browserUrl
+    property var dirtyFields: ({})
+    function mark(key) { var next=Object.assign({},dirtyFields);next[key]=true;dirtyFields=next }
     function canFill(key) { return !!(record.missing || {})[key] }
     signal backRequested()
     function reset(row) {
+        browserOpen=false;imageKind.currentIndex=0;dirtyFields=({})
         record=row;query.text=row.matched_name || row.name;provider.currentIndex=Math.max(0,backend.coverProviders.findIndex(function(p) { return p.id===backend.settings.cover_source }))
         var fields=row.fields || {}
         date.text=fields.release_date || game.release_date || "";tagText.text=(fields.tags || game.tags || []).join(", ");series.text=fields.series || game.series || ""
         category.currentIndex=Math.max(0,category.model.indexOf(fields.category || game.category || "其他"))
         cover.text="";background.text=""
     }
-    function search() {
-        if(browser) Qt.openUrlExternally(backend.enrichmentBrowserUrl(query.text,provider.currentValue))
-        else backend.searchTargetCovers("enrichment",record.id,query.text,provider.currentValue,false)
+    function refreshProposal(row) {
+        record=row;var fields=row.fields || {}
+        if(!dirtyFields.date) date.text=fields.release_date || game.release_date || ""
+        if(!dirtyFields.tags) tagText.text=(fields.tags || game.tags || []).join(", ")
+        if(!dirtyFields.series) series.text=fields.series || game.series || ""
+        if(!dirtyFields.category) category.currentIndex=Math.max(0,category.model.indexOf(fields.category || game.category || "其他"))
     }
+    function search() {
+        if(browser) {
+            browserToken=backend.beginInlineImages("enrichment",record.id,provider.currentValue,artKind)
+            browserUrl=backend.artworkBrowserUrl(query.text,provider.currentValue,artKind);browserOpen=!!browserToken
+        } else { browserOpen=false;backend.searchTargetArtwork("enrichment",record.id,query.text,provider.currentValue,artKind,false) }
+    }
+    onVisibleChanged: if(!visible) browserOpen=false
     function stage() {
         backend.previewEnrichmentValues(record.id,{release_date:date.text.trim(),category:category.currentText,tags:tagText.text.split(/[,，]/).map(function(t) { return t.trim() }).filter(Boolean),series:series.text.trim(),cover:cover.text.trim(),background:background.text.trim()})
     }
@@ -33,8 +50,8 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             AppTextField { id: query; objectName: "manualQuery"; Layout.fillWidth: true; placeholderText: "游戏原名或别名"; onAccepted: if(!backend.busy) pane.search() }
-            AppComboBox { id: provider; objectName: "manualProvider"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 170 }
-            AppButton { objectName: "manualSearch"; text: pane.browser ? "打开搜索" : "搜索资料"; highlighted: true; enabled: !backend.busy && !!query.text.trim(); onClicked: pane.search() }
+            AppComboBox { id: provider; objectName: "manualProvider"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 170; onCurrentIndexChanged: pane.browserOpen=false }
+            AppButton { objectName: "manualSearch"; text: "搜索图片与资料"; highlighted: true; enabled: !backend.busy && !!query.text.trim(); onClicked: pane.search() }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 20
@@ -44,13 +61,13 @@ Item {
                     width: parent.width-16; spacing: 8
                     Label { text: "补充缺失资料"; font.pixelSize: 17; font.weight: Font.DemiBold }
                     Label { text: "发行日期"; color: Theme.secondary }
-                    AppTextField { id: date; objectName: "manualDate"; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD"; enabled: pane.canFill("release_date") }
+                    AppTextField { id: date; objectName: "manualDate"; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD"; enabled: pane.canFill("release_date"); onTextEdited: pane.mark("date") }
                     Label { text: "主分类"; color: Theme.secondary }
-                    AppComboBox { id: category; Layout.fillWidth: true; model: backend.primaryCategories; enabled: pane.canFill("category") }
+                    AppComboBox { id: category; Layout.fillWidth: true; model: backend.primaryCategories; enabled: pane.canFill("category"); onActivated: pane.mark("category") }
                     Label { text: "标签"; color: Theme.secondary }
-                    AppTextField { id: tagText; objectName: "manualTags"; Layout.fillWidth: true; placeholderText: "逗号分隔，最多 6 个"; enabled: pane.canFill("tags") }
+                    AppTextField { id: tagText; objectName: "manualTags"; Layout.fillWidth: true; placeholderText: "逗号分隔，最多 6 个"; enabled: pane.canFill("tags"); onTextEdited: pane.mark("tags") }
                     Label { text: "系列"; color: Theme.secondary }
-                    AppTextField { id: series; objectName: "manualSeries"; Layout.fillWidth: true; enabled: pane.canFill("series") }
+                    AppTextField { id: series; objectName: "manualSeries"; Layout.fillWidth: true; enabled: pane.canFill("series"); onTextEdited: pane.mark("series") }
                     Label { text: "封面"; color: Theme.secondary }
                     RowLayout {
                         Layout.fillWidth: true
@@ -68,20 +85,20 @@ Item {
             }
             ColumnLayout {
                 Layout.fillWidth: true; Layout.fillHeight: true
-                Label { text: pane.browser ? "在浏览器检索，找到后填入左侧。" : "核对名称后选择结果，已有资料会保留。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                TabBar { id: imageKind; objectName: "manualImageKind"; Layout.fillWidth: true; onCurrentIndexChanged: pane.browserOpen=false; TabButton { text: "封面" } TabButton { text: "横幅" } }
+                Label { text: [pane.record.fields && pane.record.fields.cover ? "已选封面" : "",pane.record.fields && pane.record.fields.background ? "已选横幅" : ""].filter(Boolean).join(" / "); visible: !!text; color: Theme.accent; Layout.fillWidth: true }
+                Loader {
+                    id: webSearch; Layout.fillWidth: true; Layout.fillHeight: true; visible: pane.browserOpen; active: pane.visible && pane.browserOpen; source: active ? "InlineImageBrowser.qml" : ""
+                    onLoaded: { item.token=Qt.binding(function() { return pane.browserToken });item.providerId=Qt.binding(function() { return provider.currentValue });item.searchUrl=Qt.binding(function() { return pane.browserUrl }) }
+                    Connections { target: webSearch.item; function onCollected(count) { pane.browserOpen=false } function onDismissed() { pane.browserOpen=false } }
+                }
                 GridView {
-                    id: candidates; objectName: "manualCandidates"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                    id: candidates; objectName: "manualCandidates"; visible: !pane.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     model: backend.coverSearchTarget==="enrichment:"+pane.record.id ? backend.coverResults : []
-                    cellWidth: width/Math.max(1,Math.floor(width/170)); cellHeight: 252
-                    delegate: Item {
-                        required property var modelData; width: candidates.cellWidth; height: candidates.cellHeight
-                        ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 6; spacing: 6
-                            Image { Layout.fillWidth: true; Layout.preferredHeight: 160; source: modelData.image || ""; fillMode: Image.PreserveAspectFit; asynchronous: true; sourceSize.width: 240 }
-                            Label { text: modelData.name; Layout.fillWidth: true; elide: Text.ElideRight }
-                            Label { text: modelData.released || modelData.provider || ""; color: Theme.secondary; font.pixelSize: 11 }
-                            AppButton { text: "选择此结果"; Layout.fillWidth: true; enabled: !backend.busy; onClicked: backend.previewEnrichmentCandidate(pane.record.id,modelData.id) }
-                        }
+                    cellWidth: width/Math.max(1,Math.floor(width/190)); cellHeight: 300
+                    delegate: ArtworkCandidate {
+                        required property var modelData; width: candidates.cellWidth; height: candidates.cellHeight; record: modelData; completion: true; kind: pane.artKind
+                        onChosen: function(kind) { backend.previewEnrichmentArtwork(pane.record.id,modelData.id,kind) }
                     }
                     ScrollBar.vertical: ScrollBar {}
                     Label { visible: candidates.count===0; anchors.centerIn: parent; width: parent.width-20; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: Theme.secondary; text: backend.busy ? "正在搜索…" : "可修改名称重试，或切换搜索来源。" }

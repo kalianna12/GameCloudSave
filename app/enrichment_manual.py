@@ -14,14 +14,14 @@ def base(store,ident,previous=None):
     row.update(applied=False,cancelled=False)
     return game,row,missing(store,game)
 
-def candidate(store,ident,record,previous=None):
+def candidate(store,ident,record,previous=None,include_artwork=True):
     from cover_sources import download
     from library_artwork import prepare
-    game,row,needs=base(store,ident,previous);data={}
+    game,row,needs=base(store,ident,previous);data=dict(record.get('metadata_fields',{}))
     if record.get('provider')=='vndb':
         data={'release_date':release_date(record.get('released')),'release_date_source':'VNDB（首次发行）','background_url':record.get('background_url'),'background_source':'VNDB 截图'}
     elif record.get('appid'):
-        data=cached_lookup(store,{**game,'name':record['name'],'steam_appid':'','metadata_steam_appid':record['appid']})
+        if not data:data=cached_lookup(store,{**game,'name':record['name'],'steam_appid':'','metadata_steam_appid':record['appid']})
         row['metadata_steam_appid']=record['appid']
     def offer(key,value,source):
         if needs.get(key) and value:row['fields'][key]=value;row['sources'][key]=source
@@ -30,10 +30,10 @@ def candidate(store,ident,record,previous=None):
         from library_catalog import primary
         category=primary(data['tags'])
         if category!='其他':offer('category',category,data.get('tags_source','资料库'))
-    if needs['cover'] and record.get('image'):
+    if include_artwork and needs['cover'] and record.get('image'):
         try:offer('cover',download(store,record),record.get('provider','资料库'));row['cover_name']=record['name']
         except ValueError:row['notes'].append('封面下载失败，可改用图片链接或本地图片')
-    if needs['background'] and data.get('background_url'):
+    if include_artwork and needs['background'] and data.get('background_url'):
         try:offer('background',prepare(store,data['background_url']),data.get('background_source','资料库'))
         except Exception:row['notes'].append('横幅下载失败，可改用图片链接或本地图片')
     row.update(matched_name=record['name'],metadata_url=data.get('metadata_url') or record.get('page',''))

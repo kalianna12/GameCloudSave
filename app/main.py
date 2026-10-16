@@ -7,7 +7,8 @@ import threading
 import os
 from pathlib import Path
 import sys
-from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl, QTimer, qInstallMessageHandler, QMetaObject, Q_ARG
+from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl, QTimer, qInstallMessageHandler, QMetaObject, Q_ARG,QCoreApplication,Qt
+if QCoreApplication.instance() is None:QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QMenu
 from PySide6.QtQml import QQmlApplicationEngine
@@ -64,6 +65,7 @@ class Bridge(QObject):
         self._enrichment_progress={'done':0,'total':0,'phase':'尚未查询','running':False}
         self._cancel_enrichment=threading.Event()
         self._cover_target=''
+        self._artwork_kind='cover';self._image_token=''
         self._icon_cache={}
         self._running = {}
         self._watch_pending=False
@@ -241,6 +243,65 @@ class Bridge(QObject):
         from cover_sources import search
         self._cover_results=[]
         self.job('cover-search',lambda:search(self.store,query,provider,use_ai))
+
+    @Property(str,notify=changed)
+    def artworkKind(self):return self._artwork_kind
+
+    @Slot(str,str,str,str,str,bool)
+    def searchTargetArtwork(self,scope,ident,query,provider,kind,use_ai):
+        if self._busy or kind not in ('cover','background'):return
+        from artwork_search import search
+        self._image_token='';self._artwork_kind=kind;self._cover_target=scope+':'+ident;self._cover_results=[]
+        self.job('cover-search',lambda:search(self.store,query,provider,kind,use_ai))
+
+    @Slot(str,str,str,str,result=str)
+    def beginInlineImages(self,scope,ident,provider,kind):
+        from cover_sources import PROVIDERS
+        if self._busy or kind not in ('cover','background') or not any(p['id']==provider and p['kind']=='browser' for p in PROVIDERS):return ''
+        import uuid
+        self._image_token=uuid.uuid4().hex;self._artwork_kind=kind;self._cover_target=scope+':'+ident;self._cover_results=[]
+        self._status='正在当前页面加载图片搜索';self.changed.emit();return self._image_token
+
+    @Property(str,constant=True)
+    def imageCaptureScript(self):return (RESOURCES/'ui/ImageCapture.js').read_text(encoding='utf-8')
+
+    @Slot(str,str,'QVariantList',result=int)
+    def receiveInlineImages(self,token,provider,rows):
+        if not token or token!=self._image_token:return 0
+        from artwork_search import web_rows
+        self._cover_results=web_rows(list(rows),provider,self._artwork_kind)
+        self._status=f'已采集 {len(self._cover_results)} 张图片' if self._cover_results else '本页尚未找到图片，可在页内完成验证、点开图片后重新采集'
+        self.changed.emit()
+        return len(self._cover_results)
+
+    @Slot(str,str,str)
+    def previewEnrichmentArtwork(self,ident,result_id,kind):
+        if self._busy or self._cover_target!='enrichment:'+ident:return
+        record=next((dict(r) for r in self._cover_results if r['id']==result_id),None)
+        if record is None:return
+        from artwork_search import stage
+        previous=next((r for r in self._enrichment if r['id']==ident),None)
+        self.job('enrichment-artwork',lambda:stage(self.store,ident,record,kind,previous))
+
+    @Slot(str,str)
+    def applyBackground(self,ident,result_id):
+        if self._busy or self._cover_target!='game:'+ident:return
+        record=next((dict(r) for r in self._cover_results if r['id']==result_id),None)
+        if not record or not record.get('background_url'):return
+        from artwork_search import set_background
+        self.job('background-apply',lambda:set_background(self.store,ident,record['background_url'],record.get('provider','手动'),record.get('user_authorized',False)))
+
+    @Slot(str,str)
+    def useBackgroundUrl(self,ident,url):
+        if self._busy:return
+        from artwork_search import set_background
+        self.job('background-apply',lambda:set_background(self.store,ident,url,authorized=True))
+
+    @Slot(str)
+    def useLocalBackground(self,ident):
+        if self._busy:return
+        path=self.pickFile('cover')
+        if path:self.useBackgroundUrl(ident,path)
 
     @Slot('QVariantList')
     def completeMetadata(self,idents):
@@ -429,6 +490,11 @@ class Bridge(QObject):
         elif action=='enrichment-manual':
             self.receiveEnrichment(result,self._enrichment_progress['done'],self._enrichment_progress['total'],'手动补全已加入预览')
             self._status='已加入预览，应用所选补全后保存'
+        elif action=='enrichment-artwork':
+            self.receiveEnrichment(result,self._enrichment_progress['done'],self._enrichment_progress['total'],'已选择图片')
+            self._status='已加入补全预览'
+        elif action=='background-apply':
+            self._media_loaded=False;self._games_cache=None;self.gamesChanged.emit();self._status='横幅已设置'
         elif action == 'import':
             self._status = f'已导入 {result} 款游戏'
         elif action in ('list','cloud-mkdir'):
@@ -470,7 +536,7 @@ class Bridge(QObject):
             self._status=f"预览 {len(self._imports)} 项，已排除 {duplicates} 个重复项"+('；扫描达到数量限制，请缩小范围' if result.get('truncated') else '')+result.get('warning','')
         elif action=='cover-search':
             self._cover_results=result
-            self._status=f'找到 {len(result)} 个封面结果，请选择'
+            self._status=f'找到 {len(result)} 个图片结果，请选择'
         elif action=='cover-apply':
             if result['scope']=='import':
                 self._imports=result['rows']
@@ -580,7 +646,7 @@ class Bridge(QObject):
 
     @Slot()
     def clearCoverSearch(self):
-        if not self._busy:self._cover_results=[];self._cover_target='';self.changed.emit()
+        if not self._busy:self._cover_results=[];self._cover_target='';self._image_token='';self.changed.emit()
 
     @Slot(str,int)
     def scanImports(self,folder,depth):
@@ -638,6 +704,10 @@ class Bridge(QObject):
         from urllib.parse import quote
         source=next((row for row in PROVIDERS if row['id']==provider),{})
         return source.get('url','').replace('{query}',quote(query[:200]))
+
+    @Slot(str,str,str,result=str)
+    def artworkBrowserUrl(self,query,provider,kind):
+        return self.enrichmentBrowserUrl(query+(' game background wallpaper' if kind=='background' else ' game cover'),provider)
 
     @Slot(str,str,str)
     def useCoverUrl(self,scope,ident,url):

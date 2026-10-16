@@ -18,8 +18,12 @@ ApplicationWindow {
     readonly property int candidateCount: backend.enrichmentResults.filter(function(row) { return !row.applied && Object.keys(row.fields).length>0 }).length
     ListModel { id: stableRows; dynamicRoles: true }
     AiSettingsDialog { id: aiSettings }
+    function rowVisible(row) {
+        if(onlyMissing.checked) return Object.keys(row.missing || {}).some(function(key) { return key!=="series" && row.missing[key] })
+        return showAll.checked || !row.applied && Object.keys(row.fields).length>0
+    }
     function sync() {
-        var rows=backend.enrichmentResults.filter(function(row) { return showAll.checked || !row.applied && Object.keys(row.fields).length>0 }),next=Object.assign({},selected)
+        var rows=backend.enrichmentResults.filter(rowVisible),next=Object.assign({},selected)
         for(var k=stableRows.count-1;k>=0;k--) if(!rows.some(function(row) { return row.id===stableRows.get(k).record.id })) stableRows.remove(k)
         for(var i=0;i<rows.length;i++) {
             var index=-1
@@ -47,8 +51,8 @@ ApplicationWindow {
         backend.previewEnrichment(scopeIds,{dates:dates.checked,tags:tags.checked,covers:covers.checked,backgrounds:backgrounds.checked,use_ai:ai.checked})
     }
     function openManual(row) { if(backend.busy) return;manualId=row.id;backend.clearCoverSearch();manual.reset(row) }
-    function ids() { return backend.enrichmentResults.filter(function(row) { return !row.applied && window.selected[row.id] && Object.keys(row.fields).length>0 }).map(function(row) { return row.id }) }
-    function selectCandidates() { var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=!row.applied && Object.keys(row.fields).length>0 });selected=next }
+    function ids() { return backend.enrichmentResults.filter(function(row) { return window.rowVisible(row) && !row.applied && window.selected[row.id] && Object.keys(row.fields).length>0 }).map(function(row) { return row.id }) }
+    function selectCandidates() { var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=window.rowVisible(row) && !row.applied && Object.keys(row.fields).length>0 });selected=next }
     function describe(row) {
         var output=[],fields=row.fields,source=row.sources
         if(fields.release_date) output.push("发行日期："+fields.release_date+"（"+source.release_date+"）")
@@ -57,7 +61,7 @@ ApplicationWindow {
         if(fields.series) output.push("系列："+fields.series+"（"+source.series+"）")
         if(fields.cover) output.push("封面："+(row.cover_name || row.name)+"（"+source.cover+"）")
         if(fields.background) output.push("横幅："+source.background)
-        var names={release_date:"日期",category:"分类",tags:"标签",series:"系列",cover:"封面",background:"横幅"},missing=Object.keys(row.missing || {}).filter(function(key) { return row.missing[key] }).map(function(key) { return names[key] })
+        var names={release_date:"日期",category:"分类",tags:"标签",cover:"封面",background:"横幅"},missing=Object.keys(row.missing || {}).filter(function(key) { return key!=="series" && row.missing[key] }).map(function(key) { return names[key] })
         return (row.applied ? "已处理所选补全\n" : "")+(output.length ? output.join("\n") : missing.length ? "尚缺"+missing.join("、")+"，可手动搜索补全" : "现有资料完整")
     }
     Connections {
@@ -67,6 +71,7 @@ ApplicationWindow {
             if(action==="enrichment-apply" && success && window.ownsQuery) { var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=false });window.selected=next }
             if(action==="ai-test" && success) ai.checked=true
             if(action==="enrichment-manual" && success && window.manualId) { var next=Object.assign({},window.selected);next[window.manualId]=true;window.selected=next;window.hasQuery=true;window.ownsQuery=true;window.sync();window.manualId="" }
+            if(action==="enrichment-artwork" && success && window.manualId) { var next=Object.assign({},window.selected);next[window.manualId]=true;window.selected=next;var row=backend.enrichmentResults.find(function(r) { return r.id===window.manualId });if(row) manual.refreshProposal(row);window.sync() }
         }
     }
     onClosing: if(ownsQuery && backend.enrichmentProgress.running) backend.cancelEnrichment()
@@ -110,6 +115,7 @@ ApplicationWindow {
             AppButton { text: "选择可补全的游戏"; enabled: !backend.busy; onClicked: window.selectCandidates() }
             AppButton { text: "清除选择"; enabled: !backend.busy; onClicked: { var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=false });window.selected=next } }
             CheckBox { id: showAll; text: "显示全部查询结果"; checked: true; onToggled: if(window.ownsQuery) window.sync() }
+            CheckBox { id: onlyMissing; objectName: "enrichOnlyMissing"; text: "仅显示缺失项"; onToggled: if(window.ownsQuery) window.sync() }
             Item { Layout.fillWidth: true }
             Label { text: "已选 "+window.ids().length+" 款"; color: Theme.secondary }
         }

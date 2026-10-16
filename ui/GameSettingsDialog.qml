@@ -48,7 +48,7 @@ Dialog {
         spacing: 14
         TabBar {
             id: tabs; objectName: "gameSettingsTabs"; Layout.fillWidth: true
-            TabButton { text: "存档与云端" } TabButton { text: "游戏封面" } TabButton { text: "游戏资料" }
+            TabButton { text: "存档与云端" } TabButton { text: "封面与横幅" } TabButton { text: "游戏资料" }
         }
         ScrollView {
             visible: tabs.currentIndex===0; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
