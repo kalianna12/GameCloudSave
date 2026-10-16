@@ -14,7 +14,8 @@ Item {
     property bool playing: false
     property bool muted: true
     property bool videoFailed: false
-    readonly property bool compact: height<470
+    readonly property bool compact: height<560
+    readonly property real filmCellWidth: Math.max(88,(film.height-34)*.70+12)
     readonly property int selectedIndex: games.findIndex(function(g) { return g.id===game.id })
     readonly property bool canPlay: !!media.videoUrl && !launching && visible && !!Window.window && Window.window.visible && Window.window.active && backend.watchInfo.running===0
     signal selected(string ident)
@@ -63,7 +64,8 @@ Item {
         return true
     }
     function move(step) { if(games.length) selected(games[Math.max(0,Math.min(games.length-1,selectedIndex+step))].id) }
-    function page(step) { move(step*Math.max(1,Math.floor(film.width/(Math.max(64,(film.height-24)*.7)+12)))) }
+    function page(step) { move(step*Math.max(1,Math.floor(film.width/(filmCellWidth+film.spacing)))) }
+    onCategoryValueChanged: Qt.callLater(function() { if(categoryFilm) categoryFilm.currentIndex=Math.max(0,categoryFilm.model.findIndex(function(row) { return row.value===cinema.categoryValue })) })
     function reveal() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) }
     onGameChanged: { playing=false;videoFailed=false;Qt.callLater(function() { film.positionViewAtIndex(Math.max(0,selectedIndex),ListView.Contain) }) }
     onMediaChanged: { playing=false;videoFailed=false }
@@ -118,7 +120,7 @@ Item {
         Label { visible: cinema.videoFailed; text: "预告片无法播放，可更新媒体后重试"; color: "#e4c7aa"; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12 }
     }
     Item {
-        id: filmBand; objectName: "cinemaFilmBand"; x: 0; width: parent.width; height: Math.min(208,Math.max(150,cinema.height*.34)); anchors.bottom: parent.bottom
+        id: filmBand; objectName: "cinemaFilmBand"; x: 0; width: parent.width; height: cinema.compact ? Math.min(190,Math.max(150,cinema.height*.44)) : Math.min(320,Math.max(240,cinema.height*.43)); anchors.bottom: parent.bottom
         Rectangle { anchors.fill: parent; color: "#80100e14" }
         ListView {
             id: categoryFilm; objectName: "cinemaCategories"; x: 18; y: 0; width: parent.width-36; height: 34; orientation: ListView.Horizontal; spacing: 16; clip: true
@@ -127,33 +129,41 @@ Item {
             delegate: AbstractButton {
                 required property var modelData; required property int index
                 objectName: "cinemaCategory-"+index
-                width: label.implicitWidth+8; height: 32; Accessible.name: modelData.name; hoverEnabled: !backend.controllerMode
+                width: label.implicitWidth+16; height: 32; Accessible.name: modelData.name; hoverEnabled: !backend.controllerMode
                 contentItem: Label { id: label; text: modelData.name+(modelData.count ? " "+modelData.count : ""); color: cinema.categoryValue===modelData.value ? "#ffe2a0" : "#beb0c8"; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter }
                 background: Item {
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: "#ffe2a0"; visible: cinema.categoryValue===modelData.value }
-                    SelectionFrame { objectName: "cinemaCategoryFocusRing"; selected: parent.parent.activeFocus || categoryFilm.activeFocus && categoryFilm.currentIndex===index; radius: 4 }
+                    SelectionFrame { objectName: "cinemaCategoryFocusRing"; selected: categoryFilm.activeFocus && categoryFilm.currentIndex===index; radius: 4 }
                 }
-                onClicked: cinema.categorySelected(modelData.value)
+                onClicked: { categoryFilm.currentIndex=index;cinema.categorySelected(modelData.value) }
             }
         }
         Repeater { model: Math.ceil(filmBand.width/20); Rectangle { required property int index; x: index*20+5; y: 40; width: 8; height: 5; radius: 1; color: "#65516c" } }
         ListView {
             id: film; objectName: "cinemaFilmstrip"; x: 18; y: 54; width: parent.width-36; height: parent.height-78
-            model: cinema.games; orientation: ListView.Horizontal; spacing: 12; clip: true; reuseItems: true; cacheBuffer: 240
+            model: cinema.games; orientation: ListView.Horizontal; spacing: 16; clip: true; reuseItems: true; cacheBuffer: 320
             delegate: Item {
+                id: filmCell
                 required property var modelData; required property int index
-                width: Math.max(64,(film.height-24)*.7); height: film.height
+                readonly property bool current: modelData.id===cinema.game.id && cinema.controllerFocused
+                width: cinema.filmCellWidth; height: film.height
                 Rectangle {
-                    width: parent.width; height: parent.height-24; radius: 3; color: "#28212d"; border.color: "#55465c"; border.width: 1
+                    objectName: "cinemaFocusHalo"; visible: filmCell.current
+                    x: 1; y: 2; width: parent.width-2; height: parent.height-24; radius: 7
+                    color: Qt.rgba(Theme.accent.r,Theme.accent.g,Theme.accent.b,.22); border.color: Theme.accent; border.width: 2
+                }
+                Rectangle {
+                    id: poster; x: 6; y: 7; width: parent.width-12; height: parent.height-34; radius: 3; color: "#28212d"; border.color: "#55465c"; border.width: 1
                     clip: true
-                    Image { objectName: "cinemaPoster"; anchors.fill: parent; anchors.margins: 2; source: modelData.coverHighUrl || modelData.coverUrl || ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 240 }
-                    SelectionFrame { objectName: "cinemaFocusRing"; selected: cinema.controllerFocused && modelData.id===cinema.game.id; radius: 3 }
+                    Image { objectName: "cinemaPoster"; anchors.fill: parent; anchors.margins: 2; source: modelData.coverHighUrl || modelData.coverUrl || ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 400 }
+                    Rectangle { anchors.fill: parent; color: "#20fff2d4"; visible: filmHover.hovered && !filmCell.current }
+                    SelectionFrame { objectName: "cinemaFocusRing"; selected: filmCell.current; radius: 3; border.width: 4 }
                     HoverHandler { id: filmHover; enabled: !backend.controllerMode }
                     TapHandler { onTapped: cinema.selected(modelData.id);onDoubleTapped: cinema.detailsRequested(modelData) }
-                    scale: filmHover.hovered && Theme.motion ? .96 : 1
+                    scale: filmHover.hovered && Theme.motion ? 1.015 : 1
                     Behavior on scale { NumberAnimation { duration: Theme.motion ? 120 : 0 } }
                 }
-                Label { width: parent.width; y: parent.height-18; text: modelData.name; color: modelData.id===cinema.game.id ? "#fff8ef" : "#b3a2bc"; elide: Text.ElideRight; font.pixelSize: 11; ToolTip.visible: nameHover.hovered && !backend.controllerMode; ToolTip.text: text; ToolTip.delay: 650; HoverHandler { id: nameHover; enabled: !backend.controllerMode } }
+                Label { x: 4; width: parent.width-8; y: parent.height-20; text: modelData.name; color: filmCell.current ? Theme.accent : modelData.id===cinema.game.id ? "#fff8ef" : "#b3a2bc"; elide: Text.ElideRight; font.pixelSize: 12; font.weight: filmCell.current ? Font.DemiBold : Font.Normal; ToolTip.visible: nameHover.hovered && !backend.controllerMode; ToolTip.text: text; ToolTip.delay: 650; HoverHandler { id: nameHover; enabled: !backend.controllerMode } }
             }
             WheelHandler { target: null; onWheel: function(event) { film.contentX=Math.max(0,Math.min(film.contentWidth-film.width,film.contentX-(event.angleDelta.x || event.angleDelta.y)));event.accepted=true } }
         }

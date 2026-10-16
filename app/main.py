@@ -1474,7 +1474,7 @@ def main():
         instance.release()
         return 1
     root_window = engine.rootObjects()[0]
-    def activate_window():root_window.show();root_window.raise_();root_window.requestActivate()
+    def activate_window():QMetaObject.invokeMethod(root_window,'restoreLibraryWindow')
     instance.activated.connect(activate_window)
     from gamepad import Gamepad,dispatch
     controller=Gamepad(app,lambda:bridge.store.settings.get('gamepad_enabled',True))
@@ -1493,7 +1493,7 @@ def main():
     if tray.isSystemTrayAvailable():
         app.setQuitOnLastWindowClosed(False)
         menu=QMenu()
-        def show_window():root_window.show();root_window.raise_();root_window.requestActivate()
+        def show_window():QMetaObject.invokeMethod(root_window,'restoreLibraryWindow')
         menu.addAction('打开游戏库',show_window)
         def toggle_watch():bridge.saveSettings({'watch':not bridge.store.settings.get('watch')})
         menu.addAction('开启 / 暂停监听',toggle_watch)

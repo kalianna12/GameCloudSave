@@ -40,12 +40,20 @@ ApplicationWindow {
     property int restoreVisibility: Window.Windowed
     function toggleFullScreen() { if(launchTransition.running) return;fullScreenMode=!fullScreenMode;backend.saveLayout({fullscreen:fullScreenMode}) }
     function applyFullScreen() { if(fullScreenMode) { restoreVisibility=visibility===Window.Maximized ? Window.Maximized : Window.Windowed;showFullScreen() } else if(restoreVisibility===Window.Maximized) showMaximized();else showNormal() }
+    function restoreLibraryWindow() {
+        if(fullScreenMode) { if(visibility!==Window.FullScreen) showFullScreen() }
+        else if(visibility===Window.Hidden || visibility===Window.Minimized) { if(restoreVisibility===Window.Maximized) showMaximized();else showNormal() }
+        raise();requestActivate()
+    }
     onFullScreenModeChanged: if(libraryReady) applyFullScreen()
     Shortcut { sequence: "F11"; onActivated: win.toggleFullScreen() }
     Shortcut { sequence: "Escape"; enabled: launchTransition.running; onActivated: launchTransition.cancel() }
     Timer { id: launchFocusDelay; interval: 180; onTriggered: if(launchTransition.running) backend.launchFocusChanged() }
     onActiveChanged: if(!active && launchTransition.running) launchFocusDelay.restart()
-    onVisibilityChanged: if(libraryReady && launchTransition.running && (visibility===Window.Hidden || visibility===Window.Minimized)) launchTransition.cancel()
+    onVisibilityChanged: function(nextVisibility) {
+        if(libraryReady && !fullScreenMode && (nextVisibility===Window.Maximized || nextVisibility===Window.Windowed)) restoreVisibility=nextVisibility
+        if(libraryReady && launchTransition.running && (nextVisibility===Window.Hidden || nextVisibility===Window.Minimized)) launchTransition.cancel()
+    }
     property int filterFocusIndex: 0
     property int headerFocusIndex: 0
     readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,personalControl,fullscreenControl]
@@ -80,6 +88,7 @@ ApplicationWindow {
     function controllerInput(command) {
         if(!win.active || backend.popupActive()) return false
         if(launchTransition.running) return launchTransition.controllerInput(command)
+        if(command==="zoom-in" || command==="zoom-out") { if(libraryDesign==="atlas" && libraryFocus() && experienceLoader.item) experienceLoader.item.controllerInput(command);return true }
         if(command==="back") { if(alternativeDesign && experienceLoader.item && experienceLoader.item.controllerBack()) return true;if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
         var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
@@ -221,7 +230,7 @@ ApplicationWindow {
     BatchWindow { id: batchWindow; objectName: "batchWindow" }
     SetupWizard { id: setupWizard; objectName: "setupWizard" }
     LibraryManager { id: libraryManager; objectName: "libraryManager" }
-    PersonalizationWindow { id: personalization; objectName: "personalization"; onReturnRequested: { win.show();win.requestActivate();Qt.callLater(function() { personalControl.forceActiveFocus() }) } }
+    PersonalizationWindow { id: personalization; objectName: "personalization"; onReturnRequested: Qt.callLater(function() { win.restoreLibraryWindow();personalControl.forceActiveFocus() }) }
     MatchWindow { id: matchWindow; objectName: "matchWindow"; onBatchRequested: win.openBatch() }
     Component.onCompleted: { libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
@@ -399,7 +408,7 @@ ApplicationWindow {
             Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
             Label { objectName: "watchStatus"; visible: backend.settings.watch; text: backend.watchInfo.message; color: backend.watchInfo.failed ? Theme.accent : Theme.secondary; font.pixelSize: 11; Layout.minimumWidth: 0; Layout.maximumWidth: win.width<1100 ? 130 : 300; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && watchStatusHover.hovered; ToolTip.text: text+"\n点击调整自动备份、上传和保留份数"; HoverHandler { id: watchStatusHover; cursorShape: Qt.PointingHandCursor } TapHandler { onTapped: win.openSettingsPage(1) } }
             AppButton { visible: backend.watchInfo.failed>0; text: "重试自动备份/上传"; enabled: backend.settings.watch && !backend.watchInfo.working; onClicked: backend.retryAutoBackups() }
-            Label { visible: backend.gamepadConnected; text: "A 查看  B 返回  X 收藏  Y 存档  Menu 启动"; color: Theme.secondary; font.pixelSize: 11 }
+            Label { visible: backend.gamepadConnected; text: (win.libraryDesign==="atlas" ? "右摇杆 缩放  " : "")+"A 查看  B 返回  X 收藏  Y 存档  Menu 启动"; color: Theme.secondary; font.pixelSize: 11 }
         }
     }
 

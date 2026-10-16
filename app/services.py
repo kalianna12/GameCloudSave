@@ -81,7 +81,7 @@ class Store:
                     'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True,'fullscreen':False})
-        defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',atlas_order='release_asc')
+        defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',shelf_wood='walnut',shelf_sunlight=True,atlas_order='release_asc')
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         if self.settings.get('library_design') not in ('classic','shelf','cinema','atlas'):self.settings['library_design']='classic'
         if self.settings.get('cover_source')=='igdb':self.settings['cover_source']='steam'
@@ -109,6 +109,8 @@ class Store:
         if 'experience_group' in values and values['experience_group'] not in ('all','category','series','tags','year'):raise ValueError('分组方式不存在')
         if 'atlas_order' in values and values['atlas_order'] not in ('release_asc','release_desc','name'):raise ValueError('星图排序不存在')
         if 'shelf_arrangement' in values and values['shelf_arrangement'] not in ('covers','books'):raise ValueError('书柜排列方式不存在')
+        if 'shelf_wood' in values and values['shelf_wood'] not in ('oak','walnut','cherry'):raise ValueError('木材样式不存在')
+        if 'shelf_sunlight' in values and type(values['shelf_sunlight'])!=bool:raise ValueError('日光设置无效')
         password = values.pop('password', '')
         ai_key = values.pop('ai_key', '')
         values.pop('igdb_secret',None)

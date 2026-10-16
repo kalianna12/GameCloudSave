@@ -69,6 +69,7 @@ Item {
         selected(best.game.id);reveal();return true
     }
     function page(direction) { zoomAt(direction>0 ? 1.25 : .8,map.width/2,map.height/2) }
+    function zoomController(direction) { zoomAt(direction>0 ? 1.09 : 1/1.09,map.width/2,map.height/2) }
     onLayoutIdentityChanged: Qt.callLater(startView)
     onGraphChanged: links.requestPaint()
     onGameChanged: { links.requestPaint();Qt.callLater(reveal);if(game.id!==lastSelectedId) { lastSelectedId=game.id || "";if(Theme.motion) selectedAnimation.restart() } }

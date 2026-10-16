@@ -7,6 +7,7 @@ Item {
     property bool spines: false
     property bool suspended: false
     property bool picked: false
+    property real sunlight: 0
     property real coverWidth: 156
     readonly property bool raised: effect.available && (effect.pointerActive || selected && (backend.controllerMode || picked))
     readonly property real lift: Theme.motion && raised ? 22 : 0
@@ -48,6 +49,7 @@ Item {
             Rectangle { x: 0; width: 16; height: parent.height; gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: "#b0000000" } GradientStop { position: .48; color: "#70000000" } GradientStop { position: .72; color: "#40ffffff" } GradientStop { position: 1; color: "#10000000" } } }
             Rectangle { x: 18; width: 1; height: parent.height; color: "#30000000" }
             Rectangle { anchors.fill: parent; color: "transparent"; radius: 3; border.color: "#40ffffff"; border.width: 1 }
+            Rectangle { anchors.fill: parent; visible: book.sunlight>0; gradient: Gradient { GradientStop { position: 0; color: Qt.rgba(1,.88,.65,book.sunlight*1.5) } GradientStop { position: .65; color: "transparent" } GradientStop { position: 1; color: "#08000000" } } }
             SelectionFrame { objectName: "bookFocusRing"; selected: book.selected; radius: 3 }
             Label { visible: !!book.game.favorite; text: "★"; color: "#ffe0a0"; font.pixelSize: 21; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; style: Text.Outline; styleColor: "#773b23" }
         }

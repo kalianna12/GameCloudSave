@@ -16,7 +16,9 @@ def dispatch(app,root,bridge,command):
             if QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
         if command=='back':
             if popup is not None:QMetaObject.invokeMethod(popup,'close')
-            else:window.close();root.show();root.raise_();root.requestActivate()
+            else:
+                window.close()
+                QMetaObject.invokeMethod(root,'restoreLibraryWindow')
         return
     target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
     while target is not None and not target.inherits('QQuickWindow'):
@@ -39,7 +41,7 @@ class State(ctypes.Structure):
 class Mapper:
     BUTTONS={0x1000:'activate',0x2000:'back',0x4000:'favorite',0x8000:'history',0x100:'previous',0x200:'next',0x10:'launch'}
     def __init__(self):self.reset()
-    def reset(self):self.buttons=0;self.direction='';self.repeat_at=0
+    def reset(self):self.buttons=0;self.direction='';self.repeat_at=0;self.zoom_direction='';self.zoom_repeat_at=0
     def read(self,pad,now):
         pressed=pad.buttons&~self.buttons;self.buttons=pad.buttons
         commands=[command for mask,command in self.BUTTONS.items() if pressed&mask]
@@ -55,6 +57,16 @@ class Mapper:
             if direction:commands.append(direction)
         elif direction and now>=self.repeat_at:
             commands.append(direction);self.repeat_at=now+.12
+        # Independent from left-stick/D-pad navigation; hysteresis prevents
+        # tiny stick drift from repeatedly starting or reversing zoom.
+        zoom='zoom-in' if pad.ry>10000 else 'zoom-out' if pad.ry< -10000 else ''
+        if not zoom and abs(pad.ry)>6500 and self.zoom_direction:
+            if (pad.ry>0)==(self.zoom_direction=='zoom-in'):zoom=self.zoom_direction
+        if zoom!=self.zoom_direction:
+            self.zoom_direction=zoom;self.zoom_repeat_at=now+.08
+            if zoom:commands.append(zoom)
+        elif zoom and now>=self.zoom_repeat_at:
+            commands.append(zoom);self.zoom_repeat_at=now+.08
         return commands
 
 class Gamepad(QObject):

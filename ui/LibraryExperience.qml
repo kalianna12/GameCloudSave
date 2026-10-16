@@ -18,7 +18,7 @@ FocusScope {
     readonly property var selectedGame: filteredGames.find(function(g) { return g.id===selectedId }) || ({})
     readonly property var media: backend.libraryMedia[selectedId] || ({})
     readonly property bool contentFocused: !!Window.window && Window.window.activeFocusItem===experience
-    readonly property var toolbarControls: [grouping,groupChoice,arrangement,atlasOrder,randomScope,dice]
+    readonly property var toolbarControls: [grouping,groupChoice,arrangement,woodChoice,sunlight,atlasOrder,randomScope,dice]
     property var randomBag: []
     property string randomMessage: ""
     signal detailsRequested(var game)
@@ -68,6 +68,7 @@ FocusScope {
         Qt.callLater(function() { if(scene.item && scene.item.celebrate) scene.item.celebrate() })
     }
     function controllerInput(command) {
+        if(command==="zoom-in" || command==="zoom-out") { if(design==="atlas" && scene.item) scene.item.zoomController(command==="zoom-in" ? 1 : -1);return true }
         var controls=toolbarControls.filter(function(c) { return c.visible && c.enabled }),focus=Window.window ? Window.window.activeFocusItem : null,index=-1
         while(focus) { if(index<0) index=controls.indexOf(focus);focus=focus.parent }
         if(index>=0) {
@@ -75,6 +76,7 @@ FocusScope {
             else if(command==="up") boundaryRequested("up")
             else if(command==="left" || command==="right") { var n=index+(command==="left" ? -1 : 1);if(n<0) boundaryRequested("left");else controls[Math.min(controls.length-1,n)].forceActiveFocus() }
             else if(command==="activate" && controls[index]===dice) { dice.animateRoll();randomGame() }
+            else if(command==="activate" && controls[index]===sunlight) { sunlight.toggle();sunlight.clicked() }
             return true
         }
         if(scene.item && scene.item.controllerInput && scene.item.controllerInput(command)) return true
@@ -104,6 +106,8 @@ FocusScope {
             AppComboBox { id: grouping; objectName: "experienceGrouping"; width: 135; model: ["按类别分组","按系列分组","按标签分组","按发行年份","不分组"]; currentIndex: ["category","series","tags","year","all"].indexOf(experience.groupMode); onActivated: { experience.groupMode=["category","series","tags","year","all"][currentIndex];backend.saveSettings({experience_group:experience.groupMode}) } }
             AppComboBox { id: groupChoice; objectName: "experienceGroupChoice"; width: 155; visible: experience.groupMode!=="all"; model: ["全部分组"].concat(experience.groups.map(function(g) { return g.name })); currentIndex: Math.max(0,model.indexOf(experience.groupValue)); onActivated: experience.groupValue=currentIndex>0 ? currentText : "" }
             AppComboBox { id: arrangement; objectName: "shelfArrangement"; width: 125; visible: experience.design==="shelf"; model: ["封面朝外","书脊排列"]; currentIndex: backend.settings.shelf_arrangement==="books" ? 1 : 0; onActivated: backend.saveSettings({shelf_arrangement:currentIndex===1 ? "books" : "covers"}) }
+            AppComboBox { id: woodChoice; objectName: "shelfWood"; width: 110; visible: experience.design==="shelf"; model: ["橡木","胡桃木","樱桃木"]; currentIndex: Math.max(0,["oak","walnut","cherry"].indexOf(backend.settings.shelf_wood || "walnut")); onActivated: backend.saveSettings({shelf_wood:["oak","walnut","cherry"][currentIndex]}) }
+            AppButton { id: sunlight; objectName: "shelfSunlightToggle"; visible: experience.design==="shelf"; text: "日光"; width: 76; checkable: true; checked: backend.settings.shelf_sunlight!==false; onClicked: backend.saveSettings({shelf_sunlight:checked}) }
             AppComboBox { id: atlasOrder; objectName: "atlasOrder"; width: 175; visible: experience.design==="atlas"; model: ["发行：从早到晚","发行：从晚到早","名称排序"]; currentIndex: ["release_asc","release_desc","name"].indexOf(backend.settings.atlas_order || "release_asc"); onActivated: backend.saveSettings({atlas_order:["release_asc","release_desc","name"][currentIndex]}) }
             AppComboBox { id: randomScope; objectName: "randomScope"; width: 150; model: ["随机：当前范围","随机：已安装","随机：未启动"]; onActivated: experience.randomBag=[] }
             DiceButton { id: dice; objectName: "randomGame"; enabled: experience.filteredGames.length>0; onClicked: experience.randomGame() }
