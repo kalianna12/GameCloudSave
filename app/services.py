@@ -80,7 +80,7 @@ class Store:
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
-        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True})
+        defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True,'fullscreen':False})
         defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',atlas_order='release_asc')
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
         if self.settings.get('library_design') not in ('classic','shelf','cinema','atlas'):self.settings['library_design']='classic'
@@ -99,6 +99,7 @@ class Store:
 
     def save_settings(self, values):
         values = dict(values)
+        if 'fullscreen' in values and type(values['fullscreen'])!=bool:raise ValueError('全屏设置无效')
         if 'auto_snapshot_keep' in values and (type(values['auto_snapshot_keep'])!=int or not 1<=values['auto_snapshot_keep']<=100):
             raise ValueError('自动存档保留份数须为 1 到 100，手动存档不受限制')
         for key,low,high in [('home_cover_size',120,280),('home_gap',8,32)]:
@@ -621,6 +622,7 @@ class Store:
 
     def launch(self, ident):
         local = self.local.get(ident, {})
+        process=None
         mode=local.get('launch_mode','direct' if local.get('exe') else 'playnite')
         if mode=='platform':
             uri=local.get('launch_uri','')
@@ -636,8 +638,8 @@ class Store:
             command=subprocess.list2cmdline([str(exe)])+(' '+arguments if arguments else '')
             if exe.suffix.casefold() in ('.bat','.cmd'):
                 if arguments:raise ValueError('批处理启动暂不支持额外参数，请在 BAT 中设置')
-                subprocess.Popen([os.environ.get('COMSPEC',r'C:\Windows\System32\cmd.exe'),'/d','/c',str(exe)],cwd=local.get('working_dir') or exe.parent,creationflags=subprocess.CREATE_NO_WINDOW)
-            else:subprocess.Popen(command,cwd=local.get('working_dir') or exe.parent)
+                process=subprocess.Popen([os.environ.get('COMSPEC',r'C:\Windows\System32\cmd.exe'),'/d','/c',str(exe)],cwd=local.get('working_dir') or exe.parent,creationflags=subprocess.CREATE_NO_WINDOW)
+            else:process=subprocess.Popen(command,cwd=local.get('working_dir') or exe.parent)
         else:
             base = Path(self.settings['playnite'])
             if not (base / 'Playnite.DesktopApp.exe').exists():
@@ -645,8 +647,9 @@ class Store:
             exe = base / 'Playnite.DesktopApp.exe'
             if not exe.is_file():
                 raise ValueError('本机 Playnite 路径不存在，请重新设置')
-            subprocess.Popen([str(exe), '--start', str(uuid.UUID(ident))], cwd=base)
+            process=subprocess.Popen([str(exe), '--start', str(uuid.UUID(ident))], cwd=base)
         self.mark_played(ident)
+        return process.pid if process else None
 
     def match_game(self,ident,progress=None,cancel=None):
         from match_engine import match

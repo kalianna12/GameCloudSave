@@ -15,6 +15,7 @@ Item {
     property real panX: 0
     property real panY: 0
     property bool controllerFocused: false
+    property bool launching: false
     property real selectionGlow: 0
     property real luckyProgress: 1
     readonly property bool lucky: luckyAnimation.running
@@ -88,7 +89,7 @@ Item {
         onWidthChanged: Qt.callLater(atlas.reveal)
         onHeightChanged: Qt.callLater(atlas.reveal)
         Rectangle { anchors.fill: parent; color: "#101b2e"; radius: 8 }
-        AtlasSky { anchors.fill: parent; offsetX: atlas.panX; offsetY: atlas.panY }
+        AtlasSky { anchors.fill: parent; offsetX: atlas.panX; offsetY: atlas.panY; suspended: atlas.launching }
         Canvas {
             id: links; objectName: "atlasRelations"; anchors.fill: parent
             onPaint: {
@@ -133,10 +134,11 @@ Item {
                     Loader {
                         anchors.fill: parent; active: node.onScreen && (atlas.zoom>=.34 || node.current)
                         sourceComponent: Item {
-                            Rectangle { x: 21; y: -6; width: 102; height: 124; radius: 12; color: node.current ? "#18ffda84" : "transparent"; border.color: node.current ? "#ffe2a0" : "transparent"; border.width: 1; opacity: .5+atlas.selectionGlow*.5 }
-                            Rectangle { x: 28; width: 88; height: 112; radius: 8; color: "#243d59"; border.color: node.current ? "#ffe2a0" : node.modelData.color; border.width: node.current ? 3 : 2
+                            Rectangle { visible: node.current && atlas.controllerFocused; x: 21; y: -6; width: 102; height: 124; radius: 12; color: Theme.selection; border.color: Theme.accent; border.width: 1; opacity: .5+atlas.selectionGlow*.5 }
+                            Rectangle { x: 28; width: 88; height: 112; radius: 8; color: "#243d59"; border.color: node.modelData.color; border.width: 2
                                 scale: nodeHover.hovered && Theme.motion ? 1.04 : 1;Behavior on scale { NumberAnimation { duration: Theme.motion ? 140 : 0 } }
                                 Image { anchors.fill: parent; anchors.margins: 5; source: node.modelData.game.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectCrop; sourceSize.width: 180 }
+                                SelectionFrame { objectName: "atlasFocusRing"; selected: node.current && atlas.controllerFocused; radius: 8 }
                                 Label { visible: !node.modelData.game.coverUrl; anchors.fill: parent; anchors.margins: 6; text: node.modelData.game.name; color: "white"; wrapMode: Text.Wrap; font.pixelSize: 13; maximumLineCount: 4; elide: Text.ElideRight }
                             }
                             TitleLabel { objectName: "atlasNodeTitle"; x: 0; y: 121; width: 144; height: 32; text: node.modelData.game.name; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 12; color: node.current ? "#fff0cd" : "#d2deed"; scrolling: drag.active }

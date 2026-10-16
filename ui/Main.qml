@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
@@ -35,9 +36,19 @@ ApplicationWindow {
     property string seriesFilter: ""
     property string librarySort: "name"
     property bool libraryReady: false
+    property bool fullScreenMode: !!backend.settings.fullscreen
+    property int restoreVisibility: Window.Windowed
+    function toggleFullScreen() { if(launchTransition.running) return;fullScreenMode=!fullScreenMode;backend.saveLayout({fullscreen:fullScreenMode}) }
+    function applyFullScreen() { if(fullScreenMode) { restoreVisibility=visibility===Window.Maximized ? Window.Maximized : Window.Windowed;showFullScreen() } else if(restoreVisibility===Window.Maximized) showMaximized();else showNormal() }
+    onFullScreenModeChanged: if(libraryReady) applyFullScreen()
+    Shortcut { sequence: "F11"; onActivated: win.toggleFullScreen() }
+    Shortcut { sequence: "Escape"; enabled: launchTransition.running; onActivated: launchTransition.cancel() }
+    Timer { id: launchFocusDelay; interval: 180; onTriggered: if(launchTransition.running) backend.launchFocusChanged() }
+    onActiveChanged: if(!active && launchTransition.running) launchFocusDelay.restart()
+    onVisibilityChanged: if(libraryReady && launchTransition.running && (visibility===Window.Hidden || visibility===Window.Minimized)) launchTransition.cancel()
     property int filterFocusIndex: 0
     property int headerFocusIndex: 0
-    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl]
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
     function goBack() {
@@ -68,7 +79,7 @@ ApplicationWindow {
     }
     function controllerInput(command) {
         if(!win.active || backend.popupActive()) return false
-        if(launchTransition.running) { if(command==="back") launchTransition.cancel();return true }
+        if(launchTransition.running) return launchTransition.controllerInput(command)
         if(command==="back") { if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
         var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
@@ -95,6 +106,7 @@ ApplicationWindow {
                 if(header>=0 && headers[header]===watchControl) { watchControl.toggle();watchControl.toggled();return true }
                 if(filter>=0 && filters[filter]===installedControl) { installedControl.toggle();installedControl.toggled();return true }
                 if(header>=0 && headers[header]===backButton) goBack()
+                if(filter>=0 && filters[filter]===fullscreenControl) win.toggleFullScreen()
             }
             return true
         }
@@ -126,7 +138,7 @@ ApplicationWindow {
         if(!game || !game.id) return false
         if(command==="activate") controllerGameMenu.showGame(game)
         else if(command==="favorite") backend.toggleFavorite(game.id)
-        else if(command==="launch") backend.launch(game.id)
+        else if(command==="launch") win.launchGame(game)
         else if(command==="history") controllerGameMenu.showGame(game)
         else return false
         return true
@@ -160,7 +172,7 @@ ApplicationWindow {
         }
         while(libraryModel.count>shownGames.length) libraryModel.remove(libraryModel.count-1)
     }
-    onClosing: function(close) { if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
+    onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
     function editMetadata() { gameDialog.openFor(activeId,2) }
     function openGame(g) {
@@ -195,10 +207,9 @@ ApplicationWindow {
         onSubmitted: function(value) { search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
         onCancelled: search.forceActiveFocus()
     }
-    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: win.alternativeDesign; onLaunchRequested: function(game) { win.launchGame(game) } }
+    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: true; onLaunchRequested: function(game) { win.launchGame(game) } }
     function launchGame(game) {
         if(!game || !game.id || backend.busy || launchTransition.running) return
-        if(!alternativeDesign || !Theme.motion) { backend.launch(game.id);return }
         launchTransition.begin(game,libraryDesign)
     }
     LaunchTransition { id: launchTransition; anchors.fill: parent; z: 500; onCommitted: function(game) { backend.launch(game.id) } }
@@ -211,7 +222,7 @@ ApplicationWindow {
     LibraryManager { id: libraryManager; objectName: "libraryManager" }
     PersonalizationWindow { id: personalization; objectName: "personalization" }
     MatchWindow { id: matchWindow; objectName: "matchWindow"; onBatchRequested: win.openBatch() }
-    Component.onCompleted: { libraryReady=true;syncLibrary();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
+    Component.onCompleted: { libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
 
     Rectangle {
@@ -288,6 +299,7 @@ ApplicationWindow {
                 AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppButton { id: layoutControl; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
                 AppButton { id: personalControl; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
+                AppButton { id: fullscreenControl; objectName: "fullscreenControl"; text: win.fullScreenMode ? "退出全屏" : "全屏"; flat: true; onClicked: win.toggleFullScreen(); ToolTip.visible: hovered && !backend.controllerMode; ToolTip.text: "F11 切换全屏" }
                 Item { Layout.fillWidth: win.width<1250 }
             }
         }
@@ -309,7 +321,7 @@ ApplicationWindow {
             coverSize: homeCoverSize; cardGap: homeGap; recentPreview: homeRecentPreview
             onBrowseRequested: function(mode,value) { win.navigate(mode,value) }
             onDetailsRequested: function(game) { win.openGame(game) }
-            onLaunchRequested: function(game) { backend.launch(game.id) }
+            onLaunchRequested: function(game) { win.launchGame(game) }
             onCloudRequested: function(game) { selectGame(game);historyTabs.currentIndex=0;backend.history(activeId);historyDialog.open() }
         }
         GridView {
@@ -362,7 +374,7 @@ ApplicationWindow {
                     game: modelData; scrolling: grid.moving || gridScroll.running
                     selected: grid.activeFocus && index===grid.currentIndex
                     transferState: backend.transferStates[modelData.id] || "idle"
-                    onLaunchRequested: backend.launch(modelData.id)
+                    onLaunchRequested: win.launchGame(modelData)
                     onSettingsRequested: win.openGame(modelData)
                     onCloudRequested: { selectGame(modelData); historyTabs.currentIndex=0; backend.history(activeId); historyDialog.open() }
                     onRemoveRequested: { selectGame(modelData); deleteDialog.open() }

@@ -109,9 +109,10 @@ Item {
                 required property var modelData; required property int index
                 width: Math.max(64,(film.height-24)*.7); height: film.height
                 Rectangle {
-                    width: parent.width; height: parent.height-24; radius: 3; color: "#28212d"; border.color: modelData.id===cinema.game.id ? Theme.accent : "#55465c"; border.width: modelData.id===cinema.game.id ? 3 : 1
+                    width: parent.width; height: parent.height-24; radius: 3; color: "#28212d"; border.color: "#55465c"; border.width: 1
                     clip: true
                     Image { objectName: "cinemaPoster"; anchors.fill: parent; anchors.margins: 2; source: modelData.coverHighUrl || modelData.coverUrl || ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 240 }
+                    SelectionFrame { objectName: "cinemaFocusRing"; selected: cinema.controllerFocused && modelData.id===cinema.game.id; radius: 3 }
                     HoverHandler { id: filmHover; enabled: !backend.controllerMode }
                     TapHandler { onTapped: cinema.selected(modelData.id);onDoubleTapped: cinema.detailsRequested(modelData) }
                     scale: filmHover.hovered && Theme.motion ? .96 : 1

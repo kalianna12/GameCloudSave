@@ -6,7 +6,8 @@ Item {
     property real phase: 0
     property real offsetX: 0
     property real offsetY: 0
-    readonly property bool animated: Theme.motion && visible && !!Window.window && Window.window.visible && Window.window.active && backend.watchInfo.running===0
+    property bool suspended: false
+    readonly property bool animated: !suspended && Theme.motion && visible && !!Window.window && Window.window.visible && Window.window.active && backend.watchInfo.running===0
     // Two cached canvases drift as textures. No image downloads, particles or
     // per-frame canvas painting; the slow sky advances at 12.5 Hz while idle.
     Timer { interval: 80; repeat: true; running: sky.animated; onTriggered: sky.phase+=.009 }

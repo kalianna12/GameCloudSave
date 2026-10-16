@@ -161,7 +161,11 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     game=backend.games[0];invoke(root,'launchGame',game);dispatch(app,root,backend,'back');spin(300);assert not calls
     invoke(root,'launchGame',game);invoke(root,'launchGame',game);spin(400)
     assert calls==[game['id']],calls
+    transition=root.findChild(QObject,'launchTransition');assert transition.property('running')
+    backend._launch_state={'phase':'ready','ident':game['id'],'message':'Fixture ready'};backend.launchChanged.emit();spin(800)
+    assert not transition.property('running')
     save(backend,{'animations':False});invoke(root,'launchGame',game);spin(50);assert calls==[game['id']]*2
+    invoke(transition,'cancel')
     # The classic scene remains the default and restores the original aspect ratio.
     save(backend,{'library_design':'classic'});invoke(root,'navigate','all','');spin(200)
     grid=root.findChild(QObject,'gameGrid');assert grid.isVisible()

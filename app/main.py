@@ -38,6 +38,8 @@ class Bridge(QObject):
     enrichmentReady = Signal(object,int,int,str)
     enrichmentRequested = Signal('QVariantList','QVariantMap')
     finished = Signal(str, object, str)
+    launchChanged=Signal()
+    launchReady=Signal(str,object)
 
     def __init__(self, store):
         super().__init__()
@@ -100,6 +102,10 @@ class Bridge(QObject):
         self.watchReady.connect(self.receiveWatch)
         self.watchFinished.connect(self.receiveAutoBackup)
         self.finished.connect(self.complete)
+        self._launch_state={'phase':'idle','ident':'','message':''};self._launch_cancel=threading.Event();self._launch_token=''
+        self._launch_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='launch-ready');self._launch_context=None
+        self._launch_host=None;self._launch_abandoned=False
+        self.launchReady.connect(self.receiveLaunchReady)
         self.enrichmentReady.connect(self.receiveEnrichment)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
@@ -400,6 +406,10 @@ class Bridge(QObject):
             self._status = error
         elif action=='import-selected':
             self._status=result['message']
+        elif action=='launch':
+            self._status='启动请求已发送，正在等待游戏窗口'
+            if self._launch_context and self._launch_state['phase']=='starting':
+                self._launch_context['pid']=result;self.startLaunchWait()
         elif action=='enrichment-preview':
             for row in result['rows']:self.receiveEnrichment(row,len(result['rows']),len(result['rows']),'预览已就绪')
             count=sum(bool(row['fields']) for row in result['rows'])
@@ -509,6 +519,8 @@ class Bridge(QObject):
         if action=='enrichment-preview' and error:
             self._enrichment_progress.update(running=False,phase=error)
             self.enrichmentChanged.emit()
+        if action=='launch' and error:
+            self._launch_state.update(phase='error',message=error);self.releaseLaunchPresentation();self.launchChanged.emit()
         self.changed.emit()
         self.operationCompleted.emit(action,not bool(error))
         if action=='import-selected' and not error and result.get('preview') and result['new_ids']:
@@ -868,10 +880,81 @@ class Bridge(QObject):
 
     @Slot(str)
     def launch(self, ident):
+        if self._busy or self._launch_state['phase'] in ('starting','waiting','ready'):return
+        if not any(g['id']==ident for g in self.store.games):return
+        import uuid
+        self._launch_cancel.set();self._launch_cancel=threading.Event();self._launch_token=uuid.uuid4().hex
+        self._launch_context={'ident':ident,'local':dict(self.store.local.get(ident,{})),'pid':None}
+        self._launch_state={'phase':'starting','ident':ident,'message':'正在启动游戏'};self.launchChanged.emit()
         def launch():
-            self.store.launch(ident);self._launched_recent[ident]=time.monotonic()
-            return '启动请求已发送'
+            pid=self.store.launch(ident);self._launched_recent[ident]=time.monotonic()
+            return pid
         self.job('launch',launch)
+
+    @Property('QVariantMap',notify=launchChanged)
+    def launchState(self):return self._launch_state
+
+    def startLaunchWait(self):
+        from launch_ready import Probe,wait
+        context=dict(self._launch_context);cancel=self._launch_cancel;token=self._launch_token
+        self._launch_state.update(phase='waiting',message='正在等待游戏画面');self.launchChanged.emit()
+        def work():
+            try:
+                probe=Probe(context['local'],context['pid']);context['probe']=probe
+                if token==self._launch_token and not cancel.is_set():self._launch_probe=probe
+                from game_watcher import background_work
+                with background_work():result=wait(probe,cancel)
+            except Exception:result={'phase':'timeout','message':'未能确认游戏窗口，可继续等待或返回游戏库'}
+            self.launchReady.emit(token,result)
+        self._launch_pool.submit(work)
+
+    @Slot(str,object)
+    def receiveLaunchReady(self,token,result):
+        if token!=self._launch_token or self._launch_cancel.is_set():return
+        self._launch_state.update(result)
+        if result['phase']!='ready':self.releaseLaunchPresentation()
+        self.launchChanged.emit()
+
+    @Slot()
+    def continueLaunchWait(self):
+        if self._launch_state['phase']=='timeout' and self._launch_context:
+            from launch_ready import pin
+            if self._launch_host and not self._launch_abandoned:pin(int(self._launch_host.winId()),True)
+            self.startLaunchWait()
+
+    @Slot(QObject)
+    def beginLaunchPresentation(self,window):
+        from launch_ready import pin
+        self._launch_host=window;self._launch_abandoned=False;self._launch_probe=None
+        pin(int(window.winId()),True)
+
+    @Slot()
+    def releaseLaunchPresentation(self):
+        from launch_ready import pin
+        if self._launch_host:
+            try:pin(int(self._launch_host.winId()),False)
+            except RuntimeError:pass
+
+    @Slot()
+    def launchFocusChanged(self):
+        from launch_ready import foreground
+        _,pid=foreground();probe=getattr(self,'_launch_probe',None)
+        if pid and pid!=os.getpid() and not (probe and probe.matches(pid)):
+            import psutil
+            try:platform=psutil.Process(pid).name().casefold() in ('steam.exe','playnite.desktopapp.exe','playnite.fullscreenapp.exe','epicgameslauncher.exe')
+            except psutil.Error:platform=False
+            if not platform:self._launch_abandoned=True;self.releaseLaunchPresentation()
+
+    @Slot()
+    def finishLaunchPresentation(self):
+        from launch_ready import activate
+        self.releaseLaunchPresentation()
+        if self._launch_state['phase']=='ready' and not self._launch_abandoned:activate(self._launch_state.get('hwnd'),self._launch_state.get('pid'))
+        self._launch_state.update(phase='idle');self.launchChanged.emit()
+
+    @Slot()
+    def cancelLaunchWait(self):
+        self._launch_cancel.set();self._launch_state.update(phase='cancelled');self.releaseLaunchPresentation();self.launchChanged.emit()
 
     @Slot(str)
     def remove(self, ident):
@@ -1203,6 +1286,7 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
         self._watch_closed=True;self.timer.stop();self._watch_pool.shutdown(wait=False,cancel_futures=True)
 
 def main():

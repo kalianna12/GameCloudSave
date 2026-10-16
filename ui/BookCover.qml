@@ -30,6 +30,7 @@ Item {
         Label { x: (parent.width-width)/2; y: (parent.height-height)/2; width: parent.height-32; height: 24; rotation: 90; text: book.game.name || ""; color: Theme.text; font.pixelSize: 12; font.weight: Font.DemiBold; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter }
         Rectangle { x: 8; y: 12; width: 30; height: 2; color: Theme.accent; opacity: .65 }
         Rectangle { x: 8; y: parent.height-14; width: 30; height: 2; color: Theme.accent; opacity: .65 }
+        SelectionFrame { objectName: "spineFocusRing"; selected: book.selected; radius: 3 }
     }
     Item {
         id: volume; objectName: "bookVolume"; x: 6; y: 48-book.lift; visible: !book.spines || book.raised
@@ -45,7 +46,8 @@ Item {
             Label { visible: !art.source.toString() || art.status===Image.Error; anchors.centerIn: parent; width: parent.width-28; text: book.game.name || ""; color: Theme.text; font.pixelSize: 18; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             Rectangle { x: 0; width: 16; height: parent.height; gradient: Gradient { orientation: Gradient.Horizontal; GradientStop { position: 0; color: "#b0000000" } GradientStop { position: .48; color: "#70000000" } GradientStop { position: .72; color: "#40ffffff" } GradientStop { position: 1; color: "#10000000" } } }
             Rectangle { x: 18; width: 1; height: parent.height; color: "#30000000" }
-            Rectangle { anchors.fill: parent; color: "transparent"; radius: 3; border.color: book.selected ? Theme.accent : "#40ffffff"; border.width: book.selected ? 3 : 1 }
+            Rectangle { anchors.fill: parent; color: "transparent"; radius: 3; border.color: "#40ffffff"; border.width: 1 }
+            SelectionFrame { objectName: "bookFocusRing"; selected: book.selected; radius: 3 }
             Label { visible: !!book.game.favorite; text: "★"; color: "#ffe0a0"; font.pixelSize: 21; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; style: Text.Outline; styleColor: "#773b23" }
         }
     }
