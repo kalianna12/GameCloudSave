@@ -9,6 +9,10 @@ def slot_name(name):
 
 def account_name(name):return bool(re.fullmatch(r'(?:\d{15,20}|[0-9a-fA-F]{16})',name))
 
+def paths_overlap(left,right):
+    left=Path(left).resolve();right=Path(right).resolve()
+    return left.is_relative_to(right) or right.is_relative_to(left)
+
 def complete_directory(path):
     selected=Path(path)
     if not selected.is_dir() or not (slot_name(selected.name) or account_name(selected.name)): return selected

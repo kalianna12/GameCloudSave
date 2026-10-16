@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import time
 
-SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rvdata2','.lsv','.sl2','.celeste','.ksd','.es3','.nson'}
+SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rmmzsave','.rvdata','.rvdata2','.rxdata','.lsv','.sl2','.celeste','.ksd','.es3','.nson'}
 GENERIC_INSTALL={'game','games','common','steamapps','bin','binaries','win64','x64','release','debug'}
 
 def roots_for(local):
@@ -22,13 +22,20 @@ def roots_for(local):
 
 def normalize(name): return re.sub(r'[\W_]','',name.casefold())
 
+def numbered_title(name):
+    match=re.search(r'(?:\s+([IVX]{1,5})|\s*([0-9]{1,2}))$',name.strip(),re.I)
+    if not match:return normalize(name),None
+    roman={'I':1,'II':2,'III':3,'IV':4,'V':5,'VI':6,'VII':7,'VIII':8,'IX':9,'X':10}
+    number=int(match[2]) if match[2] else roman.get(match[1].upper())
+    return normalize(name[:match.start()]),number
+
 def inspect_directory(path):
     files=[]
     try:
         from collections import deque
         from itertools import islice
         queue=deque([(path,0)]);visited=0
-        while queue and len(files)<30 and visited<400:
+        while queue and visited<400:
             parent,depth=queue.popleft()
             try:
                 for file in islice(parent.iterdir(),100):
@@ -36,10 +43,11 @@ def inspect_directory(path):
                     if file.is_symlink() or not file.resolve().is_relative_to(path.resolve()):continue
                     if file.is_file() and file.suffix.casefold() in SAVE_TYPES:files.append(file.relative_to(path).as_posix())
                     elif file.is_dir() and depth<2:queue.append((file,depth+1))
-                    if len(files)>=30 or visited>=400:break
+                    if visited>=400:break
             except OSError:pass
     except OSError: pass
-    return files
+    from save_workflow import STRONG,re_configuration
+    return sorted(files,key=lambda name:(re_configuration(Path(name).name),Path(name).suffix.casefold() not in STRONG,'save' not in name.casefold(),name))[:30]
 
 def scan(title, local, identity=None, root_override=None,cancel=None):
     identity=identity or {'english_name':'','aliases':[],'hints':[],'note':''}
@@ -53,6 +61,7 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         executables.extend(file.stem for file in islice(installation.glob('*.exe'),20))
     executables=[name for name in executables if normalize(name) not in GENERIC_INSTALL and not any(word in name.casefold() for word in ('launcher','setup','unins','crashhandler','update'))]
     aliases=list(dict.fromkeys([title,identity.get('english_name',''),*identity.get('aliases',[]),install_alias,*executables]))
+    aliases.extend(base+str(number) for base,number in map(numbered_title,list(aliases)) if number is not None and base)
     names=[normalize(name) for name in aliases if len(normalize(name))>=3 and normalize(name) not in GENERIC_INSTALL.union({'save','saves','savedata','saved','savegames','userdata','profiles'})]
     version=re.search(r'(?:\s|[-_])(\d{1,2})$',title.strip())
     version_base=normalize(title[:version.start()]) if version else ''
@@ -78,7 +87,7 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
             confidence=min(confidence,.55);reason+='；附带补丁/示例存档，需手动核对'
         candidate={'path':value,'confidence':round(confidence,2),'reason':reason,'source':origin,'files':files,
                    'fileSummary':', '.join(files[:6]) or '该层未发现常见存档文件，请检查子目录',
-                   'score_details':{'developer_match':developer_match,'strong_files':strong},'verified':bool(files),'sample_backup':sample_backup}
+                   'score_details':{'developer_match':developer_match,'strong_files':strong},'verified':bool(files),'has_save_evidence':strong,'sample_backup':sample_backup}
         for kind,root in roots.items():
             if path.resolve().is_relative_to(root.resolve()):
                 candidate['root']=kind;candidate['relative']=path.resolve().relative_to(root.resolve()).as_posix();break
@@ -88,6 +97,26 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
     try:rules=json.loads((RESOURCES/'ui/save-rules.json').read_text(encoding='utf-8'))['rules']
     except (OSError,ValueError,KeyError):rules=[]
     rule_names={normalize(title),normalize(identity.get('english_name',''))}
+    versions=[numbered_title(value) for value in (title,identity.get('english_name','')) if value]
+    versions=[(base,number) for base,number in versions if number is not None and len(base)>=4 and base not in GENERIC_INSTALL]
+    # Steam Cloud's per-app remote folder is keyed by AppID, not the game title.
+    appid=str(local.get('_steam_appid',''))
+    if root_override is None and re.fullmatch(r'\d{1,12}',appid):
+        from library_sources import steam_roots
+        from itertools import islice
+        for steam in steam_roots():
+            userdata=steam/'userdata'
+            if not userdata.is_dir():continue
+            try:
+                for account in islice(userdata.iterdir(),100):
+                    if cancel and cancel.is_set():break
+                    if account.name.isdigit() and account.is_dir() and not account.is_symlink():
+                        path=account/appid/'remote'
+                        if path.resolve().is_relative_to(userdata.resolve()):
+                            add(path,.9,'Steam AppID 精确匹配的云存档目录','Steam 本地存档')
+                            key=str(path.resolve())
+                            if key in found:found[key].update(root='steam_userdata',relative=account.name+'/'+appid+'/remote')
+            except OSError:continue
     for rule in rules:
         root=roots.get(rule.get('root'))
         if root is None or not any(normalize(alias) in rule_names for alias in rule.get('aliases',[])):continue
@@ -95,6 +124,10 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         if not candidate.is_relative_to(root.resolve()):continue
         checked.append({'path':str(candidate),'exists':candidate.is_dir(),'reason':'已验证的游戏路径规则'})
         add(candidate,.89,'已验证路径规则 + 本地文件检查','路径规则')
+        if rule.get('source_url'):
+            from save_groups import complete_directory
+            key=str(complete_directory(candidate).resolve())
+            if key in found:found[key]['source_url']=rule['source_url']
     for hint in identity.get('hints',[]):
         root=roots.get(hint['root'])
         if root is None: continue
@@ -102,7 +135,11 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         if not candidate.is_relative_to(root.resolve()): continue
         exists=candidate.is_dir()
         checked.append({'path':str(candidate),'exists':exists,'reason':hint['reason']})
-        if exists: add(candidate,.8,hint['reason']+'；已确认目录存在','DeepSeek 建议 + 本地验证')
+        if exists:
+            add(candidate,.8,hint['reason']+'；已确认目录存在','网页路径 + 本地验证' if hint.get('source_url') else 'DeepSeek 建议 + 本地验证')
+            from save_groups import complete_directory
+            key=str(complete_directory(candidate).resolve())
+            if key in found and hint.get('source_url'):found[key]['source_url']=hint['source_url']
     from local_index import directories
     from concurrent.futures import ThreadPoolExecutor
     name_scores={}
@@ -124,6 +161,7 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         for child in paths:
             if cancel and cancel.is_set():break
             parts=child.relative_to(root).parts
+            if any(part_base==base and part_number!=number for part_base,part_number in map(numbered_title,parts) for base,number in versions):continue
             if version and any(version_base in normalize(part) and (number:=re.search(r'(\d{1,2})$',part)) and number.group(1)!=version.group(1) for part in parts):continue
             if any(part.casefold() in ('unity','shadervariantanalytics','monobleedingedge','managed','d3d12') or part.casefold().endswith('_data') for part in parts):continue
             normalized_parts=[normalize(part) for part in parts]

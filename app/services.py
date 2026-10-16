@@ -78,7 +78,7 @@ class Store:
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
-                    'match_network':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
+                    'match_network':True,'match_web_search':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True,'fullscreen':False})
         defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',shelf_wood='walnut',shelf_sunlight=True,atlas_order='release_asc')
@@ -486,8 +486,10 @@ class Store:
         game = self.game(ident)
         core = self.core()
         with closing(core.connect_db()) as conn:
+            from cloud_identity import identity
             archive = core.snapshot_game(conn, game, event, '新版手动备份' if event == 'manual' else '自动备份',
-                                         auto_keep=max(1,min(100,int(self.settings.get('auto_snapshot_keep',5)))),session_key=session_key)
+                                         auto_keep=max(1,min(100,int(self.settings.get('auto_snapshot_keep',5)))),session_key=session_key,
+                                         game_identity=identity(next(item for item in self.games if item['id']==ident)))
         if not archive:
             raise ValueError('本地快照创建失败')
         return archive
@@ -572,47 +574,13 @@ class Store:
         from cloud_history import receive
         return receive(self,ident,record)
 
-    def restore(self, ident, snapshot):
-        self.game(ident)  # Refresh this computer's save path.
-        if snapshot not in [row['id'] for row in self.history(ident)]:
-            raise ValueError('快照不属于当前游戏')
-        import zipfile
-        row = next(row for row in self.history(ident) if row['id'] == snapshot)
-        path = Path(row['archive_path'])
-        if not path.is_file():
-            raise ValueError('本地快照文件不存在')
-        with zipfile.ZipFile(path) as archive:
-            if archive.testzip() or not any(name.startswith('save/') for name in archive.namelist()):
-                raise ValueError('快照损坏或格式不正确')
-            from pathlib import PurePosixPath
-            if any('..' in PurePosixPath(name.replace('\\', '/')).parts or name.startswith(('/', '\\')) or ':' in name for name in archive.namelist()):
-                raise ValueError('快照包含无效路径')
-            metadata={}
-            if '_snapshot_meta.json' in archive.namelist():
-                info=archive.getinfo('_snapshot_meta.json')
-                if info.file_size>65536: raise ValueError('备份元数据过大')
-                metadata=json.loads(archive.read(info))
-        # Historical single-slot archives must not replace the newly configured parent folder.
-        from pathlib import PureWindowsPath
-        from save_groups import slot_name,account_name
-        current=Path(self.local[ident]['save_dir'])
-        original=PureWindowsPath(metadata.get('save_dir',''))
-        target=current
-        if (slot_name(original.name) or account_name(original.name)) and not (slot_name(current.name) or account_name(current.name)):
-            if original.parent.name.casefold()!=current.name.casefold():
-                raise ValueError('这是旧版单存档备份，请选择对应存档槽目录后恢复')
-            target=current/original.name
-            if not target.resolve().is_relative_to(current.resolve()):
-                raise ValueError('存档槽目录不在当前游戏存档目录中')
-        from argparse import Namespace
-        core=self.core()
-        try:
-            if target!=current:
-                with closing(core.connect_db()) as conn:
-                    conn.execute('UPDATE games SET save_dir=? WHERE name=?',(str(target),ident)); conn.commit()
-            core.cmd_restore(Namespace(snapshot_id=snapshot))
-        finally:
-            if target!=current: self.game(ident)
+    def restore_preview(self,ident,snapshot):
+        from save_restore import inspect
+        return inspect(self,ident,snapshot)
+
+    def restore(self, ident, snapshot, options=None):
+        from save_restore import restore
+        return restore(self,ident,snapshot,options)
 
     def retry(self, ident):
         count = 0

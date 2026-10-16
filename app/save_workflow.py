@@ -2,7 +2,7 @@
 from pathlib import Path
 import json
 
-STRONG={'.sav','.save','.sl2','.lsv','.rpgsave','.rvdata2','.celeste','.ksd','.es3','.nson'}
+STRONG={'.sav','.save','.sl2','.lsv','.rpgsave','.rmmzsave','.rvdata','.rvdata2','.rxdata','.celeste','.ksd','.es3','.nson'}
 GENERIC={'renpy','documents','my games','saved games','appdata','local','roaming','locallow','packages'}
 
 def evidence(candidate):
@@ -25,6 +25,7 @@ def evidence(candidate):
     for name in candidate.get('files',[]):
         file=(path/name).resolve()
         if not file.is_relative_to(path.resolve()) or not file.is_file(): continue
+        if file.stat().st_size==0 or re_configuration(file.name):continue
         if file.suffix.casefold() in STRONG: return True
         if file.suffix.casefold()=='.dat' and any(word in file.stem.casefold() for word in ('save','slot','progress','persistentgamedata')): return True
         if file.suffix.casefold()=='.json' and file.stat().st_size<512000:
@@ -33,6 +34,11 @@ def evidence(candidate):
                 if isinstance(data,dict) and any(k.casefold() in ('progress','chapter','quests','inventory','checkpoints','进度','章节') for k in data): return True
             except (OSError,ValueError): pass
     return False
+
+def re_configuration(name):
+    import re
+    stem=Path(name).stem.casefold()
+    return bool(re.search(r'^(?:profile|user|gameuser|graphic|graphics|display|audio|input)?(?:settings?|config|configuration|options?)(?:[_-].*)?$',stem)) or stem in ('shadercache','pipelinecache')
 
 def select_candidate(result):
     eligible=[c for c in result.get('candidates',[]) if c.get('confidence',0)>=.78 and evidence(c)]
@@ -50,7 +56,7 @@ def select_candidate(result):
     return eligible[0]
 
 def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
-    from save_groups import complete_directory
+    from save_groups import complete_directory,paths_overlap
     if upload and not store.settings.get('cloud_folder','').strip(): raise ValueError('请先在云端存储窗口验证并保存统一存储文件夹')
     reports={r['id']:r for r in store.match_report}
     occupied={str(complete_directory(v['save_dir']).resolve()).casefold():ident for ident,v in store.local.items() if v.get('save_dir')}
@@ -70,7 +76,7 @@ def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
             manual=store.local.get(ident,{}).get('save_dir','')
             from save_groups import complete_directory
             path=str(complete_directory(manual).resolve()) if manual and Path(manual).is_dir() else str(complete_directory(candidate['path']).resolve()) if candidate else ''
-            if not path or path.casefold() in occupied and occupied[path.casefold()]!=ident:
+            if not path or any(other_id!=ident and paths_overlap(path,other) for other,other_id in occupied.items()):
                 row={**result,'status':'review','message':'需要集中核对：目录证据不足、存在多个候选或与其他游戏共用目录'}
                 totals['review']+=1
             else:
@@ -83,7 +89,7 @@ def run_workflow(store,idents,progress,cancel,upload=True,recheck=True):
         if cancel.is_set():break
         row=result
         try:
-            if sum(other.casefold()==path.casefold() for _,other,_ in prepared)>1:
+            if any(other_id!=ident and paths_overlap(path,other) for other_id,other,_ in prepared):
                 row={**row,'status':'review','message':'多个游戏匹配到同一目录，已集中留待核对，未自动备份'}; totals['review']+=1
             else:
                 store.save_game(ident,{'save_dir':path}); occupied[path.casefold()]=ident

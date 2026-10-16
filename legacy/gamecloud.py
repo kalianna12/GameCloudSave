@@ -371,12 +371,13 @@ def prune_auto_snapshots(conn: sqlite3.Connection, game_id: int, keep: int = AUT
     conn.commit()
 
 
-def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str, auto_keep: int = AUTO_SNAPSHOT_KEEP, session_key: str = '') -> Optional[Path]:
+def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str, auto_keep: int = AUTO_SNAPSHOT_KEEP, session_key: str = '', game_identity=None) -> Optional[Path]:
     if session_key:
         existing=conn.execute('SELECT archive_path FROM snapshots WHERE game_id=? AND session_key=?',(game.id,session_key)).fetchone()
         if existing and Path(existing['archive_path']).is_file():return Path(existing['archive_path'])
         if existing:raise ValueError('这次自动备份文件已不在本机，请核对保留上限或备份目录')
     save_dir = Path(game.save_dir)
+    if save_dir.is_symlink() or getattr(save_dir,'is_junction',lambda:False)():raise ValueError('请选择实际存档目录，不能备份链接')
     if not save_dir.exists() or not save_dir.is_dir():
         print(f"[WARN] 存档目录不可用: {save_dir}")
         return None
@@ -396,12 +397,15 @@ def snapshot_game(conn: sqlite3.Connection, game: Game, event: str, note: str, a
         "created_at": now_iso(),
         "save_dir": str(save_dir),
     }
+    if game_identity:meta['identity']=game_identity
     temporary=zip_path.with_suffix('.part')
     try:
         with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED,compresslevel=1 if event in ('game_start','game_stop') else 6) as zipped:
             zipped.writestr('_snapshot_meta.json',json.dumps(meta,ensure_ascii=False))
             zipped.writestr('save/',b'')
             for file in save_dir.rglob('*'):
+                if file.is_symlink() or getattr(file,'is_junction',lambda:False)() or not file.resolve().is_relative_to(save_dir.resolve()):
+                    raise ValueError('存档目录包含链接，请选择实际游戏存档目录后备份')
                 if file.is_file():
                     before=file.stat();zipped.write(file,'save/'+file.relative_to(save_dir).as_posix());after=file.stat()
                     if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('存档仍在写入，请稍后重试备份')

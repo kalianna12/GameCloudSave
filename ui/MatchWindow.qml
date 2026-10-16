@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
+import "SaveFilters.js" as SaveFilters
 ApplicationWindow {
     id: matcher
     width: 1240; height: 860; minimumWidth: 960; minimumHeight: 700
@@ -13,8 +14,9 @@ ApplicationWindow {
     property bool showDetails: false
     ListModel { id: resultModel; dynamicRoles: true }
     function syncResults() {
+        if(!results || !resultFilter || !resultQuery) return
         var savedY=results.contentY
-        var rows=backend.matchResults
+        var rows=backend.matchResults.filter(function(row) { var game=backend.games.find(function(game) { return game.id===row.id }) || {};return SaveFilters.accept(row,resultFilter.currentIndex,!!game.saveSet,resultQuery.text) })
         for(var i=0;i<rows.length;i++) {
             var existing=-1
             for(var j=0;j<resultModel.count;j++) if(resultModel.get(j).record.id===rows[i].id) { existing=j; break }
@@ -26,8 +28,10 @@ ApplicationWindow {
     }
     Component.onCompleted: syncResults()
     Connections { target: backend
+        function onGamesChanged() { matcher.syncResults() }
         function onMatchesChanged() { if(!backend.matching) matcher.syncResults();matcher.currentResult=backend.matchResult(matcher.selectedId) }
         function onMatchRecordChanged(ident,row) {
+            if(resultFilter.currentIndex!==0 || resultQuery.text) { matcher.syncResults();if(ident===matcher.selectedId) matcher.currentResult=row;return }
             var index=-1
             for(var i=0;i<resultModel.count;i++) if(resultModel.get(i).record.id===ident) { index=i;break }
             if(index<0) resultModel.append({record:row});else resultModel.set(index,{record:row})
@@ -36,7 +40,7 @@ ApplicationWindow {
     }
     function openAiSettings() { openMatcher(""); showConnection=true }
     signal batchRequested()
-    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_ai_review:reviewSwitch.checked,match_ai_weight:aiWeight.value,match_workers:matchWorkers.value} }
+    function aiValues() { return {ai_enabled:enabledSwitch.checked,ai_model:modelName.text,ai_key:apiKey.text,match_network:networkSwitch.checked,match_web_search:webSwitch.checked,match_ai_review:reviewSwitch.checked,match_ai_weight:aiWeight.value,match_workers:matchWorkers.value} }
     property var currentResult: ({})
     property int candidateLimit: 10
     onSelectedIdChanged: { currentResult=backend.matchResult(selectedId);candidateLimit=10 }
@@ -50,6 +54,7 @@ ApplicationWindow {
         var s=backend.settings
         enabledSwitch.checked=s.ai_enabled; modelName.text=s.ai_model; apiKey.text=""
         networkSwitch.checked=s.match_network;reviewSwitch.checked=s.match_ai_review;matchWorkers.value=s.match_workers
+        webSwitch.checked=s.match_web_search
         aiWeight.value=s.match_ai_weight
         if(ident) { selectedId=ident; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===ident }) }
         else if(!selectedId && backend.games.length) { selectedId=backend.matchResults.length ? backend.matchResults[0].id : backend.games[0].id; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===matcher.selectedId }) }
@@ -77,7 +82,7 @@ ApplicationWindow {
                     AppButton { text: "保存并测试连接"; enabled: !backend.busy; onClicked: backend.testAi(matcher.aiValues()) }
                 }
                 RowLayout {
-                    CheckBox { id: networkSwitch; text: "联网查询开发商"; checked: backend.settings.match_network }
+                    CheckBox { id: networkSwitch; text: "联网游戏资料"; checked: backend.settings.match_network }
                     CheckBox { id: reviewSwitch; text: "DeepSeek 辅助比较目录"; checked: backend.settings.match_ai_review }
                     Label { text: "并行游戏数" }
                     CompactSpinBox { id: matchWorkers; from: 1; to: 3; value: backend.settings.match_workers }
@@ -87,6 +92,7 @@ ApplicationWindow {
                     Label { text: "DeepSeek 权重" }
                     CompactSpinBox { id: aiWeight; objectName: "matchAiWeight"; from: 50; to: 95; stepSize: 5; value: backend.settings.match_ai_weight; enabled: enabledSwitch.checked && reviewSwitch.checked }
                     Label { text: "%   本地规则 "+(100-aiWeight.value)+"%"; color: Theme.secondary }
+                    CheckBox { id: webSwitch; objectName: "matchWebSearch"; text: "未找到时网页深查"; checked: backend.settings.match_web_search; enabled: networkSwitch.checked && enabledSwitch.checked }
                     Item { Layout.fillWidth: true }
                 }
                 Label { text: backend.aiConnection; color: Theme.secondary }
@@ -105,6 +111,10 @@ ApplicationWindow {
                 Label { text: backend.matchProgress.phase; Layout.fillWidth: true; color: Theme.secondary; elide: Text.ElideRight; font.pixelSize: 12 }
             }
             ProgressBar { objectName: "matchProgressBar"; Layout.fillWidth: true; indeterminate: backend.matching && backend.matchProgress.done===0; from: 0; to: Math.max(1,backend.matchProgress.total); value: backend.matchProgress.done }
+        }
+        RowLayout {
+            AppTextField { id: resultQuery; objectName: "matchResultQuery"; Layout.fillWidth: true; placeholderText: "筛选游戏名称或别名"; onTextChanged: matcher.syncResults() }
+            AppComboBox { id: resultFilter; objectName: "matchResultFilter"; Layout.preferredWidth: 190; model: ["全部结果","未设置目录","未找到候选","待确认目录","已设置目录","备份或上传失败"]; onCurrentIndexChanged: matcher.syncResults() }
         }
         RowLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 16
@@ -142,7 +152,8 @@ ApplicationWindow {
                     Label { text: matcher.currentResult.ai_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#e3c893" }
                     Label { text: matcher.currentResult.network_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                     Label { text: "开发商："+(matcher.currentResult.developers || []).join(" / "); visible: !!(matcher.currentResult.developers || []).length; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                    Label { text: (matcher.currentResult.scan_modes || []).map(function(mode) { return (mode.mode==="local" ? "本地" : mode.mode==="network" ? "联网资料" : "DeepSeek")+"："+(mode.state==="done" ? "完成" : "暂不可用") }).join("   "); visible: matcher.showDetails && !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
+                    Label { text: (matcher.currentResult.scan_modes || []).map(function(mode) { return (mode.mode==="local" ? "本地" : mode.mode==="network" ? "Steam 资料" : mode.mode==="web" ? "网页初查" : mode.mode==="web-deep" ? "网页二次深查" : "DeepSeek")+"："+(mode.state==="done" ? "完成" : mode.state==="running" ? "查询中" : "暂不可用") }).join("   "); visible: matcher.showDetails && !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
+                    Label { text: matcher.currentResult.web_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                     Label { visible: matcher.showDetails; text: "游戏名称："+(matcher.currentResult.english_name || "—"); Layout.fillWidth: true; wrapMode: Text.Wrap }
                     Label { visible: matcher.showDetails; text: "别名："+(matcher.currentResult.aliases || []).join(" / "); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                     Label { text: matcher.currentResult.note || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; visible: matcher.showDetails && !!text }
@@ -164,6 +175,7 @@ ApplicationWindow {
                                 Label { visible: matcher.showDetails && modelData.ai_confidence!==undefined; text: "本地 "+Math.round((modelData.local_confidence!==undefined ? modelData.local_confidence : modelData.confidence)*100)+" 分 / DeepSeek "+Math.round((modelData.ai_confidence || 0)*100)+" 分 · DeepSeek 权重 "+Math.round((modelData.ai_weight || 0)*100)+"%\n"+(modelData.ai_reason || ""); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                                 Label { visible: matcher.showDetails && !!modelData.score_details; text: modelData.score_details ? "开发商目录："+(modelData.score_details.developer_match ? "匹配" : "未确认")+" / 存档文件："+(modelData.verified ? "存在" : "未确认") : ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { text: "文件："+modelData.fileSummary; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                                Label { text: "尚未确认实际进度文件，请核对后使用"; visible: modelData.has_save_evidence===false; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                                 RowLayout {
                                     AppButton { text: matcher.currentResult.applied_path===modelData.path ? "已使用" : "使用此目录"; enabled: !backend.busy && matcher.currentResult.applied_path!==modelData.path; onClicked: backend.applyMatch(matcher.selectedId,modelData.path) }
                                 }
@@ -180,7 +192,7 @@ ApplicationWindow {
                     AppButton { text: matcher.showDetails ? "收起详情" : "匹配详情"; checkable: true; checked: matcher.showDetails; onToggled: matcher.showDetails=checked }
                     Repeater {
                         model: matcher.showDetails ? matcher.currentResult.sources || [] : []
-                        Label { required property var modelData; text: "资料来源："+modelData.title; color: Theme.secondary; Layout.fillWidth: true; elide: Text.ElideRight; TapHandler { onTapped: { if(modelData.url.startsWith("https://store.steampowered.com/app/")) Qt.openUrlExternally(modelData.url) } } HoverHandler { cursorShape: Qt.PointingHandCursor } }
+                        Label { required property var modelData; text: "资料来源："+modelData.title; color: Theme.secondary; Layout.fillWidth: true; elide: Text.ElideRight; TapHandler { onTapped: { if(/^https?:\/\//.test(modelData.url)) Qt.openUrlExternally(modelData.url) } } HoverHandler { cursorShape: Qt.PointingHandCursor } }
                     }
                 }
             }

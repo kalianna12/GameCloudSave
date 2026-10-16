@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
+import "SaveFilters.js" as SaveFilters
 ApplicationWindow {
     id: batch; width: 1180; height: 800; minimumWidth: 980; minimumHeight: 650
     title: "批量确认存档"; color: Theme.background; font.family: "Microsoft YaHei UI"; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
@@ -18,7 +19,8 @@ ApplicationWindow {
         }
         for(var k=stableRows.count-1;k>=0;k--) if(!data.some(function(row) { return row.id===stableRows.get(k).record.id })) stableRows.remove(k)
     }
-    property var rows: backend.games.filter(function(game) { return !installed.checked || game.installed }).map(function(game) { return Object.assign({},game,backend.matchResults.find(function(row) { return row.id===game.id }) || {}) })
+    property var rows: backend.games.filter(function(game) { return !installed.checked || game.installed }).map(function(game) { return Object.assign({},game,backend.matchResults.find(function(row) { return row.id===game.id }) || {}) }).filter(function(row) { return SaveFilters.accept(row,batchFilter.currentIndex,!!row.saveSet,batchQuery.text) })
+    onRowsChanged: { if(visible) syncRows() }
     function populate() { var next=Object.assign({},paths); rows.forEach(function(row) { if(!next[row.id]) next[row.id]=backend.recommendedMatchPath(row.id) });paths=next }
     function openBatch() { populate();syncRows();show();raise();requestActivate() }
     function choose(ident,path) { var next=Object.assign({},paths);next[ident]=path;paths=next }
@@ -31,6 +33,10 @@ ApplicationWindow {
         anchors.fill: parent; anchors.margins: 24; spacing: 14
         RowLayout { Label { text: "批量确认存档"; font.pixelSize: 26; font.bold: true } Item { Layout.fillWidth: true } AppButton { text: "关闭"; onClicked: batch.close() } }
         Label { text: "每行选择一个存档目录，无需逐个打开游戏。多候选请核对，未找到时可手动选择。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        RowLayout {
+            AppTextField { id: batchQuery; objectName: "batchResultQuery"; Layout.fillWidth: true; placeholderText: "筛选游戏名称或别名" }
+            AppComboBox { id: batchFilter; objectName: "batchResultFilter"; Layout.preferredWidth: 190; model: ["全部游戏","未设置目录","未找到候选","待确认目录","已设置目录","备份或上传失败"] }
+        }
         RowLayout {
             CheckBox { id: installed; text: "仅已安装"; checked: true; onToggled: { batch.savedY=0;batch.populate();batch.syncRows();batch.restoreScroll() } }
             AppButton { text: "全选有目录的游戏"; onClicked: batch.selectAll() }

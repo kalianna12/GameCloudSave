@@ -68,7 +68,7 @@ def cached_ai(store,item,local,cancel):
 def cached_network(store,item,local,cancel,title=None):
     from network_metadata import lookup
     from services import write_json
-    title=title or item['name'];key=hashlib.sha256((title+local.get('install_dir','')).encode()).hexdigest()
+    title=title or item['name'];key=hashlib.sha256(json.dumps([title,local.get('install_dir',''),item.get('steam_appid') or item.get('metadata_steam_appid',''),'network-v2']).encode()).hexdigest()
     with store.match_lock:
         record=store.network_cache.get(key)
         if record and time.time()-record['time']<86400:return record['identity']
@@ -78,19 +78,50 @@ def cached_network(store,item,local,cancel,title=None):
             store.network_cache[key]={'time':time.time(),'identity':identity};write_json(store.root/'network-identities.json',store.network_cache)
     return identity
 
+def cached_web(store,item,local,identity,cancel,deep=False):
+    from save_web import search,extract_paths
+    from ai_match import identify_game
+    from services import protect,read_json,write_json
+    key_path=store.profile/'ai-key.dpapi'
+    if not key_path.exists():raise ValueError('网页存档搜索需要已配置的 DeepSeek API Key')
+    title=identity.get('english_name') or item['name']
+    cache_key=hashlib.sha256(json.dumps([title,item['name'],item.get('external_id',''),store.settings['ai_model'],deep,'save-web-v2']).encode()).hexdigest()
+    with store.match_lock:
+        records=read_json(store.profile/'save-web-cache.json',{});record=records.get(cache_key)
+    if record and time.time()-record['time']<86400:return record['identity']
+    with _ai_limit:
+        if cancel.is_set():return {}
+        key=protect(key_path.read_bytes(),True).decode()
+        sources=search(title,key,cancel,deep=deep)
+        if cancel.is_set():return {}
+        if not sources:raise ValueError('网页搜索未返回存档资料，保留本地结果')
+        result=identify_game(item['name'],Path(local.get('install_dir','')).name,key,store.settings['ai_model'],cancel=cancel,web_sources=sources)
+        for hint in extract_paths(sources,title):
+            if not any(existing['root']==hint['root'] and existing['relative']==hint['relative'] for existing in result['hints']):result['hints'].append(hint)
+    used={hint['source_url'] for hint in result.get('hints',[])}
+    result['sources']=[{'title':source['title'],'url':source['url']} for source in sources if source['url'] in used]
+    result['note']='网页搜索已完成，'+('找到可核对的路径线索' if used else '未提取到可核对的存档路径')
+    if not cancel.is_set():
+        with store.match_lock:
+            records=read_json(store.profile/'save-web-cache.json',{});records[cache_key]={'time':time.time(),'identity':result}
+            write_json(store.profile/'save-web-cache.json',records)
+    return result
+
 def match(store,ident,progress=None,cancel=None):
     from matching import scan
     item=next(g for g in store.games if g['id']==ident)
     local=dict(store.local.get(ident,{}));cancel=cancel or threading.Event()
+    if item.get('platform')=='steam':local['_steam_appid']=item.get('steam_appid') or item.get('external_id','')
     if not local.get('install_dir') and local.get('exe'):local['install_dir']=str(Path(local['exe']).parent)
     started=time.monotonic();identities={};candidates=[];checked=[];warnings={};modes=[]
+    def combined():return merge(identities.get('ai'),identities.get('web'),identities.get('network'))
     def result(status='running'):
-        identity=merge(identities.get('ai'),identities.get('network'))
+        identity=combined()
         return {'id':ident,'name':item['name'],'status':status,'message':'找到 '+str(len(candidates))+' 个候选目录' if candidates else '正在查找存档',
                 'candidates':candidates,'checked':checked,'english_name':identity['english_name'],'aliases':identity['aliases'],
                 'developers':identity['developers'],'publishers':identity['publishers'],'engine':identity.get('engine',''),
                 'note':identity['note'],'sources':identity['sources'],'scan_modes':list(modes),
-                'ai_warning':warnings.get('ai',''),'network_warning':warnings.get('network',''),
+                'ai_warning':warnings.get('ai',''),'network_warning':warnings.get('network',''),'web_warning':warnings.get('web',''),
                 'elapsed':round(time.monotonic()-started,2),'model':store.settings['ai_model'] if store.settings.get('ai_enabled') else '本地规则'}
     pool=ThreadPoolExecutor(max_workers=3)
     futures={pool.submit(scan,item['name'],local,None,None,cancel):'local'}
@@ -112,20 +143,46 @@ def match(store,ident,progress=None,cancel=None):
                 if progress and not cancel.is_set():progress(result())
         if cancel.is_set():
             row=result('review' if candidates else 'notfound');row['message']='查找已停止，已找到的目录保留';return row
-        if identities:candidates,checked=scan(item['name'],local,merge(*identities.values()),cancel=cancel)
+        if identities:candidates,checked=scan(item['name'],local,combined(),cancel=cancel)
         # A Chinese store query can miss an English title: retry with the model's identified name.
         english=identities.get('ai',{}).get('english_name','')
         if store.settings.get('match_network',True) and not identities.get('network') and english and english!=item['name']:
             try:
                 identities['network']=cached_network(store,item,local,cancel,english)
-                candidates,checked=scan(item['name'],local,merge(*identities.values()),cancel=cancel)
+                candidates,checked=scan(item['name'],local,combined(),cancel=cancel)
             except Exception:pass
+        from save_workflow import select_candidate
+        if store.settings.get('match_network',True) and store.settings.get('match_web_search',True) and store.settings.get('ai_enabled') and not select_candidate({'candidates':candidates}) and not cancel.is_set():
+            modes.append({'mode':'web','state':'running'})
+            if progress:progress(result())
+            try:
+                future=pool.submit(cached_web,store,item,local,combined(),cancel)
+                while not future.done():
+                    if cancel.wait(.05):
+                        row=result('review' if candidates else 'notfound');row['message']='查找已停止，已找到的目录保留';return row
+                identities['web']=future.result()
+                candidates,checked=scan(item['name'],local,combined(),cancel=cancel)
+                modes[-1]={'mode':'web','state':'done'}
+                if not select_candidate({'candidates':candidates}) and not cancel.is_set():
+                    modes.append({'mode':'web-deep','state':'running'})
+                    if progress:progress(result())
+                    future=pool.submit(cached_web,store,item,local,combined(),cancel,True)
+                    while not future.done():
+                        if cancel.wait(.05):
+                            row=result('review' if candidates else 'notfound');row['message']='查找已停止，已找到的目录保留';return row
+                    identities['web']=merge(identities['web'],future.result())
+                    candidates,checked=scan(item['name'],local,combined(),cancel=cancel)
+                    modes[-1]={'mode':'web-deep','state':'done'}
+            except Exception as error:
+                warnings['web']=str(error) if isinstance(error,ValueError) else '网页存档搜索暂不可用，保留本地结果'
+                modes[-1]={'mode':'web','state':'failed'}
+            if progress and not cancel.is_set():progress(result())
         if store.settings.get('ai_enabled') and not warnings.get('ai') and store.settings.get('match_ai_review',True) and candidates and not cancel.is_set():
             try:
                 from ai_match import review_directories
                 from services import protect,read_json,write_json
-                signatures=[{'path':c['path'],'files':c['files']} for c in candidates[:30]]
-                cache_key=hashlib.sha256(json.dumps(['directory-review-v2',item['name'],store.settings['ai_model'],signatures],sort_keys=True).encode()).hexdigest()
+                signatures=[{'path':c['path'],'files':c['files'],'source_url':c.get('source_url',''),'source':c.get('source','')} for c in candidates[:30]]
+                cache_key=hashlib.sha256(json.dumps(['directory-review-v3',item['name'],store.settings['ai_model'],signatures],sort_keys=True).encode()).hexdigest()
                 with store.match_lock:reviews=read_json(store.profile/'ai-reviews.json',{});scores=reviews.get(cache_key)
                 if scores is None:
                     with _ai_limit:

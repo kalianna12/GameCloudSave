@@ -17,6 +17,7 @@ from services import Store, ROOT, RESOURCES
 
 class Bridge(QObject):
     changed = Signal()
+    restorePreviewChanged = Signal()
     gamesChanged = Signal()
     settingsChanged = Signal()
     cloudChanged = Signal()
@@ -56,6 +57,7 @@ class Bridge(QObject):
         self._dirs = []
         self._history = []
         self._cloud_history = []
+        self._restore_preview = {}
         self._imports = []
         self._import_mode=''
         self._cover_results=[]
@@ -405,6 +407,8 @@ class Bridge(QObject):
     def snapshots(self): return self._history
     @Property('QVariantList', notify=changed)
     def cloudSnapshots(self):return self._cloud_history
+    @Property('QVariantMap',notify=restorePreviewChanged)
+    def restorePreview(self):return self._restore_preview
     @Slot(str,result=str)
     def formatLocalTime(self,value):
         from time_display import local_time
@@ -581,9 +585,13 @@ class Bridge(QObject):
             self._status='封面已设置'
         elif action=='organizer-preview':
             self._organizer=result;self._status='分类建议已生成'
+        elif action=='restore-preview':
+            self._restore_preview=result
+            self.restorePreviewChanged.emit()
+            self._status='请选择要恢复的存档'
         elif action=='cloud-history':
             self._cloud_history=result
-            self._status=f'云端共 {len(result)} 份备份，选择后下载并恢复'
+            self._status=f'已读取云端最近 {len(result)} 份备份，选择后预览并恢复'
         else:
             self._status = str(result or '已完成')
         if action in ('backup','restore','snapshot-note','cloud-restore') and not error and getattr(self,'_history_ident',''):
@@ -1120,6 +1128,24 @@ class Bridge(QObject):
     @Slot(str, int)
     def restore(self, ident, snapshot):
         self.job('restore', lambda: (self.store.restore(ident, snapshot), '已恢复，恢复前存档已另行备份')[1])
+    @Slot(str,int,'QVariantMap')
+    def previewRestore(self,ident,snapshot,record):
+        if self._busy:return
+        self._restore_preview={}
+        self.restorePreviewChanged.emit()
+        self.changed.emit()
+        def preview():
+            value=snapshot
+            if record.get('remote'):
+                allowed=next((row for row in self._cloud_history if row['remote']==record.get('remote')),None)
+                if allowed is None:raise ValueError('云端记录已更新，请重新刷新')
+                value=self.store.receive_cloud_snapshot(ident,allowed)
+            result=self.store.restore_preview(ident,value)
+            return {key:value for key,value in result.items() if key not in ('files','directories','archive','sha256')}
+        self.job('restore-preview',preview)
+    @Slot(str,int,'QVariantMap')
+    def restoreWithOptions(self,ident,snapshot,options):
+        self.job('restore',lambda:(self.store.restore(ident,snapshot,options),'已恢复所选存档，恢复前版本已保留')[1])
     @Slot(object)
     def receiveMatch(self,result):
         # Coalesce worker updates. Never resend every game's file inventory to QML.

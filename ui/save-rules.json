@@ -1,6 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "rules": [
+    {"aliases":["第一狂战士：卡赞","第一狂战士卡赞","The First Berserker: Khazan","Khazan"],"root":"local","relative":"BBQ/Saved/SaveGames","source_url":"https://steamcommunity.com/app/2680010/discussions/0/595144651000835275/"},
+    {"aliases":["第一狂战士：卡赞","第一狂战士卡赞","The First Berserker: Khazan","Khazan"],"root":"local","relative":"The First Berserker Khazan/Saved/SaveGames","source_url":"https://steamcommunity.com/app/2680010/discussions/0/595144651000835275/"},
     {"aliases":["CODE VEIN 噬血代码 II","CODE VEIN II","CodeVein2"],"root":"local","relative":"CodeVein2/Saved/SaveGames"},
     {"aliases":["DJMAX RESPECT V","DJMAX"],"root":"locallow","relative":"Neowiz/DJMAX RESPECT V/Saves"},
     {"aliases":["Dark Souls III","DarkSoulsIII","Dark Souls 3"],"root":"roaming","relative":"DarkSoulsIII"},

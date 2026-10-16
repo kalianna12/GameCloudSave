@@ -562,7 +562,7 @@ ApplicationWindow {
                             Label { text: (historyTabs.currentIndex===0 ? (modelData.event==="game_stop" || modelData.event==="game_start" ? "自动备份 · " : modelData.event==="manual" ? "手动备份 · " : "")+(modelData.uploaded ? "已上传" : "仅本地") : (modelData.computer || "云端版本")) + "  ·  " + (modelData.note || "无备注"); Layout.fillWidth: true; elide: Text.ElideRight; color: Theme.secondary; font.pixelSize: 12 }
                         }
                         AppButton { text: "备注"; visible: historyTabs.currentIndex===0; enabled: !backend.busy; onClicked: { noteDialog.snapshotId=modelData.id; snapshotNote.text=modelData.note || ""; noteDialog.open() } }
-                        AppButton { text: historyTabs.currentIndex===0 ? "恢复" : "下载并恢复"; enabled: !backend.busy; onClicked: { restoreDialog.snapshotId=modelData.id || 0; restoreDialog.cloudRecord=historyTabs.currentIndex===1 ? modelData : ({}); restoreDialog.open() } }
+                        AppButton { text: historyTabs.currentIndex===0 ? "恢复" : "下载并恢复"; enabled: !backend.busy; onClicked: restoreDialog.begin(activeId,modelData.id || 0,historyTabs.currentIndex===1 ? modelData : ({})) }
                     }
                 }
                 ScrollBar.vertical: ScrollBar {}
@@ -579,11 +579,5 @@ ApplicationWindow {
         standardButtons: Dialog.Save | Dialog.Cancel
         onAccepted: backend.setSnapshotNote(activeId,snapshotId,snapshotNote.text)
     }
-    Dialog {
-        id: restoreDialog; property int snapshotId: 0; property var cloudRecord: ({}); anchors.centerIn: parent; modal: true
-        Overlay.modal: Rectangle { color: "#bb000000" }
-        title: cloudRecord.remote ? "下载并恢复云端版本" : "恢复快照 #" + snapshotId; standardButtons: Dialog.Ok | Dialog.Cancel
-        Label { text: "将替换本机已配置目录中的存档。当前存档会先另行备份。" }
-        onAccepted: { if(cloudRecord.remote) backend.restoreCloudSnapshot(activeId,cloudRecord); else backend.restore(activeId, snapshotId) }
-    }
+    RestoreDialog { id: restoreDialog; anchors.centerIn: parent }
 }
