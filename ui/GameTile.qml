@@ -9,6 +9,9 @@ Item {
     property bool scrolling: false
     property bool selected: false
     property bool selectOnly: false
+    readonly property string transferState: backend.transferStates[game.id] || "idle"
+    readonly property string transferHint: transferState==="saving" ? "正在保存本地备份" : transferState==="uploading" ? "正在上传云存档" : transferState==="success" ? "云存档上传成功" : transferState==="failed" ? "备份或上传失败，查看存档记录" : "存档记录"
+    readonly property bool actionsVisible: featured || hover.hovered && !scrolling || activeFocus
     property string lastGameId: ""
     signal selectionRequested()
     signal focusRequested()
@@ -43,7 +46,7 @@ Item {
         Item {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: tile.featured ? 96 : 44; z: 6
-            opacity: tile.featured || hover.hovered && !tile.scrolling || tile.activeFocus ? 1 : 0
+            opacity: tile.actionsVisible ? 1 : 0
             enabled: opacity>.5
             Behavior on opacity { NumberAnimation { duration: Theme.motion && !tile.scrolling ? 120 : 0 } }
             Rectangle { anchors.fill: parent; visible: tile.featured; gradient: Gradient { GradientStop { position: 0; color: "#00000000" } GradientStop { position: .36; color: "#aa000000" } GradientStop { position: 1; color: "#ed000000" } } }
@@ -54,8 +57,18 @@ Item {
                 anchors.bottom: parent.bottom; anchors.bottomMargin: tile.featured ? 12 : 1; spacing: 8
                 IconButton { iconName: "play"; accent: true; hint: "启动"; width: tile.featured ? 82 : 42; height: tile.featured ? 34 : 42; label: tile.featured ? "启动" : ""; enabled: !backend.busy; onClicked: tile.launchRequested(tile.game) }
                 IconButton { iconName: "settings"; overArtwork: tile.featured; hint: "设置"; height: tile.featured ? 34 : 42; enabled: !backend.busy; onClicked: tile.detailsRequested(tile.game) }
-                IconButton { iconName: "cloud"; overArtwork: tile.featured; hint: "存档记录"; height: tile.featured ? 34 : 42; enabled: !backend.busy; onClicked: tile.cloudRequested(tile.game) }
+                IconButton { objectName: "tileCloudAction"; iconName: "cloud"; overArtwork: tile.featured; transferState: tile.transferState; hint: tile.transferHint; height: tile.featured ? 34 : 42; enabled: !backend.busy; onClicked: tile.cloudRequested(tile.game) }
             }
+        }
+        IconButton {
+            objectName: "tileTransferBadge"
+            anchors { right: parent.right; top: parent.top; margins: 6 }
+            z: 11
+            width: 34; height: 34; iconName: "cloud"; overArtwork: true
+            transferState: tile.transferState; hint: tile.transferHint
+            visible: !tile.featured && tile.transferState!=="idle"
+            enabled: !backend.busy
+            onClicked: tile.cloudRequested(tile.game)
         }
     }
     Column {
