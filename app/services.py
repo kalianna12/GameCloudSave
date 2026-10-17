@@ -79,6 +79,7 @@ class Store:
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_web_search':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
+                    'recommendations_enabled':True,'recommendations_steam':True,'recommendations_xbox':True,
                     'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True,'fullscreen':False})
         defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',shelf_wood='walnut',shelf_sunlight=True,atlas_order='release_asc')
@@ -99,6 +100,8 @@ class Store:
 
     def save_settings(self, values):
         values = dict(values)
+        for key in ('recommendations_enabled','recommendations_steam','recommendations_xbox'):
+            if key in values and type(values[key])!=bool:raise ValueError('推荐设置无效')
         if 'fullscreen' in values and type(values['fullscreen'])!=bool:raise ValueError('全屏设置无效')
         if 'auto_snapshot_keep' in values and (type(values['auto_snapshot_keep'])!=int or not 1<=values['auto_snapshot_keep']<=100):
             raise ValueError('自动存档保留份数须为 1 到 100，手动存档不受限制')

@@ -12,7 +12,7 @@ Item {
     property int cardGap: 14
     property bool recentPreview: true
     readonly property bool showPreview: section.kind==="recent" && recentPreview && width>=760
-    readonly property real tileWidth: section.kind==="tiles" ? Math.round(coverSize*1.34) : section.kind==="recent" ? Math.round(coverSize*.9) : coverSize
+    readonly property real tileWidth: section.kind==="store" ? Math.round(coverSize*1.65) : section.kind==="tiles" ? Math.round(coverSize*1.34) : section.kind==="recent" ? Math.round(coverSize*.9) : coverSize
     readonly property real scrollTarget: horizontal.running ? horizontal.to : list.contentX
     readonly property int selectionIndex: list.currentIndex
     property var selectedRecord: items.count ? items.get(Math.min(items.count-1,Math.max(0,list.currentIndex))).record : ({})
@@ -22,7 +22,7 @@ Item {
     signal launchRequested(var game)
     signal cloudRequested(var game)
     signal verticalScroll(real delta)
-    implicitHeight: section.kind==="tiles" ? 220*coverSize/176 : section.kind==="recent" ? 300*coverSize/176 : 320*coverSize/176
+    implicitHeight: section.kind==="store" ? (section.items.length ? 120+coverSize*.94 : 140) : section.kind==="tiles" ? 220*coverSize/176 : section.kind==="recent" ? 300*coverSize/176 : 320*coverSize/176
     ListModel { id: items; dynamicRoles: true }
     function sync() {
         var savedId=selectedId;syncing=true
@@ -46,14 +46,16 @@ Item {
         height: 32; spacing: 8
         Label { text: shelf.section.title || ""; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.text }
         Item { Layout.fillWidth: true }
-        AppButton { text: "查看全部"; flat: true; onClicked: shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") }
+        AppBusyIndicator { implicitWidth: 20; implicitHeight: 20; visible: shelf.section.kind==="store" && backend.recommendations.loading; running: visible }
+        AppButton { visible: !!shelf.section.refresh; text: "刷新"; flat: true; enabled: !backend.recommendations.loading; onClicked: backend.recommendations.refresh() }
+        AppButton { visible: shelf.section.kind!=="store" || !!shelf.section.page; text: shelf.section.kind==="store" ? "查看商店" : "查看全部"; flat: true; onClicked: { if(shelf.section.kind==="store") backend.recommendations.open(shelf.section.id);else shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") } }
         IconButton { objectName: "shelfPrevious"; iconName: "arrow-left"; width: 32; height: 32; hint: "向左浏览"; enabled: shelf.scrollTarget>1; onClicked: shelf.move(-1) }
         IconButton { objectName: "shelfNext"; iconName: "arrow-right"; width: 32; height: 32; hint: "向右浏览"; enabled: shelf.scrollTarget+list.width<list.contentWidth-1; onClicked: shelf.move(1) }
     }
     // Section subtitles repeat browsing instructions; keep the cover shelf quiet.
-    function selectedGame() { return section.kind==="tiles" ? null : selectedRecord }
+    function selectedGame() { return section.kind==="tiles" || section.kind==="store" ? null : selectedRecord }
     function selectFirst() { horizontal.stop();list.currentIndex=items.count ? 0 : -1;list.positionViewAtBeginning() }
-    function activateSelected() { if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else detailsRequested(selectedRecord) }
+    function activateSelected() { if(!items.count) return;if(section.kind==="store") backend.recommendations.open(selectedRecord.id);else if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else detailsRequested(selectedRecord) }
     function moveSelection(direction) {
         if(!items.count) return
         var previousIndex=list.currentIndex
@@ -90,7 +92,13 @@ Item {
             width: shelf.tileWidth
             height: list.height
             Loader {
-                anchors.fill: parent; sourceComponent: shelf.section.kind==="tiles" ? browseTile : gameTile
+                anchors.fill: parent; sourceComponent: shelf.section.kind==="store" ? storeTile : shelf.section.kind==="tiles" ? browseTile : gameTile
+                Component { id: storeTile; StoreTile {
+                    record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex
+                    scrolling: shelf.outerMoving || list.moving || horizontal.running
+                    onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() }
+                    onClicked: { list.currentIndex=parent.parent.index;shelf.selectionFocused();backend.recommendations.open(record.id) }
+                } }
                 Component { id: browseTile; BrowseTile { record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex; onFocusRequested: { list.currentIndex=parent.parent.index;shelf.selectionFocused() } onClicked: { list.currentIndex=parent.parent.index;shelf.selectionFocused();shelf.browseRequested(record.target,record.value) } } }
                 Component { id: gameTile; GameTile {
                     game: parent.parent.record; featured: false; scrolling: shelf.outerMoving || list.moving || horizontal.running
@@ -113,5 +121,11 @@ Item {
                 else { shelf.verticalScroll(event.pixelDelta.y ? -event.pixelDelta.y : -event.angleDelta.y/120*88);event.accepted=true }
             }
         }
+    }
+    Label { visible: shelf.section.kind==="store" && !items.count; x: 0; y: 60; width: parent.width; text: shelf.section.message || ""; color: Theme.secondary; wrapMode: Text.Wrap }
+    Label {
+        visible: shelf.section.kind==="store" && !!items.count && !!shelf.section.message
+        anchors { right: parent.right; bottom: parent.bottom }
+        text: shelf.section.message || ""; color: Theme.secondary; font.pixelSize: 11
     }
 }

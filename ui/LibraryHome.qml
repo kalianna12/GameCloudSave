@@ -4,6 +4,7 @@ import QtQuick.Window
 FocusScope {
     id: home
     property var sections: []
+    property string listObjectName: "libraryHomeList"
     property int coverSize: 176
     property int cardGap: 14
     property bool recentPreview: true
@@ -55,6 +56,7 @@ FocusScope {
     signal cloudRequested(var game)
     ListModel { id: rows; dynamicRoles: true }
     function sync() {
+        var previousId=focusedSection<rows.count ? rows.get(focusedSection).record.id : ""
         for(var i=0;i<sections.length;i++) {
             var position=-1
             for(var j=i;j<rows.count;j++) if(rows.get(j).record.id===sections[i].id) { position=j;break }
@@ -62,6 +64,8 @@ FocusScope {
             else { if(position!==i) rows.move(position,i,1);rows.set(i,{record:sections[i]}) }
         }
         while(rows.count>sections.length) rows.remove(rows.count-1)
+        var previousIndex=sections.findIndex(function(section) { return section.id===previousId })
+        focusedSection=previousIndex>=0 ? previousIndex : Math.max(0,Math.min(focusedSection,rows.count-1))
     }
     onSectionsChanged: sync()
     Component.onCompleted: sync()
@@ -71,7 +75,7 @@ FocusScope {
     }
     NumberAnimation { id: vertical; target: list; property: "contentY"; duration: Theme.motion ? 190 : 0; easing.type: Easing.OutCubic }
     ListView {
-        id: list; objectName: "libraryHomeList"; anchors.fill: parent; model: rows
+        id: list; objectName: home.listObjectName; anchors.fill: parent; model: rows
         clip: true; reuseItems: true; cacheBuffer: 240; spacing: 14; flickDeceleration: 2300; maximumFlickVelocity: 3500
         delegate: LibraryShelf {
             required property var record

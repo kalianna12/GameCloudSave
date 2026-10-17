@@ -54,6 +54,8 @@ class Bridge(QObject):
         self._controller_mode=False
         self.input_feedback=None
         self._status = '就绪'
+        from recommendations import Recommendations
+        self._recommendations=Recommendations(store,self)
         self._dirs = []
         self._history = []
         self._cloud_history = []
@@ -125,6 +127,9 @@ class Bridge(QObject):
     def watchInfo(self):
         return {**self._exit_queue.counts(),'running':len(self._sessions.active),'ready':self._watch_ready_count,
                 'working':self._auto_active,'message':self._watch_message}
+
+    @Property(QObject,constant=True)
+    def recommendations(self):return self._recommendations
 
     def refreshWatchInfo(self):
         info=self.watchInfo
@@ -616,6 +621,7 @@ class Bridge(QObject):
             if self._matches!=self.store.match_report:
                 self._matches=list(self.store.match_report);self.matchesChanged.emit()
             self.settingsChanged.emit()
+            self._recommendations.sync()
             if self.store.settings.get('watch'):
                 self.timer.start(max(2,min(60,int(self.store.settings.get('watch_interval',5))))*1000)
                 QTimer.singleShot(0,self.poll)
@@ -1417,6 +1423,7 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self._recommendations.shutdown()
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
         self._watch_closed=True;self.timer.stop();self._watch_pool.shutdown(wait=False,cancel_futures=True)
@@ -1504,6 +1511,7 @@ def main():
         instance.release()
         return 1
     root_window = engine.rootObjects()[0]
+    QTimer.singleShot(250,bridge.recommendations.start)
     def activate_window():QMetaObject.invokeMethod(root_window,'restoreLibraryWindow')
     instance.activated.connect(activate_window)
     from gamepad import Gamepad,dispatch

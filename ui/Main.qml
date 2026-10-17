@@ -56,7 +56,7 @@ ApplicationWindow {
     }
     property int filterFocusIndex: 0
     property int headerFocusIndex: 0
-    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,personalControl,fullscreenControl]
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,recommendationsControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
     function goBack() {
@@ -117,6 +117,7 @@ ApplicationWindow {
                 if(header>=0 && headers[header]===backButton) goBack()
                 if(filter>=0 && filters[filter]===fullscreenControl) win.toggleFullScreen()
                 if(filter>=0 && filters[filter]===personalControl) personalControl.clicked()
+                if(filter>=0 && filters[filter]===recommendationsControl) recommendationsControl.clicked()
             }
             return true
         }
@@ -157,8 +158,12 @@ ApplicationWindow {
     Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
     property var seriesNames: ((backend.librarySections.find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name })
     property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
-    property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && shownGames.length>0
-    property var homeRows: { var revision=backend.games;return backend.homeSections(installedOnly,platformFilter,importSourceFilter) }
+    property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && (shownGames.length>0 || backend.settings.recommendations_enabled!==false)
+    property var homeRows: {
+        var revision=backend.games, local=backend.homeSections(installedOnly,platformFilter,importSourceFilter).filter(function(section) { return section.items.length>0 })
+        var recommendations=backend.settings.recommendations_enabled!==false ? backend.recommendations.sections : []
+        return local.slice(0,1).concat(recommendations,local.slice(1))
+    }
     property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
         var ad=a.release_date || "",bd=b.release_date || ""
         if(!ad || !bd) return ad ? -1 : bd ? 1 : a.name.localeCompare(b.name)
@@ -199,6 +204,8 @@ ApplicationWindow {
         watchSwitch.checked=s.watch
         autoUpload.checked=s.watch_upload
         autoKeep.value=s.auto_snapshot_keep || 5
+        recommendationsToggle.checked=s.recommendations_enabled!==false
+        steamRecommendations.checked=s.recommendations_steam!==false;xboxRecommendations.checked=s.recommendations_xbox!==false
         traySwitch.checked=s.close_to_tray; watchInterval.value=s.watch_interval
         settingsTabs.currentIndex=typeof page==="number" ? page : 0
         settingsDialog.open()
@@ -308,6 +315,7 @@ ApplicationWindow {
                 Item { Layout.fillWidth: win.width>=1250 }
                 AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppButton { id: layoutControl; objectName: "layoutControl"; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
+                AppButton { id: recommendationsControl; objectName: "recommendationsControl"; text: "游戏推荐"; flat: true; visible: win.alternativeDesign && backend.settings.recommendations_enabled!==false; onClicked: recommendationDialog.open() }
                 AppButton { id: personalControl; objectName: "personalControl"; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
                 AppButton { id: fullscreenControl; objectName: "fullscreenControl"; text: win.fullScreenMode ? "退出全屏" : "全屏"; flat: true; onClicked: win.toggleFullScreen(); ToolTip.visible: hovered && !backend.controllerMode; ToolTip.text: "F11 切换全屏" }
                 Item { Layout.fillWidth: win.width<1250 }
@@ -464,6 +472,12 @@ ApplicationWindow {
                 }
                 ColumnLayout {
                 visible: settingsTabs.currentIndex===0; Layout.fillWidth: true; spacing: 10
+                Switch { id: recommendationsToggle; objectName: "recommendationsToggle"; text: "首页游戏推荐" }
+                RowLayout {
+                    CheckBox { id: steamRecommendations; text: "Steam（国区）"; enabled: recommendationsToggle.checked }
+                    CheckBox { id: xboxRecommendations; text: "Xbox（港区）"; enabled: recommendationsToggle.checked }
+                }
+                Label { text: backend.recommendations.status; visible: !!text; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 Label { text: "路径只用于当前电脑，换电脑后需重新选择。"; color: Theme.secondary }
                 Label { text: "Playnite 程序目录" }
                 RowLayout { AppTextField { id: playnitePath; Layout.fillWidth: true; selectByMouse: true } AppButton { text: "选择"; onClicked: { var p=backend.pickFolder(playnitePath.text); if(p) playnitePath.text=p } } }
@@ -514,8 +528,32 @@ ApplicationWindow {
             AppButton { text: "保存本机设置"; enabled: !backend.busy; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
             onRejected: { restoreLayout();settingsDialog.close() }
             onAccepted: {
-                backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked,close_to_tray:traySwitch.checked,watch_interval:watchInterval.value,auto_snapshot_keep:autoKeep.value}); saveLayout(); settingsDialog.close()
+                backend.saveSettings({playnite:playnitePath.text, library:libraryPath.text, snapshots:snapshotPath.text, watch:watchSwitch.checked,watch_upload:autoUpload.checked,close_to_tray:traySwitch.checked,watch_interval:watchInterval.value,auto_snapshot_keep:autoKeep.value,recommendations_enabled:recommendationsToggle.checked,recommendations_steam:steamRecommendations.checked,recommendations_xbox:xboxRecommendations.checked}); saveLayout(); settingsDialog.close()
             }
+        }
+    }
+
+    Dialog {
+        id: recommendationDialog; objectName: "recommendationDialog"
+        anchors.centerIn: parent; width: Math.min(win.width-48,1260); height: win.height-64; modal: true
+        title: "游戏推荐"
+        onOpened: { backend.recommendations.start();Qt.callLater(function() { if(recommendationLoader.item) recommendationLoader.item.focusFirst() }) }
+        function controllerInput(command) {
+            if(command==="back") { close();return true }
+            var home=recommendationLoader.item;if(!home) return true
+            if(command==="activate") { home.activateSelected();return true }
+            if(["up","down","left","right"].indexOf(command)>=0) home.navigateFocus(command)
+            if(command==="next" || command==="previous") { var shelf=home.currentShelf();if(shelf) shelf.pageSelection(command==="next" ? 1 : -1) }
+            return true
+        }
+        contentItem: Loader {
+            id: recommendationLoader; active: recommendationDialog.visible
+            onLoaded: Qt.callLater(function() { if(item) item.focusFirst() })
+            sourceComponent: Component { LibraryHome { listObjectName: "recommendationHomeList"; sections: backend.recommendations.sections; coverSize: win.homeCoverSize; cardGap: win.homeGap; recentPreview: false } }
+        }
+        footer: DialogButtonBox {
+            AppButton { text: "关闭"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+            onRejected: recommendationDialog.close()
         }
     }
 
