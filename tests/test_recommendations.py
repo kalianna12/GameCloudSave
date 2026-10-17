@@ -123,5 +123,64 @@ class RecommendationTests(unittest.TestCase):
             self.feed._artwork('steam',repeated,1,threading.Event())
         self.assertEqual(submit.call_count,2)
 
+    def seed_sections(self):
+        self.feed._providers=('steam','xbox');self.feed._started=True
+        self.feed._rows={provider:[{**row,'coverUrl':'file:///old-'+row['category']+'.jpg'} for row in rows(provider)] for provider in self.feed._providers}
+        self.feed._rows['steam'].append({**self.feed._rows['steam'][0],'category':'new','coverUrl':'file:///old-new.jpg'})
+
+    def test_scoped_refresh_keeps_other_categories_and_existing_artwork(self):
+        self.seed_sections();before={s['id']:s for s in self.feed.sections}
+        incoming=[{**row,'name':'Updated '+row['name']} for row in self.feed._rows['steam']]
+        for row in incoming:row.pop('coverUrl',None)
+        entered=threading.Event();gate=threading.Event()
+        def fetch(provider):entered.set();assert gate.wait(3);return incoming
+        with patch('recommendation_sources.fetch',side_effect=fetch) as fetch_call,patch.object(self.feed,'_artwork') as art:
+            try:
+                self.feed.refreshSection('store:new');self.idle(entered.is_set)
+                current={s['id']:s for s in self.feed.sections}
+                self.assertTrue(current['store:new']['loading'])
+                for ident in ('store:sale','store:popular','store:xbox'):self.assertEqual(current[ident],before[ident])
+                self.assertEqual(current['store:new']['items'][0]['coverUrl'],'file:///old-new.jpg')
+            finally:gate.set()
+            self.idle()
+        fetch_call.assert_called_once_with('steam')
+        current={s['id']:s for s in self.feed.sections}
+        for ident in ('store:sale','store:popular','store:xbox'):self.assertEqual(current[ident],before[ident])
+        self.assertTrue(current['store:new']['items'][0]['name'].startswith('Updated'))
+        self.assertEqual(current['store:new']['items'][0]['coverUrl'],'file:///old-new.jpg')
+        self.assertEqual({r['category'] for r in art.call_args.args[1]},{'new'})
+
+    def test_scoped_picture_cannot_change_same_game_in_another_category(self):
+        self.seed_sections();self.feed._requests['new']=(1,threading.Event())
+        self.feed.receive_art('steam','store:steam:1','file:///new.jpg',self.feed._token,'new',1)
+        current={s['id']:s for s in self.feed.sections}
+        self.assertEqual(current['store:new']['items'][0]['coverUrl'],'file:///new.jpg')
+        self.assertEqual(current['store:sale']['items'][0]['coverUrl'],'file:///old-sale.jpg')
+        self.feed.receive_art('steam','store:steam:1','file:///late-startup.jpg',self.feed._token)
+        current={s['id']:s for s in self.feed.sections}
+        self.assertEqual(current['store:new']['items'][0]['coverUrl'],'file:///new.jpg')
+
+    def test_failed_scoped_refresh_keeps_displayed_cards_and_noop_art_emits_nothing(self):
+        self.seed_sections();before=list(self.feed._rows['steam'])
+        with patch('recommendation_sources.fetch',side_effect=ValueError('offline')),patch.object(self.feed,'_artwork'):
+            self.feed.refreshSection('store:new');self.idle()
+        self.assertEqual(self.feed._rows['steam'],before)
+        changes=[];self.feed.changed.connect(lambda:changes.append(True))
+        self.feed.receive_art('steam','store:steam:2','file:///old-popular.jpg',self.feed._token)
+        self.assertEqual(changes,[])
+
+    def test_independent_sections_can_refresh_concurrently(self):
+        self.seed_sections();entered={p:threading.Event() for p in ('steam','xbox')};gate=threading.Event()
+        def fetch(provider):entered[provider].set();assert gate.wait(3);return rows(provider)
+        with patch('recommendation_sources.fetch',side_effect=fetch),patch.object(self.feed,'_artwork'):
+            try:
+                self.feed.refreshSection('store:sale');self.feed.refreshSection('store:xbox')
+                self.idle(lambda:all(event.is_set() for event in entered.values()))
+                current={s['id']:s for s in self.feed.sections}
+                self.assertTrue(current['store:sale']['loading']);self.assertTrue(current['store:xbox']['loading'])
+                self.assertFalse(current['store:popular']['loading'])
+            finally:gate.set()
+            self.idle()
+
 
 if __name__=='__main__':unittest.main(verbosity=2)

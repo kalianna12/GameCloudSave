@@ -159,8 +159,9 @@ ApplicationWindow {
     property var seriesNames: ((backend.librarySections.find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name })
     property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
     property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && (shownGames.length>0 || backend.settings.recommendations_enabled!==false)
+    property var localHomeRows: { var revision=backend.games;return backend.homeSections(installedOnly,platformFilter,importSourceFilter).filter(function(section) { return section.items.length>0 }) }
     property var homeRows: {
-        var revision=backend.games, local=backend.homeSections(installedOnly,platformFilter,importSourceFilter).filter(function(section) { return section.items.length>0 })
+        var local=localHomeRows
         var recommendations=backend.settings.recommendations_enabled!==false ? backend.recommendations.sections : []
         return local.slice(0,1).concat(recommendations,local.slice(1))
     }

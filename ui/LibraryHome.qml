@@ -55,15 +55,24 @@ FocusScope {
     signal launchRequested(var game)
     signal cloudRequested(var game)
     ListModel { id: rows; dynamicRoles: true }
+    property var sectionRecords: ({})
     function sync() {
         var previousId=focusedSection<rows.count ? rows.get(focusedSection).record.id : ""
+        var nextRecords={}
         for(var i=0;i<sections.length;i++) {
             var position=-1
             for(var j=i;j<rows.count;j++) if(rows.get(j).record.id===sections[i].id) { position=j;break }
-            if(position<0) rows.insert(i,{record:sections[i]})
-            else { if(position!==i) rows.move(position,i,1);rows.set(i,{record:sections[i]}) }
+            var old=sectionRecords[sections[i].id],record=sections[i]
+            nextRecords[record.id]=record
+            if(position<0) rows.insert(i,{record:record})
+            else {
+                if(position!==i) rows.move(position,i,1)
+                var unchanged=old===record || old && record.kind==="store" && old.revision===record.revision && old.loading===record.loading && old.message===record.message
+                if(!unchanged) rows.set(i,{record:record})
+            }
         }
         while(rows.count>sections.length) rows.remove(rows.count-1)
+        sectionRecords=nextRecords
         var previousIndex=sections.findIndex(function(section) { return section.id===previousId })
         focusedSection=previousIndex>=0 ? previousIndex : Math.max(0,Math.min(focusedSection,rows.count-1))
     }

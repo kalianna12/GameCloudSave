@@ -46,8 +46,8 @@ Item {
         height: 32; spacing: 8
         Label { text: shelf.section.title || ""; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.text }
         Item { Layout.fillWidth: true }
-        AppBusyIndicator { implicitWidth: 20; implicitHeight: 20; visible: shelf.section.kind==="store" && backend.recommendations.loading; running: visible }
-        AppButton { visible: !!shelf.section.refresh; text: "刷新"; flat: true; enabled: !backend.recommendations.loading; onClicked: backend.recommendations.refresh() }
+        AppBusyIndicator { implicitWidth: 20; implicitHeight: 20; visible: shelf.section.kind==="store" && !!shelf.section.loading; running: visible }
+        AppButton { objectName: "refresh-"+shelf.section.id; visible: !!shelf.section.refresh; text: "刷新"; flat: true; enabled: !shelf.section.loading; onClicked: backend.recommendations.refreshSection(shelf.section.id) }
         AppButton { visible: shelf.section.kind!=="store" || !!shelf.section.page; text: shelf.section.kind==="store" ? "查看商店" : "查看全部"; flat: true; onClicked: { if(shelf.section.kind==="store") backend.recommendations.open(shelf.section.id);else shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") } }
         IconButton { objectName: "shelfPrevious"; iconName: "arrow-left"; width: 32; height: 32; hint: "向左浏览"; enabled: shelf.scrollTarget>1; onClicked: shelf.move(-1) }
         IconButton { objectName: "shelfNext"; iconName: "arrow-right"; width: 32; height: 32; hint: "向右浏览"; enabled: shelf.scrollTarget+list.width<list.contentWidth-1; onClicked: shelf.move(1) }

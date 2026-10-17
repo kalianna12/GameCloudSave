@@ -17,7 +17,7 @@ MAX_AGE = 7 * 86400
 class Recommendations(QObject):
     changed = Signal()
     received = Signal(str, object, int)
-    artwork = Signal(str, str, str, int)
+    artwork = Signal(str, str, str, int, str, int)
 
     def __init__(self, store, parent=None):
         super().__init__(parent)
@@ -34,6 +34,10 @@ class Recommendations(QObject):
         self._pending = set()
         self._last_start = 0
         self._image_locks = {}
+        self._requests = {}
+        self._section_pending = set()
+        self._request_serial = 0
+        self._revisions = {category:0 for category in sources.SECTIONS}
         self.received.connect(self.receive)
         self.artwork.connect(self.receive_art)
         self._timer=QTimer(self)
@@ -47,11 +51,11 @@ class Recommendations(QObject):
 
     @Property(bool, notify=changed)
     def loading(self):
-        return bool(self._pending)
+        return bool(self._pending or self._section_pending)
 
     @Property(str, notify=changed)
     def status(self):
-        if self._pending:
+        if self.loading:
             return '正在读取商店…'
         return '；'.join(self._errors.values())
 
@@ -65,11 +69,34 @@ class Recommendations(QObject):
             if items:
                 stale = any(row.get('stale') for row in items)
                 result.append({'id': 'store:' + category, 'kind': 'store', 'title': title, 'items': items,
-                               'page': page, 'message': '离线缓存 · 价格待刷新' if stale else '', 'refresh': True})
+                               'page': page, 'message': '离线缓存 · 价格待刷新' if stale else '', 'refresh': True,
+                               'revision':self._revisions[category], 'loading':self._section_loading(category)})
         if not result:
             result.append({'id': 'store:status', 'kind': 'store', 'title': '游戏推荐', 'items': [],
-                           'message': self.status or '刷新以查看商店游戏', 'refresh': True})
+                           'message': self.status or '刷新以查看商店游戏', 'refresh': True, 'loading':self.loading})
         return result
+
+    def _section_loading(self,category):
+        provider='xbox' if category=='xbox' else 'steam'
+        return provider in self._pending or category in self._section_pending
+
+    @Slot(str)
+    def refreshSection(self,ident):
+        if ident=='store:status':
+            self.refresh();return
+        category=ident.removeprefix('store:')
+        provider='xbox' if category=='xbox' else 'steam'
+        if (self._closed or category not in sources.SECTIONS or provider not in self.enabled_providers()
+                or self._section_loading(category)):
+            return
+        previous=self._requests.get(category)
+        if previous:previous[1].set()
+        self._request_serial+=1
+        cancel=threading.Event();request=self._request_serial
+        self._requests[category]=(request,cancel)
+        self._section_pending.add(category)
+        self.changed.emit()
+        self._pool.submit(self._load,provider,True,self._token,cancel,category,request)
 
     @Slot()
     def start(self):
@@ -92,6 +119,8 @@ class Recommendations(QObject):
 
     def _begin(self, providers, force):
         self._cancel.set()
+        for request,cancel in self._requests.values():cancel.set()
+        self._requests.clear();self._section_pending.clear()
         self._cancel = threading.Event()
         self._token += 1
         token = self._token
@@ -106,7 +135,7 @@ class Recommendations(QObject):
         for provider in providers:
             self._pool.submit(self._load, provider, force, token, self._cancel)
 
-    def _load(self, provider, force, token, cancel):
+    def _load(self, provider, force, token, cancel, scope='', request=0):
         folder = self.store.profile / 'recommendations'
         file = folder / (provider + '.json')
         cached = []
@@ -115,7 +144,7 @@ class Recommendations(QObject):
             age = time.time() - data['time']
             if data.get('version') == 1 and 0 <= age < MAX_AGE and isinstance(data.get('rows'), list):
                 cached = self._cached_rows(data['rows'], age)
-                if not cancel.is_set():
+                if not cancel.is_set() and not force:
                     self.received.emit(provider, {'rows': cached, 'done': not force and age < TTL}, token)
                 if not force and age < TTL:
                     self._artwork(provider, cached, token, cancel)
@@ -129,16 +158,16 @@ class Recommendations(QObject):
             if cancel.is_set():
                 return
             folder.mkdir(parents=True, exist_ok=True)
-            temporary = file.with_suffix('.tmp')
+            temporary = file.with_suffix('.'+str(token)+'.'+str(request)+'.tmp')
             temporary.write_text(json.dumps({'version': 1, 'time': time.time(), 'rows': rows}, ensure_ascii=False), encoding='utf-8')
             temporary.replace(file)
             self._prune_images(folder/'images')
-            self.received.emit(provider, {'rows': rows, 'done': True}, token)
-            self._artwork(provider, rows, token, cancel)
+            self.received.emit(provider, {'rows': rows, 'done': True,'scope':scope,'request':request}, token)
+            self._artwork(provider, [row for row in rows if not scope or row['category']==scope], token, cancel, scope, request)
         except Exception:
             if not cancel.is_set():
-                self.received.emit(provider, {'rows': cached, 'done': True, 'error': ('Steam' if provider == 'steam' else 'Xbox') + ' 暂不可用，稍后刷新'}, token)
-                self._artwork(provider, cached, token, cancel)
+                self.received.emit(provider, {'rows': cached, 'done': True,'scope':scope,'request':request, 'error': ('Steam' if provider == 'steam' else 'Xbox') + ' 暂不可用，稍后刷新'}, token)
+                self._artwork(provider, [row for row in cached if not scope or row['category']==scope], token, cancel, scope, request)
 
     def _cached_rows(self, rows, age):
         result = []
@@ -159,14 +188,33 @@ class Recommendations(QObject):
     def receive(self, provider, result, token):
         if self._closed or token != self._token or provider not in self.enabled_providers():
             return
-        self._rows[provider] = result['rows']
+        scope=result.get('scope','')
+        if scope and (scope not in self._requests or self._requests[scope][0]!=result.get('request')):return
+        old=self._rows.get(provider,[])
+        artwork={(row['id'],row['category']):row['coverUrl'] for row in old if row.get('coverUrl')}
+        incoming=[]
+        for row in result['rows']:
+            if scope and row['category']!=scope:continue
+            cover=artwork.get((row['id'],row['category']))
+            incoming.append({**row,**({'coverUrl':cover} if cover else {})})
+        if result.get('error') and old and not incoming:
+            # A failed refresh keeps the currently displayed cards, including artwork.
+            incoming=[row for row in old if not scope or row['category']==scope]
+        updated=[row for row in old if row['category']!=scope]+incoming if scope else incoming
+        if updated!=old:
+            categories={row['category'] for row in old+updated}
+            for category in categories:
+                if [r for r in old if r['category']==category]!=[r for r in updated if r['category']==category]:self._revisions[category]+=1
+            self._rows[provider]=updated
         if result.get('done'):
-            self._pending.discard(provider)
+            if scope:self._section_pending.discard(scope)
+            else:self._pending.discard(provider)
         if result.get('error'):
             self._errors[provider] = result['error']
+        elif result.get('done'):self._errors.pop(provider,None)
         self.changed.emit()
 
-    def _artwork(self, provider, rows, token, cancel):
+    def _artwork(self, provider, rows, token, cancel, scope='', request=0):
         seen = set()
         for row in rows:
             if cancel.is_set():
@@ -174,9 +222,9 @@ class Recommendations(QObject):
             if row['id'] in seen:
                 continue
             seen.add(row['id'])
-            self._images.submit(self._picture, provider, row, token, cancel)
+            self._images.submit(self._picture, provider, row, token, cancel, scope, request)
 
-    def _picture(self, provider, row, token, cancel):
+    def _picture(self, provider, row, token, cancel, scope='', request=0):
         directory = self.store.profile / 'recommendations' / 'images'
         for url in row.get('images', [])[:2]:
             if cancel.is_set() or not sources.image_url(url):
@@ -201,7 +249,7 @@ class Recommendations(QObject):
                         temporary.replace(file)
                     if not cancel.is_set():
                         file.touch()
-                        self.artwork.emit(provider, row['id'], QUrl.fromLocalFile(str(file)).toString(), token)
+                        self.artwork.emit(provider, row['id'], QUrl.fromLocalFile(str(file)).toString(), token,scope,request)
                 return
             except Exception:
                 continue
@@ -214,11 +262,16 @@ class Recommendations(QObject):
                 if time.time()-stamp>86400:file.unlink(missing_ok=True)
         except OSError:pass
 
-    @Slot(str, str, str, int)
-    def receive_art(self, provider, ident, url, token):
+    @Slot(str, str, str, int, str, int)
+    def receive_art(self, provider, ident, url, token, scope='', request=0):
         if self._closed or token != self._token or provider not in self.enabled_providers():
             return
-        self._rows[provider] = [{**row, 'coverUrl': url} if row['id'] == ident else row for row in self._rows.get(provider, [])]
+        if scope and (scope not in self._requests or self._requests[scope][0]!=request):return
+        old=self._rows.get(provider,[])
+        changed={row['category'] for row in old if row['id']==ident and (row['category']==scope if scope else row['category'] not in self._requests) and row.get('coverUrl')!=url}
+        if not changed:return
+        self._rows[provider] = [{**row, 'coverUrl': url} if row['id']==ident and row['category'] in changed else row for row in old]
+        for category in changed:self._revisions[category]+=1
         self.changed.emit()
 
     @Slot(str, result=bool)
@@ -231,6 +284,7 @@ class Recommendations(QObject):
     def shutdown(self):
         self._closed = True
         self._cancel.set()
+        for request,cancel in self._requests.values():cancel.set()
         self._timer.stop()
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._images.shutdown(wait=False, cancel_futures=True)
