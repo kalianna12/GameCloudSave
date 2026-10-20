@@ -76,6 +76,11 @@ ApplicationWindow {
     }
     property int filterFocusIndex: 0
     property int headerFocusIndex: 0
+    property var toolbarFocusItem: null
+    property bool toolbarFocusMove: false
+    property real toolbarColumnX: 0
+    property real toolbarViewportWidth: 0
+    onActiveFocusItemChanged: if(!toolbarFocusMove) toolbarFocusItem=null
     readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,mappingProfileControl,recommendationsControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
@@ -105,6 +110,37 @@ ApplicationWindow {
         var available=items.filter(function(item) { return item.visible && item.enabled })
         if(available.length) { available[Math.max(0,Math.min(available.length-1,index))].forceActiveFocus();backend.navigationMoved() }
     }
+    function toolbarRows(controls) {
+        var positions=controls.filter(function(item) { return item.visible && item.enabled && item.width>0 && item.height>0 }).map(function(item) {
+            var p=item.mapToItem(win.contentItem,item.width/2,item.height/2)
+            return {item:item,x:p.x,y:p.y,height:item.height}
+        }).sort(function(a,b) { return a.y-b.y || a.x-b.x }),rows=[]
+        positions.forEach(function(position) {
+            var row=rows.length ? rows[rows.length-1] : null
+            if(!row || Math.abs(position.y-row.y)>=Math.min(position.height,row.height)/2) { row={y:position.y,height:position.height,items:[]};rows.push(row) }
+            row.items.push(position)
+        })
+        rows.forEach(function(row) { row.items.sort(function(a,b) { return a.x-b.x }) })
+        return rows
+    }
+    function focusToolbar(control,keepColumn) {
+        if(!keepColumn || toolbarViewportWidth!==win.width) toolbarColumnX=control.mapToItem(win.contentItem,control.width/2,0).x
+        toolbarFocusItem=control;toolbarViewportWidth=win.width
+        var filters=filterControls.filter(function(item) { return item.visible && item.enabled }),headers=headerControls.filter(function(item) { return item.visible && item.enabled })
+        if(filters.indexOf(control)>=0) filterFocusIndex=filters.indexOf(control)
+        if(headers.indexOf(control)>=0) headerFocusIndex=headers.indexOf(control)
+        toolbarFocusMove=true;control.forceActiveFocus();toolbarFocusMove=false;backend.navigationMoved()
+    }
+    function closestToolbarItem(row,x) {
+        return row.items.reduce(function(best,entry) { return !best || Math.abs(entry.x-x)<Math.abs(best.x-x) ? entry : best },null).item
+    }
+    function focusToolbarFromContent() {
+        var filters=filterControls.filter(function(item) { return item.visible && item.enabled }),rows=toolbarRows(filters)
+        if(!rows.length) return
+        var previous=filters[Math.max(0,Math.min(filters.length-1,filterFocusIndex))]
+        toolbarColumnX=previous.mapToItem(win.contentItem,previous.width/2,0).x;toolbarViewportWidth=win.width
+        focusToolbar(closestToolbarItem(rows[rows.length-1],toolbarColumnX),true)
+    }
     function controllerInput(command) {
         if(!win.active || backend.popupActive()) return false
         if(launchTransition.running) return launchTransition.controllerInput(command)
@@ -121,13 +157,21 @@ ApplicationWindow {
             return true
         }
         if(filter>=0 || header>=0) {
-            var available=filter>=0 ? filters : headers,position=filter>=0 ? filter : header
+            var current=filter>=0 ? filters[filter] : headers[header],rows=toolbarRows(headers.concat(filters)),rowIndex=-1,columnIndex=-1
+            rows.forEach(function(row,i) { row.items.forEach(function(entry,j) { if(entry.item===current) { rowIndex=i;columnIndex=j } }) })
+            if(rowIndex<0) return true
+            if(toolbarFocusItem!==current || toolbarViewportWidth!==win.width) { toolbarColumnX=current.mapToItem(win.contentItem,current.width/2,0).x;toolbarFocusItem=current;toolbarViewportWidth=win.width }
             if(filter>=0) filterFocusIndex=filter;else headerFocusIndex=header
-            if(command==="up") { if(filter>=0) focusControls(headers,headerFocusIndex);return true }
-            if(command==="down") { if(header>=0) focusControls(filters,filterFocusIndex);else focusContent();return true }
+            if(command==="up" || command==="down") {
+                var destination=rowIndex+(command==="up" ? -1 : 1)
+                if(destination>=0 && destination<rows.length) focusToolbar(closestToolbarItem(rows[destination],toolbarColumnX),true)
+                else if(command==="down") focusContent()
+                return true
+            }
             if(command==="left" || command==="previous" || command==="right" || command==="next") {
                 var step=(command==="left" || command==="previous") ? -1 : 1
-                if(position===0 && step<0) { focusControls(sidebar,0);previewSidebar(0) } else focusControls(available,position+step)
+                if(columnIndex===0 && step<0) { var sideIndex=Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex) }
+                else focusToolbar(rows[rowIndex].items[Math.max(0,Math.min(rows[rowIndex].items.length-1,columnIndex+step))].item,false)
                 return true
             }
             if(command==="activate") {
@@ -155,7 +199,7 @@ ApplicationWindow {
         }
         if(!homeVisible) grid.adoptFocusedCard()
         if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
-        if(command==="up" && (homeVisible ? home.atTop : grid.currentIndex<grid.effectiveColumns)) { focusControls(filters,filterFocusIndex);return true }
+        if(command==="up" && (homeVisible ? home.atTop : grid.currentIndex<grid.effectiveColumns)) { focusToolbarFromContent();return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
             else if(grid.count) {
@@ -318,7 +362,7 @@ ApplicationWindow {
             Layout.fillWidth: true; columns: win.width<1480 ? 1 : 2
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
-                Layout.fillWidth: true
+                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop
                 CheckBox {
                     id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly
                     onToggled: { installedOnly=checked; saveLayout() }
@@ -329,12 +373,12 @@ ApplicationWindow {
                     }
                 }
                 AppComboBox { id: platformControl; objectName: "platformFilter"; quiet: true; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 130; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
-                AppComboBox { id: sourceControl; quiet: true; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 120; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
-                AppComboBox { id: seriesControl; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
+                AppComboBox { id: sourceControl; objectName: "sourceFilter"; quiet: true; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 120; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
+                AppComboBox { id: seriesControl; objectName: "seriesFilter"; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
             Flow {
-                Layout.fillWidth: true; spacing: 10
+                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;spacing: 10
                 AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; width: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppComboBox {
                     id: mappingProfileControl;objectName: "homeMappingProfile";width: 240;model: backend.mapping.profileOptions;textRole: "label";wrapOptions: true
@@ -353,7 +397,7 @@ ApplicationWindow {
             Layout.fillWidth: true; Layout.fillHeight: true
             sourceComponent: LibraryExperience {
                 objectName: "libraryExperience"; design: win.libraryDesign; games: win.shownGames; coverSize: homeCoverSize; launching: launchTransition.running
-                onBoundaryRequested: function(direction) { if(direction==="up") win.focusControls(win.filterControls,win.filterFocusIndex);else { var index=Math.max(0,["home","all","recent","favorites","series"].indexOf(win.libraryMode));win.focusControls([navHome,navAll,navRecent,navFavorites,navSeries],index) } }
+                onBoundaryRequested: function(direction) { if(direction==="up") win.focusToolbarFromContent();else { var index=Math.max(0,["home","all","recent","favorites","series"].indexOf(win.libraryMode));win.focusControls([navHome,navAll,navRecent,navFavorites,navSeries],index) } }
                 onDetailsRequested: function(game) { win.openGame(game) }
                 onLaunchRequested: function(game) { win.launchGame(game) }
                 onCloudRequested: function(game) { selectGame(game);historyTabs.currentIndex=0;backend.history(activeId);historyDialog.open() }

@@ -71,6 +71,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             if root.activeFocusItem().objectName()=='installedFilter':break
             pad('up')
         assert root.activeFocusItem().objectName()=='installedFilter',(source,root.activeFocusItem().objectName())
+        pad('down')  # Actions occupy the next visual row; right must not wrap into it.
         for _ in range(12):
             if root.activeFocusItem().objectName()=='personalControl':break
             pad('right')
