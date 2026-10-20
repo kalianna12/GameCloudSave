@@ -68,7 +68,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             assert window.isVisible() and not root.property('fullScreenMode')
             assert c.target=='A' and flick.property('contentY')==y
             assert not activations,activations
-        for key,vk in ((Qt.Key_Return,13),(Qt.Key_Enter,13),(Qt.Key_Up,38),(Qt.Key_Down,40),(Qt.Key_Left,37),(Qt.Key_Right,39),(Qt.Key_Tab,9),(Qt.Key_Escape,27),(Qt.Key_Space,32),(Qt.Key_F11,122)):
+        for key,vk in ((Qt.Key_Return,13),(Qt.Key_Enter,13),(Qt.Key_Up,38),(Qt.Key_Down,40),(Qt.Key_Left,37),(Qt.Key_Right,39),(Qt.Key_Tab,9),(Qt.Key_Escape,27),(Qt.Key_Delete,46),(Qt.Key_Space,32),(Qt.Key_F11,122)):
             arm();y=flick.property('contentY');QTest.keyPress(window,key);spin(20)
             for _ in range(3):app.sendEvent(window,QKeyEvent(QEvent.KeyPress,key,Qt.NoModifier,'',True))
             QTest.keyRelease(window,key);spin(160)
@@ -121,8 +121,13 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         # Normal wheel events reach preview again; clicks operate controls again.
         c.setWheelTarget('M:wheeldown','P:RY-');spin(220);wheel(-120);spin(40)
         assert c.live.get('virtualAxes',[0,0,0,0])[3]<0,c.live
-        model=window.findChild(QObject,'mappingModel1');QTest.mouseClick(window,Qt.LeftButton,pos=point(model));spin(100)
-        assert c.padModel=='ps'
+        model=window.findChild(QObject,'mappingModel1')
+        # Reverse input/output chips can make the panel taller. Reveal the model
+        # selector after the wheel scroll instead of clicking a clipped item.
+        flick.setProperty('contentY',max(0,flick.property('contentY')+point(model).y()-300));spin(80)
+        assert 180<=point(model).y()<window.height()-50,(point(model),flick.property('contentY'))
+        QTest.mouseClick(window,Qt.LeftButton,pos=point(model));spin(100)
+        assert c.padModel=='ps',(point(model),c.padModel,messages[-10:])
         errors=[m for m in messages if any(t in m for t in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign','recursive rearrange'))]
         assert not errors,errors[:10]
     finally:

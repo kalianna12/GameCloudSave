@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Shapes
 Item {
     id: pad
     property var selectedTokens: []
@@ -89,19 +90,39 @@ Item {
                     }
                     border.width: button.selected || button.dropHovered ? 3*stage.s : button.openSurface ? 0 : 2*stage.s
                     border.color: button.selected || button.dropHovered ? Theme.accent : button.darkCap ? "#666d76" : "#bec4cd"
+                    Image {
+                        anchors.fill: parent;anchors.margins: 2*stage.s
+                        visible: modelData.kind==="face" && pad.modelType==="xbox" && !cap.lit
+                        source: modelData.kind==="face" && pad.modelType==="xbox" ? "assets/mapping-button-dark.svg" : ""
+                        sourceSize.width: 96;cache: true
+                    }
                     Rectangle {
                         objectName: "mappingStickTop-"+modelData.id
                         visible: button.stick;anchors.centerIn: parent;width: parent.width*.77;height: width;radius: width/2
                         transform: Translate { x: button.capVector.x*button.width*.08;y: -button.capVector.y*button.height*.08 }
-                        gradient: Gradient { GradientStop { position: 0;color: "#484f58" } GradientStop { position: .5;color: "#2d333b" } GradientStop { position: 1;color: "#1b2027" } }
-                        border.width: 3*stage.s;border.color: "#626a75"
-                        Rectangle { anchors.fill: parent;anchors.margins: 5*stage.s;radius: width/2;color: "transparent";border.width: stage.s;border.color: "#343b45" }
+                        color: "transparent"
+                        Image { anchors.fill: parent;source: button.stick ? pad.modelType==="joycon" ? "assets/mapping-stick-joycon.svg" : "assets/mapping-stick-cap.svg" : "";sourceSize.width: 128;cache: true }
                     }
                     Label {
-                        visible: !button.stick && !(modelData.kind==="utility" && pad.modelType==="ps") && !(modelData.id==="Back" && pad.modelType==="xbox")
+                        visible: !button.stick && !(modelData.kind==="face" && pad.modelType==="ps") && !(modelData.kind==="utility" && pad.modelType!=="xbox") && !(modelData.id==="Back" && pad.modelType==="xbox")
                         anchors.centerIn: parent;text: modelData.kind==="direction" ? pad.modelType==="joycon" ? ({DUp:"▲",DDown:"▼",DLeft:"◀",DRight:"▶"})[modelData.id] : "" : button.label
-                        font.pixelSize: (modelData.kind==="face" ? pad.modelType==="joycon" ? 17 : 26 : modelData.kind==="direction" ? 12 : modelData.kind==="utility" ? 20 : 15)*stage.s;font.bold: true
+                        font.pixelSize: (modelData.kind==="face" ? pad.modelType==="joycon" ? 17 : 26 : modelData.kind==="direction" ? 12 : modelData.kind==="utility" ? 20 : 15)*stage.s;font.bold: modelData.kind!=="face" || pad.modelType!=="joycon"
                         color: button.pressedLive ? Theme.onAccent : modelData.kind==="direction" ? "#7f8895" : button.faceInk
+                    }
+                    Shape {
+                        visible: modelData.kind==="face" && pad.modelType==="ps"
+                        preferredRendererType: Shape.CurveRenderer
+                        anchors.centerIn: parent;width: 24;height: 24;scale: stage.s
+                        ShapePath {
+                            strokeColor: button.pressedLive ? Theme.onAccent : "#92999f";strokeWidth: 1.8;fillColor: "transparent"
+                            PathSvg { path: ({A:"M3 3L21 21M21 3L3 21",B:"M12 2A10 10 0 1 0 12 22A10 10 0 1 0 12 2",X:"M3 3H21V21H3Z",Y:"M12 2L23 22H1Z"})[modelData.id] || "" }
+                        }
+                    }
+                    Item {
+                        visible: modelData.kind==="utility" && pad.modelType==="joycon"
+                        anchors.centerIn: parent;width: 18*stage.s;height: 18*stage.s
+                        Rectangle { anchors.centerIn: parent;width: parent.width;height: 4*stage.s;radius: stage.s;color: button.pressedLive ? Theme.onAccent : "#202730" }
+                        Rectangle { visible: modelData.id==="Start";anchors.centerIn: parent;width: 4*stage.s;height: parent.height;radius: stage.s;color: button.pressedLive ? Theme.onAccent : "#202730" }
                     }
                     Item {
                         visible: modelData.id==="Back" && pad.modelType==="xbox"

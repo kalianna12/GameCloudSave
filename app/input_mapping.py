@@ -196,12 +196,36 @@ class MappingController(QObject):
                 owner,key=self.binding();owner[key]=values
             self.edit()
         except ValueError as error:self.receiveMessage(str(error),False)
+    @Slot(bool,result='QVariantList')
+    def chordOptions(self,source=False):
+        if self._draft['mode']=='keys_to_pad' and not source:
+            return [{'token':'P:'+name,'label':self.label('P:'+name)} for name in PAD_OUTPUTS]
+        return self.allKeys+[{'token':'M:'+name,'label':token_name('M:'+name)} for name in ('left','right','middle','x1','x2','wheelup','wheeldown')]
+    @Slot(str,str,bool,result=bool)
+    def editChordToken(self,token,replacement,source=False):
+        """Edit one member in place, preserving order, route identity and siblings."""
+        if self._recording or source and self._draft['mode']!='keys_to_pad':return False
+        values=list(self.sourceChord if source else self.currentChord)
+        if token not in values:return False
+        try:
+            index=values.index(token)
+            if replacement:values[index]=replacement
+            else:values.pop(index)
+            values=chord(values,self._draft['mode']=='keys_to_pad' and not source)
+            if source:
+                route=self.route()
+                if not route:return False
+                route['source']=values;self.edit()
+            else:self.setChord(values)
+            return True
+        except ValueError as error:self.receiveMessage(str(error),False);return False
     @Slot(str)
     def chooseKey(self,token):
         try:
             chord([token])
             if self._draft['mode']=='pad_to_keys':
                 values=list(self.currentChord);values.remove(token) if token in values else values.append(token);self.setChord(values)
+            elif self.route() and not self.sourceChord:self.route()['source']=[token];self.edit()
             else:self.selectSource([token])
         except ValueError:pass
     @Slot(str)

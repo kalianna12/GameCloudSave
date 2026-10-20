@@ -20,7 +20,7 @@ ApplicationWindow {
     property var scrollView: null
     property var activeBindingChoice: null
     readonly property bool editingStickBinding: mapper.target.indexOf(editingStick+".")===0
-    readonly property real mappingPanelHeight: Math.max(500,(window.width-100)*.46)+44
+    readonly property real mappingPanelHeight: Math.max(580,(window.width-100)*.46+44)
     readonly property var captureCancelItem: captureCancel
     property bool prepared: false
     readonly property bool editorReady: editorLoader.status===Loader.Ready
@@ -169,7 +169,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true;spacing: 20
                             Rectangle {
-                                objectName: "mappingControllerPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.57;Layout.preferredHeight: window.mappingPanelHeight
+                                objectName: "mappingControllerPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.57;Layout.preferredHeight: Math.max(window.mappingPanelHeight,bindingPreviewPanel.minimumContentHeight)
                                 radius: 20;color: Theme.dark ? "#24282e" : "#ffffff";border.color: Theme.outline
                                 ColumnLayout {
                                     anchors.fill: parent;anchors.margins: 18;spacing: 8
@@ -195,9 +195,11 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle {
-                                id: bindingPreviewPanel;objectName: "mappingPreviewPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.43;Layout.preferredHeight: window.mappingPanelHeight
+                                id: bindingPreviewPanel;objectName: "mappingPreviewPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.43;Layout.preferredHeight: Math.max(window.mappingPanelHeight,minimumContentHeight)
+                                readonly property real minimumContentHeight: bindingPreviewContent.implicitHeight+40
                                 radius: 20;color: Theme.surface;border.color: Theme.outline
                                 ColumnLayout {
+                                    id: bindingPreviewContent
                                     anchors.fill: parent;anchors.margins: 20;spacing: 10
                                     RowLayout { Layout.fillWidth: true;Label { text: "实时预览";color: Theme.text;font.pixelSize: 18;font.bold: true } Item { Layout.fillWidth: true } Label { text: window.mapper.state.enabled ? "已启用" : "仅预览";color: Theme.accent;font.pixelSize: 12 } }
                                     RowLayout {
@@ -212,13 +214,15 @@ ApplicationWindow {
                                         AppComboBox { objectName: "reverseRouteChoice";Layout.fillWidth: true;model: window.mapper.reverseRoutes;textRole: "label";wrapOptions: true;currentIndex: window.mapper.reverseRoutes.findIndex(function(row) { return row.id===window.mapper.target });onActivated: window.mapper.selectRoute(window.mapper.reverseRoutes[currentIndex].id) }
                                         Action { text: "删除绑定";onClicked: window.mapper.deleteRoute() }
                                     }
-                                    RowLayout { Layout.fillWidth: true;Label { text: (window.reverse ? "输入：" : "编辑：")+window.mapper.bindingLabel;color: Theme.text;font.pixelSize: 15;font.bold: true;Layout.fillWidth: true;elide: Text.ElideRight } CheckBox { text: "追加组合";checked: window.appendCombo;onToggled: window.appendCombo=checked } }
-                                    Label { objectName: "mappingChord";Layout.fillWidth: true;text: window.mapper.currentChord.map(function(t) { return window.mapper.label(t) }).join(" + ") || "未绑定";color: Theme.accent;wrapMode: Text.Wrap;font.pixelSize: 16 }
+                                    RowLayout { Layout.fillWidth: true;Label { text: window.reverse ? "输入组合" : "编辑："+window.mapper.bindingLabel;color: Theme.text;font.pixelSize: 15;font.bold: true;Layout.fillWidth: true;elide: Text.ElideRight } CheckBox { text: "追加组合";checked: window.appendCombo;onToggled: window.appendCombo=checked } }
+                                    MappingChordEditor { objectName: "mappingSourceChord";visible: window.reverse;source: true;Layout.fillWidth: true }
+                                    Label { visible: window.reverse;text: "输出组合";color: Theme.secondary;font.pixelSize: 13 }
+                                    MappingChordEditor { objectName: "mappingChord";Layout.fillWidth: true }
                                     RowLayout {
                                         Layout.fillWidth: true;spacing: 6
                                         Action { objectName: "mappingRecord";text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } }
                                         MappingKeyChoice { objectName: "mappingExtraKey";navigationHost: window;Layout.fillWidth: true;Layout.minimumWidth: 110 }
-                                        Action { text: "清空";onClicked: window.mapper.setChord([]) }
+                                        Action { objectName: "mappingChordClear";text: "清空";onClicked: window.mapper.setChord([]) }
                                     }
                                     Caption { visible: window.mapper.state.recording;text: "按下组合并全部松开："+(window.mapper.state.captured || []).join(" + ") }
                                     RowLayout {
@@ -271,7 +275,7 @@ ApplicationWindow {
                             RowLayout {
                                 visible: window.stick.mode==="keys";Layout.fillWidth: true
                                 Label { text: window.editingStickBinding ? window.mapper.bindingLabel : "选择方向或附加键";color: Theme.text;font.pixelSize: 14 }
-                                Caption { text: window.editingStickBinding ? window.mapper.currentChord.map(function(t) { return window.mapper.label(t) }).join(" + ") || "未绑定" : "";color: Theme.accent }
+                                MappingChordEditor { objectName: "mappingStickChord";visible: window.editingStickBinding;Layout.fillWidth: true }
                                 Action { objectName: "mappingStickRecord";enabled: window.editingStickBinding;text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } }
                                 MappingKeyChoice { objectName: "mappingStickExtraKey";navigationHost: window;enabled: window.editingStickBinding }
                                 Action { objectName: "mappingStickClear";enabled: window.editingStickBinding;text: "清空";onClicked: window.mapper.setChord([]) }

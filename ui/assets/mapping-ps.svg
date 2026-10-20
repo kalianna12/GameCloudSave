@@ -2,6 +2,7 @@
 <defs>
  <linearGradient id="shell" x2=".5" y2="1"><stop stop-color="#fff"/><stop offset=".45" stop-color="#f3f4f7"/><stop offset="1" stop-color="#c8ccd3"/></linearGradient>
  <linearGradient id="chassis" x2="0" y2="1"><stop stop-color="#303a47"/><stop offset=".5" stop-color="#171d25"/><stop offset="1" stop-color="#0d1219"/></linearGradient>
+ <linearGradient id="direction" x2=".6" y2="1"><stop stop-color="#fff"/><stop offset=".38" stop-color="#e7e9ed"/><stop offset=".72" stop-color="#c3c8cf"/><stop offset="1" stop-color="#f5f6f8"/></linearGradient>
  <path id="body" d="M230 150H590C658 155 690 191 714 254C746 335 764 459 752 548C745 601 725 628 696 615C676 607 659 554 638 504L614 453C605 437 597 437 570 439H250C223 437 215 437 206 453L182 504C161 554 144 607 124 615C95 628 75 601 68 548C56 459 74 335 106 254C130 191 162 155 230 150Z"/>
  <clipPath id="bodyClip"><use xlink:href="#body"/></clipPath>
  <path id="wing" d="M230 150C162 155 130 191 106 254C74 335 56 459 68 548C75 601 95 628 124 615C145 580 168 495 205 421C231 369 246 326 269 297C287 272 283 231 275 188L271 150Z"/>
@@ -13,9 +14,9 @@
 <path d="M269 159L283 251Q287 281 315 285H505Q533 281 537 251L551 159" fill="none" stroke="#5269f7" stroke-width="4" opacity=".85"/>
 <path d="M284 151Q410 140 536 151Q552 154 550 174L537 250Q533 279 505 280H315Q287 279 283 250L270 174Q268 154 284 151Z" fill="url(#shell)" stroke="#959eac" stroke-width="1.5"/>
 <g fill="#0c1118" stroke="#46505e" stroke-width="3"><circle cx="293" cy="340" r="54"/><circle cx="527" cy="340" r="54"/></g>
-<g fill="#e2e5eb" stroke="#9fa7b2" stroke-width="2.5" stroke-linejoin="round">
- <path d="M178 199H206V222L192 237L178 222Z"/><path d="M178 303H206V280L192 265L178 280Z"/>
- <path d="M140 237V265H163L178 251L163 237Z"/><path d="M244 237V265H221L206 251L221 237Z"/>
+<g fill="url(#direction)" stroke="#9fa7b2" stroke-width="2" stroke-linejoin="round">
+ <path d="M184 199H200Q206 199 206 205V220Q206 224 202 227L192 237L182 227Q178 224 178 220V205Q178 199 184 199Z"/><path d="M184 303H200Q206 303 206 297V282Q206 278 202 275L192 265L182 275Q178 278 178 282V297Q178 303 184 303Z"/>
+ <path d="M140 243V259Q140 265 146 265H161Q165 265 168 261L178 251L168 241Q165 237 161 237H146Q140 237 140 243Z"/><path d="M244 243V259Q244 265 238 265H223Q219 265 216 261L206 251L216 241Q219 237 223 237H238Q244 237 244 243Z"/>
 </g>
 <g fill="#8f98a5"><path d="M192 207L187 213H197Z"/><path d="M192 295L187 289H197Z"/><path d="M148 251L154 246V256Z"/><path d="M236 251L230 246V256Z"/></g>
 <path d="M242 163L239 158M248 161V155M254 163L257 158M566 157H578M566 162H578M566 167H578" stroke="#8994a3" stroke-width="1.5" stroke-linecap="round"/>
