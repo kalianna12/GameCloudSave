@@ -23,6 +23,7 @@ class Target(QWidget):
     def mouseReleaseEvent(self,event):self.events.append(('mouse-up',event.button().value))
     def wheelEvent(self,event):self.events.append(('wheel',event.angleDelta().y()))
 window=Target();window.show();window.activateWindow();window.raise_();QTest.qWait(200)
+recorder.bindWindow(window)
 transport=WindowsInput();output=KeyOutput(transport);virtual=None;old=QCursor.pos();raw=RawMouse()
 report={}
 try:
@@ -54,6 +55,28 @@ try:
     recorder.record();output.update({'K:161','K:163','K:128'},[0,0],time.perf_counter());QTest.qWait(100);output.release();QTest.qWait(150)
     assert set(recorder.currentChord)=={'K:161','K:163','K:128'},recorder.currentChord
     report['native_right_modifier_recording']=True
+    recorder.bindWindow(window)
+    QCursor.setPos(window.mapToGlobal(window.rect().center()));QTest.qWait(30)
+    for token in ('K:13','K:38','K:40','K:37','K:39','M:left','M:right','M:middle','M:x1','M:x2'):
+        assert transport.foreground()[1]==os.getpid(),'Capture target lost focus; no inputs sent'
+        before=len(window.events);recorder.record()
+        output.update({token},[0,0],time.perf_counter());QTest.qWait(40);output.release();QTest.qWait(50)
+        assert recorder.currentChord==[token] and not recorder.state['recording'],(token,recorder.currentChord)
+        assert len(window.events)==before,window.events[before:]
+    for direction in ('wheelup','wheeldown'):
+        assert transport.foreground()[1]==os.getpid(),'Wheel capture target lost focus; no inputs sent'
+        before=len(window.events);recorder.record()
+        output.update({'K:162'},[0,0],time.perf_counter());QTest.qWait(30)
+        output.update({'K:162'},[0,0],time.perf_counter(),[direction]);QTest.qWait(30)
+        assert recorder.state['recording']
+        output.release();QTest.qWait(60)
+        assert recorder.currentChord==['K:162','M:'+direction] and not recorder.state['recording'],recorder.currentChord
+        assert len(window.events)==before,window.events[before:]
+    report['native_recording_enter_arrows_mouse_wheel_no_ui_leak']=True
+    QTest.qWait(220)  # Let the captured wheel gesture's tail expire.
+    if '--capture-only' in sys.argv:
+        print('PASS: owned-window native keyboard/mouse/wheel capture without UI leakage: '+json.dumps(report),flush=True)
+        raise SystemExit(0)
     assert transport.foreground()[1]==os.getpid(),'Target focus changed; mouse test refused'
     QCursor.setPos(window.mapToGlobal(window.rect().center()));QTest.qWait(30);start=QCursor.pos()
     output.update(set(),[12,6],time.perf_counter());QTest.qWait(60)

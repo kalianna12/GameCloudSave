@@ -29,6 +29,7 @@ class MappingController(QObject):
         self._profiles={};self._selected='default';self._draft=default_profile();self._target='A';self._route='';self._dirty=False
         self._enabled=False;self._editor=False;self._message='映射未启用';self._sample={};self._recording=False;self._capture=[];self._capture_held=set();self._capture_kind='binding'
         self._host=None;self._runtime_host=None;self._raw=None;self._thread=None;self._closed=False;self._stop=threading.Event();self._wake=threading.Event();self._lock=threading.Lock();self._revision=0
+        self._capture_draining=set();self._capture_cancel_mouse=False;self._wheel_guard_until=0
         self._transport_factory=transport_factory;self._virtual_factory=virtual_factory
         self._virtual_index=-1
         self._virtual_ready=None
@@ -224,6 +225,7 @@ class MappingController(QObject):
     @Slot(str)
     def setMode(self,mode):
         if mode in ('pad_to_keys','keys_to_pad') and mode!=self._draft['mode']:
+            self.cancelCapture()
             self.setEnabled(False);self._draft['mode']=mode;self.edit()
     @Slot(str)
     def setModel(self,model):
@@ -384,8 +386,57 @@ class MappingController(QObject):
     def record(self,kind='binding'):
         self._recording=True;self._capture=[];self._capture_held=set();self._capture_kind=kind;self.stateChanged.emit()
     @Slot()
-    def cancelCapture(self):self._recording=False;self._capture_held.clear();self.stateChanged.emit()
+    def cancelCapture(self):
+        self._capture_draining.update(self._capture_held)
+        self._recording=False;self._capture_held.clear();self.stateChanged.emit()
+    def finishCapture(self):
+        if not self._capture or self._capture_held:return
+        self._recording=False
+        if self._capture_kind=='lightModifier':self.setOption('reverse','lightModifier',self._capture)
+        elif self._draft['mode']=='pad_to_keys':self.setChord(self._capture)
+        else:
+            route=self.route()
+            if route:route['source']=list(self._capture);self.edit()
+            else:self.selectSource(self._capture)
+        self.stateChanged.emit()
+    def captureInput(self,token,pressed):
+        if pressed:
+            self._capture_held.add(token)
+            if token not in self._capture and len(self._capture)<12:self._capture.append(token)
+            self.stateChanged.emit()
+        else:
+            self._capture_held.discard(token);self.finishCapture()
     def eventFilter(self,watched,event):
+        kind=event.type()
+        # Filter at the owned window before Quick delivers input to controls. Do not
+        # call window() on arbitrary QML objects (PySide ownership is significant).
+        if self._host is not None and watched is not self._host:return False
+        if kind==QEvent.WindowDeactivate:
+            if self._recording:self.cancelCapture()
+            self._capture_draining.clear();self._capture_cancel_mouse=False;self._wheel_guard_until=0
+            return False
+        if kind==QEvent.Wheel and (self._recording or time.perf_counter()<self._wheel_guard_until):
+            self._wheel_guard_until=time.perf_counter()+.18
+            delta=event.angleDelta().y() or event.pixelDelta().y()
+            if self._recording and delta:
+                token='M:wheelup' if delta>0 else 'M:wheeldown'
+                if token not in self._capture and len(self._capture)<12:self._capture.append(token)
+                self.finishCapture();self.stateChanged.emit()
+            event.accept();return True
+        if kind in (QEvent.MouseButtonPress,QEvent.MouseButtonDblClick,QEvent.MouseButtonRelease):
+            token={Qt.LeftButton:'M:left',Qt.RightButton:'M:right',Qt.MiddleButton:'M:middle',Qt.BackButton:'M:x1',Qt.ForwardButton:'M:x2'}.get(event.button())
+            released=kind==QEvent.MouseButtonRelease
+            if token in self._capture_draining:
+                if released:self._capture_draining.discard(token)
+                event.accept();return True
+            if self._capture_cancel_mouse and released:
+                self._capture_cancel_mouse=False;return False
+            if self._recording:
+                cancel=self._host.property('captureCancelItem') if self._host is not None else None
+                if not released and event.button()==Qt.LeftButton and cancel is not None and cancel.isVisible() and cancel.contains(cancel.mapFromScene(event.position())):
+                    self._capture_cancel_mouse=True;return False
+                if token:self.captureInput(token,not released)
+                event.accept();return True
         if self._editor and self._draft['mode']=='keys_to_pad' and event.type()==QEvent.Wheel:
             if watched is self._host and event.angleDelta().y():
                 token='M:wheelup' if event.angleDelta().y()>0 else 'M:wheeldown'
@@ -393,10 +444,9 @@ class MappingController(QObject):
                     self._editor_wheel.pop('M:wheeldown' if token=='M:wheelup' else 'M:wheelup',None)
                     self._editor_wheel[token]=time.perf_counter()+self._draft['reverse']['wheelPulse']/1000
             # Preview observes the event; normal scrolling and control editing still work.
-        if not self._recording:return False
-        if event.type() not in (QEvent.KeyPress,QEvent.KeyRelease,QEvent.ShortcutOverride):return False
-        if event.type()==QEvent.ShortcutOverride:event.accept();return True
-        if event.isAutoRepeat():return True
+        if kind==QEvent.InputMethod and self._recording:event.accept();return True
+        if kind not in (QEvent.KeyPress,QEvent.KeyRelease,QEvent.ShortcutOverride):return False
+        if not self._recording and not self._capture_draining:return False
         vk=event.nativeVirtualKey()
         if not vk:
             fallback={Qt.Key_Escape:27,Qt.Key_Tab:9,Qt.Key_Backspace:8,Qt.Key_Return:13,Qt.Key_Enter:13,Qt.Key_Shift:160,Qt.Key_Control:162,Qt.Key_Alt:164,Qt.Key_Meta:91,
@@ -405,23 +455,13 @@ class MappingController(QObject):
         scan=event.nativeScanCode()
         if vk==16:vk=161 if scan&255==0x36 else 160
         elif vk in (17,18):vk=(163 if vk==17 else 165) if scan&0x100 or scan&0xe000 else (162 if vk==17 else 164)
-        if not 1<=vk<=254:return True
+        if not 1<=vk<=254:return self._recording
         token='K:'+str(vk)
-        if event.type()==QEvent.KeyPress:
-            self._capture_held.add(token)
-            if token not in self._capture and len(self._capture)<12:self._capture.append(token)
-            self.stateChanged.emit()
-        else:
-            self._capture_held.discard(token)
-            if not self._capture_held and self._capture:
-                self._recording=False
-                if self._capture_kind=='lightModifier':self.setOption('reverse','lightModifier',self._capture)
-                elif self._draft['mode']=='pad_to_keys':self.setChord(self._capture)
-                else:
-                    route=self.route()
-                    if route:route['source']=list(self._capture);self.edit()
-                    else:self.selectSource(self._capture)
-                self.stateChanged.emit()
+        if token in self._capture_draining:
+            if kind==QEvent.KeyRelease and not event.isAutoRepeat():self._capture_draining.discard(token)
+        elif not self._recording:return False
+        elif kind!=QEvent.ShortcutOverride and not event.isAutoRepeat():self.captureInput(token,kind==QEvent.KeyPress)
+        event.accept()
         return True
 
     @Slot(object)

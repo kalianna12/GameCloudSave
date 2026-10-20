@@ -35,6 +35,17 @@ def drag(window,source,target):
     spin(30)
     assert controller.dropTarget==target.property('token'),(controller.dropHint,target.property('token'),a,b,window.height(),source.property('dragging'),point(target),hits)
     assert source.property('label') in controller.dropHint and controller.dropHint.startswith('松开绑定：'),controller.dropHint
+    # The badge follows the pointer in the overlay, without covering the target;
+    # its hint must escape the clipped scroll area (especially the mouse row).
+    pointer=source.findChild(QObject,'mappingDragPointer');badge=pointer.findChild(QObject,'mappingDragBadge')
+    p=pointer.mapToScene(QPointF());corner=badge.mapToScene(QPointF())
+    assert abs(p.x()-b.x())<2 and abs(p.y()-b.y())<2,(p,b)
+    assert not (corner.x()<=b.x()<=corner.x()+badge.width() and corner.y()<=b.y()<=corner.y()+badge.height()),(corner,b)
+    tip=target.findChild(QObject,'mappingDropHint');assert tip.property('visible')
+    content=tip.property('contentItem');corner=content.mapToScene(QPointF())
+    assert 0<=corner.x() and corner.x()+content.width()<=window.width() and 0<=corner.y() and corner.y()+content.height()<=window.height(),(corner,content.width(),content.height())
+    assert abs(corner.x()+content.width()/2-b.x())<target.width()/2+16,(corner,b,tip.property('x'),tip.property('y'),tip.property('overlayPoint'),target.mapToScene(QPointF()))
+    if target.property('token')=='M:right':window.grabWindow().save(str(ROOT/'test-data/input-mapping/drag-mouse-target.png'))
     QTest.mouseRelease(window,Qt.LeftButton,pos=b);spin(120);assert not controller.dropHint
 class Preview:
     def sample(self,*args):return {'buttons':[],'LS':[0,0],'RS':[0,0]},0
@@ -114,6 +125,8 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         window.grabWindow().save(str(output/'drivers.png'))
         QMetaObject.invokeMethod(window.findChild(QObject,'mappingDriverDialog'),'close');spin(80)
         controller.setMode('keys_to_pad');spin(150)
+        drag(window,key('P:LT'),key('M:right'))
+        assert controller.sourceChord==['M:right'] and controller.currentChord==['P:LT']
         choose_extra('mappingExtraKey','K:135');controller.choosePad('P:A')
         assert controller.sourceChord==['K:135'] and controller.currentChord==['P:A']
         window.setProperty('appendCombo',False);drag(window,key('P:A'),key('K:70'))

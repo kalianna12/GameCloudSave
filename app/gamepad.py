@@ -5,6 +5,10 @@ from PySide6.QtCore import QObject,QTimer,Qt,Signal,QMetaObject,Q_ARG,Q_RETURN_A
 def dispatch(app,root,bridge,command):
     window=app.focusWindow()
     if window is None:return
+    mapping=getattr(bridge,'mapping',None)
+    if mapping is not None and window is mapping._host and mapping._recording:
+        if command=='back':mapping.cancelCapture()
+        return
     bridge.setControllerMode(True)
     popup=bridge.active_popup()
     if popup is not None and popup.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:

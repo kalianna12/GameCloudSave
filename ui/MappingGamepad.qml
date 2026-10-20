@@ -32,7 +32,7 @@ Item {
         return list
     }
     Item {
-        id: stage
+        id: stage;objectName: "mappingPadArtwork"
         width: Math.min(pad.width,pad.height*820/650);height: width*650/820;anchors.centerIn: parent
         readonly property real s: width/820
         Image {

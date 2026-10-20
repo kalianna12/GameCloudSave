@@ -54,12 +54,19 @@ Item {
             if(step) view.contentY=Math.max(0,Math.min(view.contentHeight-view.height,view.contentY+step))
         }
     }
-    Rectangle {
+    Item {
         id: ghost; parent: Overlay.overlay; visible: key.dragging; z: 5000
-        width: Math.max(42,key.width); height: 34; radius: 6; color: Theme.accent; opacity: .92
+        objectName: "mappingDragPointer"
+        width: 1;height: 1
         Drag.active: key.dragging; Drag.source: key; Drag.keys: ["gcs-mapping"]
-        Drag.hotSpot.x: width/2; Drag.hotSpot.y: height/2
-        Label { anchors.centerIn: parent; text: key.label; color: Theme.onAccent }
+        Drag.hotSpot.x: 0;Drag.hotSpot.y: 0
+        Rectangle {
+            objectName: "mappingDragBadge"
+            width: Math.max(42,dragLabel.implicitWidth+24);height: 34;radius: 6;color: Theme.accent;opacity: .95
+            x: ghost.x+14+width<ghost.parent.width-8 ? 14 : -width-14
+            y: ghost.y-14-height>=8 ? -height-14 : 14
+            Label { id: dragLabel;anchors.centerIn: parent;text: key.label;color: Theme.onAccent }
+        }
     }
     MouseArea {
         id: mouse; anchors.fill: parent; hoverEnabled: !backend.controllerMode; preventStealing: true
@@ -67,7 +74,7 @@ Item {
         onPositionChanged: function(event) {
             if(!pressed) return
             if(!key.dragging && Math.abs(event.x-key.origin.x)+Math.abs(event.y-key.origin.y)>8) key.dragging=true
-            if(key.dragging) { var point=key.mapToItem(ghost.parent,event.x,event.y);ghost.x=point.x-ghost.width/2;ghost.y=point.y-ghost.height/2 }
+            if(key.dragging) { var point=key.mapToItem(ghost.parent,event.x,event.y);ghost.x=point.x;ghost.y=point.y }
         }
         onReleased: { if(key.dragging) ghost.Drag.drop();else key.activate();key.dragging=false;backend.mapping.clearDropHint("") }
         onCanceled: { key.dragging=false;backend.mapping.clearDropHint("") }
@@ -81,10 +88,19 @@ Item {
         onExited: backend.mapping.clearDropHint(key.token)
         onDropped: function(event) { if(event.source && event.source.token && event.source!==key && backend.mapping.canDrop(event.source.token,key.token)) { key.assigned(event.source.token,key.token);event.acceptProposedAction() };backend.mapping.clearDropHint(key.token) }
     }
-    Rectangle {
-        visible: drop.containsDrag && backend.mapping.dropTarget===key.token;z: 10000
-        anchors.horizontalCenter: parent.horizontalCenter;y: key.height+5;width: hint.implicitWidth+16;height: 25;radius: 5;color: Theme.accent
-        Label { id: hint;anchors.centerIn: parent;text: "绑定到 "+key.label;color: Theme.onAccent;font.pixelSize: 11 }
+    ToolTip {
+        id: dropTip;objectName: "mappingDropHint"
+        parent: key;visible: drop.containsDrag && backend.mapping.dropTarget===key.token
+        text: "绑定到 "+key.label;delay: 0;timeout: -1;closePolicy: Popup.NoAutoClose
+        enter: Transition {}
+        exit: Transition {}
+        property point overlayPoint: Qt.point(0,0)
+        onAboutToShow: overlayPoint=key.mapToItem(Overlay.overlay,0,0)
+        Timer { interval: 16;repeat: true;running: dropTip.visible;onTriggered: dropTip.overlayPoint=key.mapToItem(Overlay.overlay,0,0) }
+        x: Math.max(8-overlayPoint.x,Math.min((key.width-width)/2,Overlay.overlay.width-width-8-overlayPoint.x))
+        y: overlayPoint.y+key.height+height+8<Overlay.overlay.height ? key.height+8 : -height-8
+        background: Rectangle { radius: 5;color: Theme.accent }
+        contentItem: Label { text: dropTip.text;color: Theme.onAccent;font.pixelSize: 12 }
     }
     ToolTip.visible: mouse.containsMouse && !key.dragging && !backend.controllerMode && !backend.mapping.dropTarget
     ToolTip.text: key.description || (key.token.startsWith("K:") ? backend.mapping.label(key.token) : key.label); ToolTip.delay: 500

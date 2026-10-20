@@ -21,7 +21,8 @@ ApplicationWindow {
     property var scrollView: null
     property var activeBindingChoice: null
     readonly property bool editingStickBinding: mapper.target.indexOf(editingStick+".")===0
-    readonly property real mappingPanelHeight: Math.max(500,(window.width-100)*.46)+(reverse ? 44 : 0)
+    readonly property real mappingPanelHeight: Math.max(500,(window.width-100)*.46)+44
+    readonly property var captureCancelItem: captureCancel
     property bool prepared: false
     readonly property bool editorReady: editorLoader.status===Loader.Ready
     Timer { interval: 600;running: !window.prepared && Qt.application.state===Qt.ApplicationActive && backend.watchInfo.running===0;onTriggered: window.prepared=true }
@@ -45,6 +46,7 @@ ApplicationWindow {
         return list
     }
     function controllerInput(command) {
+        if(mapper.state.recording) { if(command==="back") mapper.cancelCapture();return true }
         if(!navigateWithPad) return true
         if(activeBindingChoice && activeBindingChoice.controllerInput(command)) return true
         if(command==="back") { if(templates.visible) templates.close();else if(mapper.state.recording) mapper.cancelCapture();else close();return true }
@@ -67,6 +69,22 @@ ApplicationWindow {
     }
     component Action: AppButton { property bool controllerSelectable: true }
     component Caption: Label { color: Theme.secondary;Layout.fillWidth: true;wrapMode: Text.Wrap;font.pixelSize: 13 }
+    Popup {
+        id: capturePrompt;objectName: "mappingCapturePrompt"
+        anchors.centerIn: parent;width: Math.min(500,window.width-80)
+        visible: window.visible && window.mapper.state.recording
+        modal: true;focus: true;closePolicy: Popup.NoAutoClose;padding: 24
+        enter: Transition {}
+        exit: Transition {}
+        Overlay.modal: Rectangle { color: "#66000000" }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Label { text: "录入按键";color: Theme.text;font.pixelSize: 22;font.bold: true }
+            Label { Layout.fillWidth: true;text: "按下组合键或滚动鼠标，全部松开后完成。";color: Theme.secondary;wrapMode: Text.Wrap }
+            Label { Layout.fillWidth: true;text: (window.mapper.state.captured || []).join(" + ") || "等待输入";color: Theme.accent;font.pixelSize: 19;wrapMode: Text.Wrap }
+            Action { id: captureCancel;objectName: "mappingCaptureCancel";text: "取消录入";Layout.alignment: Qt.AlignRight;onClicked: window.mapper.cancelCapture() }
+        }
+    }
     MappingTemplatesDialog { id: templates }
     component StickMeter: Item {
         property var values: [0,0]
