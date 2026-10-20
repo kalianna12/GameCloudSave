@@ -17,18 +17,22 @@ Item {
     }
     readonly property var placements: {
         var ps=modelType==="ps",joy=modelType==="joycon"
-        var ls=ps ? [295,380] : joy ? [260,240] : [190,290]
-        var rs=ps ? [525,380] : joy ? [560,420] : [525,430]
-        var d=ps ? [195,275] : joy ? [260,410] : [285,430]
-        var f=ps ? [630,275] : joy ? [560,250] : [640,290]
-        var list=[{id:"LS",x:ls[0],y:ls[1],w:100,h:100,kind:"stick"},{id:"RS",x:rs[0],y:rs[1],w:100,h:100,kind:"stick"}]
-        ;[["Y",0,-40],["X",-40,0],["B",40,0],["A",0,40]].forEach(function(v) { list.push({id:v[0],x:f[0]+v[1],y:f[1]+v[2],w:43,h:43,kind:"face"}) })
-        ;[["DUp",0,-35],["DLeft",-35,0],["DRight",35,0],["DDown",0,35]].forEach(function(v) { list.push({id:v[0],x:d[0]+v[1],y:d[1]+v[2],w:joy ? 27 : 38,h:joy ? 27 : 38,kind:"direction"}) })
-        var lx=joy ? 260 : 220,rx=joy ? 560 : 600
-        list.push({id:"LT",x:lx,y:joy ? 100 : ps ? 75 : 55,w:joy ? 84 : 50,h:joy ? 22 : ps ? 50 : 74,kind:"trigger"},{id:"RT",x:rx,y:joy ? 100 : ps ? 75 : 55,w:joy ? 84 : 50,h:joy ? 22 : ps ? 50 : 74,kind:"trigger"},
-                  {id:"LB",x:lx,y:joy ? 128 : ps ? 130 : 118,w:ps ? 95 : 80,h:joy ? 22 : 29,kind:"shoulder"},{id:"RB",x:rx,y:joy ? 128 : ps ? 130 : 118,w:ps ? 95 : 80,h:joy ? 22 : 29,kind:"shoulder"},
-                  {id:"Back",x:ps ? 245 : joy ? 290 : 348,y:ps ? 208 : joy ? 167 : 295,w:32,h:32,kind:"utility"},
-                  {id:"Start",x:ps ? 575 : joy ? 530 : 470,y:ps ? 208 : joy ? 167 : 295,w:32,h:32,kind:"utility"})
+        // All positions use the same 820 x 650 coordinates as the SVG shells.
+        // Front controls follow the photo proportions; the rear controls are exploded above.
+        var ls=ps ? [293,340] : joy ? [253,267] : [236,263]
+        var rs=ps ? [527,340] : joy ? [568,391] : [500,370]
+        var d=ps ? [192,251] : joy ? [253,389] : [321,375]
+        var f=ps ? [628,251] : joy ? [568,267] : [585,266]
+        var stickSize=joy ? 76 : 92,faceSize=joy ? 30 : ps ? 43 : 44
+        var faceStep=joy ? 32 : ps ? 43 : 44,dirStep=joy ? 32 : 35
+        var list=[{id:"LS",x:ls[0],y:ls[1],w:stickSize,h:stickSize,kind:"stick"},{id:"RS",x:rs[0],y:rs[1],w:stickSize,h:stickSize,kind:"stick"}]
+        ;[["Y",0,-1],["X",-1,0],["B",1,0],["A",0,1]].forEach(function(v) { list.push({id:v[0],x:f[0]+v[1]*faceStep,y:f[1]+v[2]*faceStep,w:faceSize,h:faceSize,kind:"face"}) })
+        ;[["DUp",0,-1],["DLeft",-1,0],["DRight",1,0],["DDown",0,1]].forEach(function(v) { list.push({id:v[0],x:d[0]+v[1]*dirStep,y:d[1]+v[2]*dirStep,w:joy ? 29 : 34,h:joy ? 29 : 34,kind:"direction"}) })
+        var lx=joy ? 253 : 220,rx=joy ? 568 : 600
+        list.push({id:"LT",x:lx,y:60,w:joy ? 90 : ps ? 54 : 50,h:joy ? 28 : ps ? 56 : 74,kind:"trigger"},{id:"RT",x:rx,y:60,w:joy ? 90 : ps ? 54 : 50,h:joy ? 28 : ps ? 56 : 74,kind:"trigger"},
+                  {id:"LB",x:lx,y:joy ? 111 : ps ? 112 : 120,w:ps ? 104 : joy ? 90 : 80,h:ps || joy ? 24 : 29,kind:"shoulder"},{id:"RB",x:rx,y:joy ? 111 : ps ? 112 : 120,w:ps ? 104 : joy ? 90 : 80,h:ps || joy ? 24 : 29,kind:"shoulder"},
+                  {id:"Back",x:ps ? 248 : joy ? 294 : 360,y:ps ? 188 : joy ? 197 : 264,w:ps ? 22 : joy ? 26 : 32,h:joy ? 18 : 32,kind:"utility"},
+                  {id:"Start",x:ps ? 572 : joy ? 524 : 464,y:ps ? 188 : joy ? 197 : 264,w:ps ? 22 : joy ? 26 : 32,h:joy ? 26 : 32,kind:"utility"})
         return list
     }
     Item {
@@ -60,23 +64,50 @@ Item {
                 selected: pad.selectedTokens.some(function(t) { return t===button.token || modelData.kind==="stick" && t.indexOf(button.token+".")===0 })
                 pressedLive: (pad.sample.buttons || []).indexOf(modelData.id)>=0
                 property bool stick: modelData.kind==="stick"
-                property color faceRing: pad.modelType==="xbox" && modelData.kind==="face" ? ({A:"#84c997",B:"#ed9fa1",X:"#9bbcf7",Y:"#ebd27a"})[modelData.id] : "#d5d2cf"
+                readonly property bool rear: modelData.kind==="trigger" || modelData.kind==="shoulder"
+                readonly property bool openSurface: modelData.kind==="direction" && pad.modelType!=="joycon" || modelData.kind==="utility" && pad.modelType==="joycon"
+                readonly property bool darkCap: button.stick || button.rear && pad.modelType!=="xbox" || modelData.kind==="face" && pad.modelType!=="ps" || modelData.kind==="direction" && pad.modelType==="joycon"
+                readonly property point capVector: {
+                    var values=pad.sample[modelData.id] || [0,0],length=Math.max(1,Math.sqrt(values[0]*values[0]+values[1]*values[1]))
+                    return Qt.point(values[0]/length,values[1]/length)
+                }
+                readonly property color faceInk: pad.modelType==="xbox" && modelData.kind==="face" ? ({A:"#8bc34a",B:"#ed747c",X:"#53c2e9",Y:"#e6d96b"})[modelData.id] : modelData.kind==="utility" && pad.modelType==="joycon" ? "#252c35" : button.darkCap ? "#d8dce1" : "#737c88"
                 Rectangle {
-                    anchors.fill: parent;radius: button.stick || ["face","utility"].indexOf(modelData.kind)>=0 || pad.modelType==="joycon" ? width/2 : modelData.kind==="trigger" ? 20*stage.s : 8*stage.s
-                    color: button.pressedLive || button.dropHovered ? Theme.accent : button.stick ? pad.modelType==="joycon" ? "#248896" : "#e7e5e2" : modelData.kind==="direction" && pad.modelType!=="joycon" ? "transparent" : pad.modelType==="joycon" ? "#cfd4d1" : "#f7f6f4"
-                    border.width: button.selected || button.dropHovered ? 4*stage.s : modelData.kind==="direction" ? 0 : modelData.kind==="face" ? 3*stage.s : 2*stage.s
-                    border.color: button.selected || button.dropHovered ? Theme.accent : button.faceRing
+                    visible: button.rear;z: -1;x: stage.s;y: 4*stage.s;width: parent.width;height: parent.height;radius: modelData.kind==="trigger" ? 16*stage.s : 7*stage.s;color: "#48000000"
+                }
+                Rectangle {
+                    id: cap;objectName: "mappingCap-"+modelData.id
+                    anchors.fill: parent;radius: button.stick || modelData.kind==="face" || pad.modelType==="joycon" && modelData.kind==="direction" || pad.modelType==="xbox" && modelData.kind==="utility" ? width/2 : modelData.kind==="trigger" ? 16*stage.s : 7*stage.s
+                    readonly property bool lit: button.pressedLive || button.dropHovered
+                    color: lit ? Theme.accent : button.openSurface ? "transparent" : button.darkCap ? "#23282f" : "#f1f2f4"
+                    gradient: button.openSurface || lit ? null : bevel
+                    Gradient {
+                        id: bevel
+                        GradientStop { position: 0;color: button.darkCap ? "#454c56" : "#ffffff" }
+                        GradientStop { position: .34;color: button.darkCap ? "#282e36" : "#f1f3f6" }
+                        GradientStop { position: 1;color: button.darkCap ? "#14181e" : "#dce0e5" }
+                    }
+                    border.width: button.selected || button.dropHovered ? 3*stage.s : button.openSurface ? 0 : 2*stage.s
+                    border.color: button.selected || button.dropHovered ? Theme.accent : button.darkCap ? "#666d76" : "#bec4cd"
                     Rectangle {
+                        objectName: "mappingStickTop-"+modelData.id
                         visible: button.stick;anchors.centerIn: parent;width: parent.width*.77;height: width;radius: width/2
-                        transform: Translate { x: ((pad.sample[modelData.id] || [0,0])[0])*8*stage.s;y: -((pad.sample[modelData.id] || [0,0])[1])*8*stage.s }
-                        color: pad.modelType==="joycon" ? "#292d30" : pad.modelType==="ps" ? "#fafafa" : "#d2cfcb";border.width: (pad.modelType==="ps" ? 9 : 4)*stage.s;border.color: pad.modelType==="joycon" ? "#1f6b72" : pad.modelType==="ps" ? "#797570" : "#c4c0bb"
-                        Rectangle { visible: pad.modelType==="xbox";anchors.centerIn: parent;width: parent.width*.37;height: width;radius: width/2;color: "#bebbb6" }
+                        transform: Translate { x: button.capVector.x*button.width*.08;y: -button.capVector.y*button.height*.08 }
+                        gradient: Gradient { GradientStop { position: 0;color: "#484f58" } GradientStop { position: .5;color: "#2d333b" } GradientStop { position: 1;color: "#1b2027" } }
+                        border.width: 3*stage.s;border.color: "#626a75"
+                        Rectangle { anchors.fill: parent;anchors.margins: 5*stage.s;radius: width/2;color: "transparent";border.width: stage.s;border.color: "#343b45" }
                     }
                     Label {
-                        visible: !button.stick;anchors.centerIn: parent;text: modelData.kind==="direction" ? "" : modelData.kind==="utility" && pad.modelType==="ps" ? (modelData.id==="Back" ? "•" : "≡") : button.label
-                        font.pixelSize: (modelData.kind==="face" ? 23 : modelData.kind==="utility" ? 18 : 16)*stage.s;font.bold: true
-                        opacity: pad.modelType==="joycon" && modelData.kind==="face" ? 0 : 1
-                        color: button.pressedLive ? Theme.onAccent : "#a6a29d"
+                        visible: !button.stick && !(modelData.kind==="utility" && pad.modelType==="ps") && !(modelData.id==="Back" && pad.modelType==="xbox")
+                        anchors.centerIn: parent;text: modelData.kind==="direction" ? pad.modelType==="joycon" ? ({DUp:"▲",DDown:"▼",DLeft:"◀",DRight:"▶"})[modelData.id] : "" : button.label
+                        font.pixelSize: (modelData.kind==="face" ? pad.modelType==="joycon" ? 17 : 26 : modelData.kind==="direction" ? 12 : modelData.kind==="utility" ? 20 : 15)*stage.s;font.bold: true
+                        color: button.pressedLive ? Theme.onAccent : modelData.kind==="direction" ? "#7f8895" : button.faceInk
+                    }
+                    Item {
+                        visible: modelData.id==="Back" && pad.modelType==="xbox"
+                        anchors.centerIn: parent;width: 16*stage.s;height: 14*stage.s
+                        Rectangle { x: 0;y: 0;width: 11*stage.s;height: 9*stage.s;radius: stage.s;color: "transparent";border.width: 1.5*stage.s;border.color: button.pressedLive ? Theme.onAccent : button.faceInk }
+                        Rectangle { x: 5*stage.s;y: 5*stage.s;width: 11*stage.s;height: 9*stage.s;radius: stage.s;color: button.pressedLive ? Theme.accent : "#f1f3f6";border.width: 1.5*stage.s;border.color: button.pressedLive ? Theme.onAccent : button.faceInk }
                     }
                 }
                 onChosen: function(token) { pad.chosen(token) }
