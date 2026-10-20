@@ -4,7 +4,7 @@ import sys,tempfile,math,copy,time,os
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from PySide6.QtCore import QCoreApplication
-from mapping_model import default_profile,validate,Forward,Reverse,chord,DIRECTIONS
+from mapping_model import default_profile,validate,Forward,Reverse,chord,direction_keys,DIRECTIONS
 from mapping_native import KeyOutput
 from input_mapping import MappingController
 from services import Store,ROOT
@@ -82,6 +82,45 @@ class MappingTests(unittest.TestCase):
         state=neutral();state['RS']=[.5,.5];engine=Forward()
         engine.frame(self.profile,state,.02);self.assertEqual(engine.frame(self.profile,neutral(),.02)[1],[0,0])
         engine.reset();self.assertEqual(engine.residual,[0.,0.])
+    def test_arrow_preset_diagonals_and_old_profile_defaults(self):
+        cfg=self.profile['forward']['sticks']['LS'];cfg['light']=direction_keys('arrows');cfg['hard']=direction_keys('arrows')
+        for direction,vector in zip(DIRECTIONS,((0,.5),(.4,.4),(.5,0),(.4,-.4),(0,-.5),(-.4,-.4),(-.5,0),(-.4,.4))):
+            state=neutral();state['LS']=vector
+            self.assertEqual(Forward().frame(self.profile,state,.016)[0],set(cfg['light'][direction]))
+        self.assertEqual(cfg['light']['NW'],['K:38','K:37'])
+        self.profile['reverse'].update(mouse='disabled',ramp=0)
+        report=Reverse().frame(self.profile,{'K:38','K:39'},[0,0],.01)
+        self.assertAlmostEqual(report['LX']/32767,math.sqrt(.5),delta=.001);self.assertEqual(report['LX'],report['LY'])
+        for stick in self.profile['forward']['sticks'].values():
+            for field in ('wheelLight','wheelHard','wheelInvert'):stick.pop(field)
+        self.profile['reverse'].pop('wheelPulse')
+        old=validate(self.profile);self.assertEqual(old['reverse']['wheelPulse'],100)
+        self.assertEqual(old['forward']['sticks']['LS']['wheelHard'],12)
+    def test_stick_wheel_rates_light_heavy_reverse_neutral_and_ownership(self):
+        cfg=self.profile['forward']['sticks']['LS'];cfg.update(mode='wheel',wheelLight=3,wheelHard=12)
+        totals=[]
+        for rate in (25,125):
+            engine=Forward();state=neutral();state['LS']=[0,.5];events=[]
+            transport=FakeInput();output=KeyOutput(transport)
+            for frame in range(rate):
+                desired,move=engine.frame(self.profile,state,1/rate);output.update(desired,move,frame/rate,engine.wheel_steps);events.extend(engine.wheel_steps)
+            self.assertFalse(transport.injected);self.assertTrue(all(t=='wheelup' for t in events));totals.append(len(events))
+            self.assertEqual(len(transport.events),len(events))
+            engine.frame(self.profile,neutral(),.01);self.assertFalse(engine.wheel_steps)
+            state['LS']=[0,-.9];engine.frame(self.profile,state,.01);self.assertEqual(engine.wheel_steps,['wheeldown'])
+            cfg['wheelInvert']=True;engine.reset();engine.frame(self.profile,state,.01);self.assertEqual(engine.wheel_steps,['wheelup']);cfg['wheelInvert']=False
+        self.assertLessEqual(abs(totals[0]-totals[1]),1)
+        state=neutral();state['LS']=[0,1];engine=Forward();count=0
+        for _ in range(125):engine.frame(self.profile,state,.008);count+=len(engine.wheel_steps)
+        self.assertAlmostEqual(count,13,delta=1)
+    def test_wheel_to_stick_releases_and_rejects_out_of_range_settings(self):
+        cfg=self.profile['reverse'];cfg.update(mouse='disabled',ramp=0)
+        cfg['routes']=[{'id':'wheel-up','source':['M:wheelup'],'targets':['P:RY+']},{'id':'wheel-down','source':['M:wheeldown'],'targets':['P:RY-']}]
+        engine=Reverse();self.assertEqual(engine.frame(self.profile,{'M:wheelup'},[0,0],.01)['RY'],32767)
+        self.assertEqual(engine.frame(self.profile,{'M:wheeldown'},[0,0],.01)['RY'],-32767)
+        self.assertEqual(engine.frame(self.profile,set(),[0,0],.01)['RY'],0)
+        cfg['wheelPulse']=10000
+        with self.assertRaises(ValueError):validate(self.profile)
     def test_shared_modifier_and_owned_key_release_order(self):
         transport=FakeInput();output=KeyOutput(transport)
         output.update({'K:160','K:83','K:65'},[0,0],0)
@@ -179,6 +218,56 @@ class EditorRuntimeTests(unittest.TestCase):
         c=self.controller;c.duplicate();c.rename('Fixture profile');self.assertTrue(c.save())
         self.assertEqual(len(c.profiles),2);original=c.profile['forward']['sticks']['RS']['speed']
         c.setOption('RS','speed',-5);self.assertEqual(c.profile['forward']['sticks']['RS']['speed'],original)
+    def test_presets_keep_extras_and_other_zone_and_persist_wheel_routes(self):
+        c=self.controller;cfg=c.profile['forward']['sticks']['LS'];c.selectTarget('LS.lightExtra');c.setChord(['K:162'])
+        c.applyStickPreset('LS','light','arrows')
+        self.assertEqual(cfg['light']['NE'],['K:38','K:39']);self.assertEqual(cfg['hard']['NE'],['K:87','K:68'])
+        self.assertEqual(cfg['lightExtra'],['K:162']);self.assertEqual(cfg['hardExtra'],['K:160'])
+        c.applyStickPreset('LS','both','arrows');self.assertEqual(cfg['light'],cfg['hard'])
+        c.setMode('keys_to_pad');c.setWheelTarget('M:wheelup','P:RY+');c.setWheelTarget('M:wheeldown','P:RY-')
+        c.selectSource(['K:162','M:wheelup']);c.setChord(['P:A']);c.setWheelTarget('M:wheelup','P:LY+')
+        self.assertEqual(c.wheelTarget('M:wheelup'),'P:LY+')
+        self.assertEqual(len([r for r in c.profile['reverse']['routes'] if 'M:wheelup' in r['source']]),2)
+        c.setWheelTarget('M:wheelup','');self.assertEqual(c.wheelTarget('M:wheelup'),'')
+        c.selectSource(['M:wheeldown']);c.setChord(['P:A','P:RB']);self.assertEqual(c.wheelTarget('M:wheeldown'),'custom')
+        c.setOption('reverse','wheelPulse',180);self.assertTrue(c.save());other=MappingController(self.store)
+        try:self.assertEqual(other.profile,c.profile)
+        finally:other.shutdown()
+    def test_raw_wheel_preview_without_output_preserves_pulse_then_returns_to_neutral(self):
+        class Raw:
+            def __init__(self):self.pulses=set()
+            def take(self):p=self.pulses;self.pulses=set();return [0,0],p
+            def stop(self):pass
+        c=self.controller;raw=Raw();c._raw=raw;c.setMode('keys_to_pad');c.setWheelTarget('M:wheelup','P:LY+');c.setWheelTarget('M:wheeldown','P:LY-')
+        c.setOption('reverse','mouse','disabled');c.setOption('reverse','ramp',0);c.save();c._editor=True;c.ensure_worker()
+        raw.pulses={'M:wheelup'}
+        self.wait(lambda:(c.publishPreview() or c.live.get('virtualAxes',[0,0,0,0])[1]>0))
+        self.assertIn('M:wheelup',c.keyboardPreview)
+        raw.pulses={'M:wheeldown'}
+        self.wait(lambda:(c.publishPreview() or c.live.get('virtualAxes',[0,0,0,0])[1]<0))
+        self.wait(lambda:(c.publishPreview() or c.live.get('virtualAxes',[0,0,0,0])[1]==0))
+        self.assertFalse(self.transport.events);c._raw=None
+    def test_adding_wheel_binding_while_running_registers_mouse_on_save(self):
+        from unittest.mock import patch
+        from PySide6.QtCore import QAbstractNativeEventFilter
+        class Raw(QAbstractNativeEventFilter):
+            def __init__(self):super().__init__();self.started=[];self.enabled=False
+            def start(self,hwnd):self.started.append(hwnd);self.enabled=True
+            def stop(self):self.enabled=False
+            def take(self):return [0,0],set()
+        class Host:
+            def winId(self):return 100
+        class Virtual:
+            index=3
+            def update(self,report):pass
+            def release(self):pass
+            def close(self):pass
+        c=self.controller;c.bindRuntimeWindow(Host());c._virtual_factory=Virtual;c.setMode('keys_to_pad');c.setOption('reverse','mouse','disabled')
+        with patch('mapping_native.virtual_available',return_value=True),patch('mapping_native.RawMouse',Raw):
+            c.setEnabled(True);self.assertTrue(c.state['enabled']);self.assertIsNone(c._raw)
+            c.setWheelTarget('M:wheelup','P:RY+');self.assertTrue(c.save());self.assertEqual(c._raw.started,[100])
+            c.setWheelTarget('M:wheelup','');self.assertTrue(c.save());self.assertFalse(c._raw.enabled)
+        c.setEnabled(False)
 
     def test_model_profiles_create_select_delete_and_old_schema_fallback(self):
         import json

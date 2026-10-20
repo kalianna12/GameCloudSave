@@ -45,17 +45,25 @@ def number(value,low,high,label):
     return value
 
 
+def direction_keys(preset):
+    """Complete eight-way preset; diagonals hold both cardinal keys."""
+    up,right,down,left={'wasd':(87,68,83,65),'arrows':(38,39,40,37)}[preset]
+    return {d:['K:'+str(v) for v in keys] for d,keys in zip(DIRECTIONS,
+            ((up,),(up,right),(right,),(down,right),(down,),(down,left),(left,),(up,left)))}
+
+
 def default_profile(name='默认配置'):
-    directions={'N':[87],'NE':[87,68],'E':[68],'SE':[83,68],'S':[83],'SW':[83,65],'W':[65],'NW':[87,65]}
     stick=lambda mode:{'mode':mode,'deadzone':.18,'threshold':.72,'speed':1400,'curve':1.5,'smoothing':20,
-                       'light':{d:['K:'+str(v) for v in keys] for d,keys in directions.items()},
-                       'hard':{d:['K:'+str(v) for v in keys] for d,keys in directions.items()},'lightExtra':[],'hardExtra':['K:160']}
+                       'light':direction_keys('wasd'),'hard':direction_keys('wasd'),'lightExtra':[],'hardExtra':['K:160'],
+                       'wheelLight':3,'wheelHard':12,'wheelInvert':False}
     return {'name':name,'mode':'pad_to_keys','padModel':'xbox','slot':-1,'forward':{'buttons':{'A':['K:32'],'B':['K:27'],'X':['K:69'],'Y':['K:82'],
             'LT':['M:right'],'RT':['M:left']},'sticks':{'LS':stick('keys'),'RS':stick('mouse')}},
             'reverse':{'routes':[{'id':'default-w','source':['K:87'],'targets':['P:LY+']},{'id':'default-s','source':['K:83'],'targets':['P:LY-']},
                        {'id':'default-a','source':['K:65'],'targets':['P:LX-']},{'id':'default-d','source':['K:68'],'targets':['P:LX+']},
+                       {'id':'default-up','source':['K:38'],'targets':['P:LY+']},{'id':'default-down','source':['K:40'],'targets':['P:LY-']},
+                       {'id':'default-left','source':['K:37'],'targets':['P:LX-']},{'id':'default-right','source':['K:39'],'targets':['P:LX+']},
                        {'id':'default-space','source':['K:32'],'targets':['P:A']}],
-                       'strength':1.,'lightModifier':['K:160'],'lightStrength':.45,'ramp':60,'mouse':'RS','mouseSpeed':1200,'smoothing':25}}
+                       'strength':1.,'lightModifier':['K:160'],'lightStrength':.45,'ramp':60,'mouse':'RS','mouseSpeed':1200,'smoothing':25,'wheelPulse':100}}
 
 
 def validate(profile):
@@ -74,7 +82,10 @@ def validate(profile):
     for key in ('LS','RS'):
         cfg=forward.get('sticks',{}).get(key,{})
         if not isinstance(cfg,dict):raise ValueError('摇杆配置无效')
-        if cfg.get('mode') not in ('keys','mouse','disabled'):raise ValueError('摇杆模式无效')
+        if cfg.get('mode') not in ('keys','mouse','wheel','disabled'):raise ValueError('摇杆模式无效')
+        for field,value in (('wheelLight',3),('wheelHard',12),('wheelInvert',False)):cfg.setdefault(field,value)
+        number(cfg['wheelLight'],1,30,'轻推滚动速度');number(cfg['wheelHard'],1,30,'重推滚动速度')
+        if type(cfg['wheelInvert']) is not bool:raise ValueError('滚轮方向无效')
         number(cfg.get('deadzone'),.05,.6,'死区');number(cfg.get('threshold'),cfg['deadzone']+.08,.99,'重推阈值')
         number(cfg.get('speed'),100,5000,'鼠标速度');number(cfg.get('curve'),.5,3.5,'响应曲线');number(cfg.get('smoothing'),0,150,'平滑时间')
         for zone in ('light','hard'):
@@ -83,6 +94,7 @@ def validate(profile):
             cfg[zone+'Extra']=chord(cfg.get(zone+'Extra',[]))
     reverse=result.get('reverse',{})
     if not isinstance(reverse,dict):raise ValueError('反向映射配置无效')
+    reverse.setdefault('wheelPulse',100);number(reverse['wheelPulse'],20,500,'滚轮保持时间')
     if not isinstance(reverse.get('routes'),list) or len(reverse['routes'])>160:raise ValueError('反向映射最多 160 条')
     ids=set()
     for route in reverse['routes']:
@@ -101,19 +113,27 @@ def pad_state(pad):
 
 class Forward:
     def __init__(self):self.reset()
-    def reset(self):self.active={};self.heavy={};self.sectors={};self.velocity={};self.residual=[0.,0.]
+    def reset(self):self.active={};self.heavy={};self.sectors={};self.velocity={};self.residual=[0.,0.];self.wheel_phase={};self.wheel_steps=[]
     def frame(self,profile,state,dt):
-        dt=max(0,min(.05,dt));desired=set();dx=dy=0.
+        dt=max(0,min(.05,dt));desired=set();dx=dy=0.;self.wheel_steps=[]
         for button in state.get('buttons',[]):desired.update(profile['forward']['buttons'].get(button,[]))
         for key,cfg in profile['forward']['sticks'].items():
             x,y=state.get(key,[0.,0.]);magnitude=min(1.,math.hypot(x,y));was=self.active.get(key,False)
             active=magnitude>(cfg['deadzone']-.03 if was else cfg['deadzone']) and cfg['mode']!='disabled'
             self.active[key]=active
             if not active:
-                self.heavy[key]=False;self.velocity[key]=[0.,0.];self.sectors.pop(key,None);continue
+                self.heavy[key]=False;self.velocity[key]=[0.,0.];self.sectors.pop(key,None);self.wheel_phase.pop(key,None);continue
             heavy=magnitude>(cfg['threshold']-.025 if self.heavy.get(key) else cfg['threshold']+.025)
             self.heavy[key]=heavy
-            if cfg['mode']=='keys':
+            if cfg['mode']=='wheel':
+                sign=(1 if y>cfg['deadzone'] else -1 if y<-cfg['deadzone'] else 0)*(-1 if cfg.get('wheelInvert',False) else 1)
+                previous,phase=self.wheel_phase.get(key,(0,0.))
+                if not sign:self.wheel_phase.pop(key,None);continue
+                # One immediate notch, then time-based repeats; switching direction clears the previous remainder.
+                phase=(1. if sign!=previous else phase)+dt*cfg.get('wheelHard' if heavy else 'wheelLight',12 if heavy else 3)
+                steps=min(3,int(phase));self.wheel_phase[key]=(sign,phase-steps)
+                self.wheel_steps.extend(['wheelup' if sign>0 else 'wheeldown']*steps)
+            elif cfg['mode']=='keys':
                 angle=math.atan2(x,y)%(2*math.pi);previous=self.sectors.get(key)
                 sector=int((angle+math.pi/8)/(math.pi/4))%8
                 if previous is not None:

@@ -16,7 +16,6 @@ ApplicationWindow {
     readonly property bool reverse: profile.mode==="keys_to_pad"
     readonly property var stick: profile.forward.sticks[editingStick]
     property string editingStick: "LS"
-    property string zone: "light"
     property bool appendCombo: false
     property bool navigateWithPad: false
     property var scrollView: null
@@ -31,6 +30,10 @@ ApplicationWindow {
     onActiveChanged: mapper.setPreviewActive(window.active)
     function openMapping() { mapper.bindWindow(window);show();raise();requestActivate() }
     function assign(source,target) { mapper.dropBinding(source,target,appendCombo) }
+    function revealBindingEditor(item) {
+        var view=window.scrollView
+        if(view) { var items=view.contentItem,p=item.mapToItem(items,0,0);items.contentY=Math.max(0,Math.min(items.contentHeight-items.height,items.contentY+p.y-12)) }
+    }
     function choices() {
         var list=[]
         function visit(item) { if(!item.visible || !item.enabled) return;if(item.controllerSelectable) list.push(item);for(var i=0;i<item.children.length;i++) visit(item.children[i]) }
@@ -123,7 +126,11 @@ ApplicationWindow {
                 }
                 RowLayout {
                     Layout.fillWidth: true;spacing: 14
-                    TabBar { objectName: "mappingModes";Layout.preferredWidth: 320;currentIndex: window.reverse ? 1 : 0;TabButton { text: "🎮 → ⌨  手柄到键鼠";onClicked: window.mapper.setMode("pad_to_keys") } TabButton { text: "⌨ → 🎮  键鼠到手柄";onClicked: window.mapper.setMode("keys_to_pad") } }
+                    TabBar {
+                        objectName: "mappingModes";Layout.preferredWidth: 340;Layout.minimumWidth: 300;currentIndex: window.reverse ? 1 : 0
+                        TabButton { objectName: "mappingModeForward";text: "手柄到键鼠";font.pixelSize: 14;onClicked: window.mapper.setMode("pad_to_keys") }
+                        TabButton { objectName: "mappingModeReverse";text: "键鼠到手柄";font.pixelSize: 14;onClicked: window.mapper.setMode("keys_to_pad") }
+                    }
                     Switch { objectName: "mappingEnabled";text: "启用映射";checked: window.mapper.state.enabled;onToggled: window.mapper.setEnabled(checked) }
                     Item { Layout.fillWidth: true }
                     Action { objectName: "mappingDrivers";text: "驱动与组件";onClicked: { window.mapper.setup.detect();drivers.open() } }
@@ -180,7 +187,7 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle {
-                                objectName: "mappingPreviewPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.43;Layout.preferredHeight: Math.max(500,(window.width-100)*.46)
+                                id: bindingPreviewPanel;objectName: "mappingPreviewPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.43;Layout.preferredHeight: Math.max(500,(window.width-100)*.46)
                                 radius: 20;color: Theme.surface;border.color: Theme.outline
                                 ColumnLayout {
                                     anchors.fill: parent;anchors.margins: 20;spacing: 10
@@ -218,40 +225,72 @@ ApplicationWindow {
                             Action { text: "恢复默认配置";onClicked: window.mapper.reset() }
                         }
                         RowLayout {
-                            Layout.fillWidth: true;spacing: 28
-                            ColumnLayout {
-                                Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.4;Layout.alignment: Qt.AlignTop;spacing: 12
-                                Label { text: "按键与组合";color: Theme.text;font.pixelSize: 17;font.bold: true }
-                                Caption { text: window.reverse ? "选择键鼠输入，再设置手柄输出。" : "选择手柄按键，再设置键鼠输出。" }
-                                RowLayout { Layout.fillWidth: true;AppComboBox { id: extraKey;objectName: "mappingExtraKey";Layout.fillWidth: true;model: window.mapper.allKeys;textRole: "label" } Action { text: "添加按键";onClicked: window.mapper.chooseKey(window.mapper.allKeys[extraKey.currentIndex].token) } }
-                                AppComboBox { objectName: "reverseRouteChoice";Layout.fillWidth: true;visible: window.reverse;model: window.mapper.reverseRoutes;textRole: "label";currentIndex: window.mapper.reverseRoutes.findIndex(function(row) { return row.id===window.mapper.target });onActivated: window.mapper.selectRoute(window.mapper.reverseRoutes[currentIndex].id) }
-                                Action { visible: window.reverse;text: "删除这条绑定";onClicked: window.mapper.deleteRoute() }
+                            Layout.fillWidth: true;spacing: 12
+                            Label { text: "按键与组合";color: Theme.text;font.pixelSize: 17;font.bold: true }
+                            AppComboBox { id: extraKey;objectName: "mappingExtraKey";Layout.preferredWidth: 200;model: window.mapper.allKeys;textRole: "label" }
+                            Action { text: "添加按键";onClicked: window.mapper.chooseKey(window.mapper.allKeys[extraKey.currentIndex].token) }
+                            AppComboBox { objectName: "reverseRouteChoice";Layout.fillWidth: true;visible: window.reverse;model: window.mapper.reverseRoutes;textRole: "label";currentIndex: window.mapper.reverseRoutes.findIndex(function(row) { return row.id===window.mapper.target });onActivated: window.mapper.selectRoute(window.mapper.reverseRoutes[currentIndex].id) }
+                            Action { visible: window.reverse;text: "删除绑定";onClicked: window.mapper.deleteRoute() }
+                            Item { Layout.fillWidth: true;visible: !window.reverse }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true;visible: !window.reverse;spacing: 16
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label { text: "摇杆";color: Theme.text;font.pixelSize: 17;font.weight: Font.DemiBold }
+                                AppComboBox { objectName: "mappingStickChoice";Layout.preferredWidth: 145;model: ["左摇杆","右摇杆"];currentIndex: window.editingStick==="LS" ? 0 : 1;onActivated: { window.editingStick=currentIndex===0 ? "LS" : "RS";window.mapper.selectTarget(window.editingStick+".light.N") } }
+                                AppComboBox { objectName: "mappingStickMode";Layout.preferredWidth: 160;model: ["八向按键","鼠标移动","鼠标滚轮","停用"];currentIndex: ["keys","mouse","wheel","disabled"].indexOf(window.stick.mode);onActivated: window.mapper.setOption(window.editingStick,"mode",["keys","mouse","wheel","disabled"][currentIndex]) }
+                                Item { Layout.fillWidth: true }
+                                Action { objectName: "mappingBothWasd";visible: window.stick.mode==="keys";text: "两组用 WASD";onClicked: window.mapper.applyStickPreset(window.editingStick,"both","wasd") }
+                                Action { objectName: "mappingBothArrows";visible: window.stick.mode==="keys";text: "两组用方向键";onClicked: window.mapper.applyStickPreset(window.editingStick,"both","arrows") }
                             }
-                            ColumnLayout {
-                                Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.6;Layout.alignment: Qt.AlignTop;spacing: 10;visible: !window.reverse
-                                RowLayout { Layout.fillWidth: true;Label { text: "摇杆设置";color: Theme.text;font.pixelSize: 17;font.bold: true } Item { Layout.fillWidth: true } AppComboBox { objectName: "mappingStickChoice";Layout.preferredWidth: 125;model: ["左摇杆","右摇杆"];onActivated: { window.editingStick=currentIndex===0 ? "LS" : "RS";window.mapper.selectTarget(window.editingStick+"."+window.zone+".N") } } AppComboBox { objectName: "mappingStickMode";Layout.preferredWidth: 125;model: ["八向按键","鼠标移动","停用"];currentIndex: ["keys","mouse","disabled"].indexOf(window.stick.mode);onActivated: window.mapper.setOption(window.editingStick,"mode",["keys","mouse","disabled"][currentIndex]) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "死区 "+Math.round(window.stick.deadzone*100)+"%" } Slider { objectName: "mappingDeadzone";Layout.preferredWidth: 230;from: .05;to: Math.min(.6,window.stick.threshold-.08);value: window.stick.deadzone;onMoved: window.mapper.setOption(window.editingStick,"deadzone",Math.round(value*100)/100) } }
-                                RowLayout { visible: window.stick.mode==="keys";Layout.fillWidth: true;Caption { text: "重推阈值 "+Math.round(window.stick.threshold*100)+"%" } Slider { objectName: "mappingThreshold";Layout.preferredWidth: 230;from: window.stick.deadzone+.08;to: .99;value: window.stick.threshold;onMoved: window.mapper.setOption(window.editingStick,"threshold",Math.round(value*100)/100) } }
-                                RowLayout { visible: window.stick.mode==="keys";Layout.fillWidth: true;AppComboBox { Layout.preferredWidth: 120;model: ["轻推","重推"];onActivated: { window.zone=currentIndex===0 ? "light" : "hard";window.mapper.selectTarget(window.editingStick+"."+window.zone+".N") } } Action { text: "轻推附加键";onClicked: window.mapper.selectTarget(window.editingStick+".lightExtra") } Action { text: "重推附加键";onClicked: window.mapper.selectTarget(window.editingStick+".hardExtra") } }
-                                Row {
-                                    visible: window.stick.mode==="keys";spacing: 6
-                                    Repeater { model: ["N","NE","E","SE","S","SW","W","NW"];MappingKey { required property string modelData;required property int index;width: 42;height: 36;token: "P:"+window.editingStick+"."+window.zone+"."+modelData;label: ["↑","↗","→","↘","↓","↙","←","↖"][index];selected: window.mapper.target===token.slice(2);onChosen: function(token) { window.mapper.selectTarget(token.slice(2)) } onAssigned: function(source,target) { window.assign(source,target) } } }
-                                }
-                                RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "鼠标速度（像素 / 秒）" } CompactSpinBox { objectName: "mappingMouseSpeed";from: 100;to: 5000;stepSize: 50;value: window.stick.speed;onValueModified: window.mapper.setOption(window.editingStick,"speed",value) } }
-                                RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "响应曲线 "+window.stick.curve.toFixed(1) } Slider { Layout.preferredWidth: 230;from: .5;to: 3.5;value: window.stick.curve;onMoved: window.mapper.setOption(window.editingStick,"curve",Math.round(value*10)/10) } }
-                                RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "平滑（毫秒）" } CompactSpinBox { from: 0;to: 150;stepSize: 5;value: window.stick.smoothing;onValueModified: window.mapper.setOption(window.editingStick,"smoothing",value) } }
+                            RowLayout {
+                                Layout.fillWidth: true;spacing: 28;visible: window.stick.mode!=="disabled"
+                                Caption { text: "死区 "+Math.round(window.stick.deadzone*100)+"%";Layout.fillWidth: false;Layout.preferredWidth: 90 }
+                                Slider { objectName: "mappingDeadzone";Layout.fillWidth: true;from: .05;to: Math.min(.6,window.stick.threshold-.08);value: window.stick.deadzone;onMoved: window.mapper.setOption(window.editingStick,"deadzone",Math.round(value*100)/100) }
+                                Caption { visible: window.stick.mode!=="mouse";text: "重推阈值 "+Math.round(window.stick.threshold*100)+"%";Layout.fillWidth: false;Layout.preferredWidth: 120 }
+                                Slider { objectName: "mappingThreshold";visible: window.stick.mode!=="mouse";Layout.fillWidth: true;from: window.stick.deadzone+.08;to: .99;value: window.stick.threshold;onMoved: window.mapper.setOption(window.editingStick,"threshold",Math.round(value*100)/100) }
                             }
-                            ColumnLayout {
-                                Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.6;Layout.alignment: Qt.AlignTop;visible: window.reverse;spacing: 10
-                                Label { text: "键鼠 → 虚拟手柄";color: Theme.text;font.pixelSize: 17;font.bold: true }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "按键摇杆力度 "+Math.round(window.profile.reverse.strength*100)+"%" } Slider { from: .1;to: 1;value: window.profile.reverse.strength;onMoved: window.mapper.setOption("reverse","strength",Math.round(value*100)/100) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "轻推力度 "+Math.round(window.profile.reverse.lightStrength*100)+"%" } Slider { from: .1;to: 1;value: window.profile.reverse.lightStrength;onMoved: window.mapper.setOption("reverse","lightStrength",Math.round(value*100)/100) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "轻推修饰键："+window.profile.reverse.lightModifier.map(function(t) { return window.mapper.label(t) }).join(" + ") } Action { text: "录入";onClicked: window.mapper.record("lightModifier") } Action { text: "清除";onClicked: window.mapper.setOption("reverse","lightModifier",[]) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "摇杆过渡（毫秒）" } CompactSpinBox { from: 0;to: 500;stepSize: 10;value: window.profile.reverse.ramp;onValueModified: window.mapper.setOption("reverse","ramp",value) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "鼠标移动映射到" } AppComboBox { Layout.preferredWidth: 150;model: ["右摇杆","左摇杆","停用"];currentIndex: ["RS","LS","disabled"].indexOf(window.profile.reverse.mouse);onActivated: window.mapper.setOption("reverse","mouse",["RS","LS","disabled"][currentIndex]) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "鼠标满推速度（像素 / 秒）" } CompactSpinBox { from: 100;to: 5000;stepSize: 50;value: window.profile.reverse.mouseSpeed;onValueModified: window.mapper.setOption("reverse","mouseSpeed",value) } }
-                                RowLayout { Layout.fillWidth: true;Caption { text: "鼠标平滑（毫秒）" } CompactSpinBox { from: 0;to: 150;stepSize: 5;value: window.profile.reverse.smoothing;onValueModified: window.mapper.setOption("reverse","smoothing",value) } }
+                            RowLayout {
+                                visible: window.stick.mode==="keys";Layout.fillWidth: true;spacing: 20
+                                MappingStickBindings { Layout.fillWidth: true;Layout.preferredWidth: 1;stickId: window.editingStick;zone: "light";config: window.stick;onAssigned: function(source,target) { window.assign(source,target) } }
+                                MappingStickBindings { Layout.fillWidth: true;Layout.preferredWidth: 1;stickId: window.editingStick;zone: "hard";config: window.stick;onAssigned: function(source,target) { window.assign(source,target) } }
                             }
+                            RowLayout {
+                                visible: window.stick.mode==="keys";Layout.fillWidth: true
+                                Label { text: window.mapper.bindingLabel;color: Theme.text;font.pixelSize: 14 }
+                                Caption { text: window.mapper.currentChord.map(function(t) { return window.mapper.label(t) }).join(" + ") || "未绑定";color: Theme.accent }
+                                Action { objectName: "mappingStickRecord";text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } }
+                                Action { objectName: "mappingStickClear";text: "清空";onClicked: window.mapper.setChord([]) }
+                            }
+                            RowLayout {
+                                visible: window.stick.mode==="wheel";Layout.fillWidth: true;spacing: 20
+                                Caption { text: "轻推（格 / 秒）";Layout.fillWidth: false }
+                                CompactSpinBox { objectName: "mappingWheelLight";from: 1;to: 30;value: window.stick.wheelLight;onValueModified: window.mapper.setOption(window.editingStick,"wheelLight",value) }
+                                Caption { text: "重推（格 / 秒）";Layout.fillWidth: false }
+                                CompactSpinBox { objectName: "mappingWheelHard";from: 1;to: 30;value: window.stick.wheelHard;onValueModified: window.mapper.setOption(window.editingStick,"wheelHard",value) }
+                                CheckBox { text: "反向滚动";checked: window.stick.wheelInvert;onToggled: window.mapper.setOption(window.editingStick,"wheelInvert",checked) }
+                                Item { Layout.fillWidth: true }
+                            }
+                            RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "鼠标速度（像素 / 秒）" } CompactSpinBox { objectName: "mappingMouseSpeed";from: 100;to: 5000;stepSize: 50;value: window.stick.speed;onValueModified: window.mapper.setOption(window.editingStick,"speed",value) } }
+                            RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "响应曲线 "+window.stick.curve.toFixed(1) } Slider { Layout.preferredWidth: 230;from: .5;to: 3.5;value: window.stick.curve;onMoved: window.mapper.setOption(window.editingStick,"curve",Math.round(value*10)/10) } }
+                            RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "平滑（毫秒）" } CompactSpinBox { from: 0;to: 150;stepSize: 5;value: window.stick.smoothing;onValueModified: window.mapper.setOption(window.editingStick,"smoothing",value) } }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true;visible: window.reverse;spacing: 32
+                            ColumnLayout {
+                                Layout.fillWidth: true;Layout.preferredWidth: 1;Layout.alignment: Qt.AlignTop;spacing: 12
+                                Label { text: "摇杆力度";color: Theme.text;font.pixelSize: 17;font.weight: Font.DemiBold }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "重推 "+Math.round(window.profile.reverse.strength*100)+"%";Layout.preferredWidth: 95;Layout.fillWidth: false } Slider { Layout.fillWidth: true;from: .1;to: 1;value: window.profile.reverse.strength;onMoved: window.mapper.setOption("reverse","strength",Math.round(value*100)/100) } }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "轻推 "+Math.round(window.profile.reverse.lightStrength*100)+"%";Layout.preferredWidth: 95;Layout.fillWidth: false } Slider { Layout.fillWidth: true;from: .1;to: 1;value: window.profile.reverse.lightStrength;onMoved: window.mapper.setOption("reverse","lightStrength",Math.round(value*100)/100) } }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "轻推键："+(window.profile.reverse.lightModifier.map(function(t) { return window.mapper.label(t) }).join(" + ") || "无") } Action { text: "录入";onClicked: window.mapper.record("lightModifier") } Action { text: "清除";onClicked: window.mapper.setOption("reverse","lightModifier",[]) } }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "过渡（毫秒）" } CompactSpinBox { from: 0;to: 500;stepSize: 10;value: window.profile.reverse.ramp;onValueModified: window.mapper.setOption("reverse","ramp",value) } }
+                                Label { text: "鼠标移动";color: Theme.text;font.pixelSize: 17;font.weight: Font.DemiBold;Layout.topMargin: 8 }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "目标摇杆" } AppComboBox { Layout.preferredWidth: 150;model: ["右摇杆","左摇杆","停用"];currentIndex: ["RS","LS","disabled"].indexOf(window.profile.reverse.mouse);onActivated: window.mapper.setOption("reverse","mouse",["RS","LS","disabled"][currentIndex]) } }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "满推速度（像素 / 秒）" } CompactSpinBox { from: 100;to: 5000;stepSize: 50;value: window.profile.reverse.mouseSpeed;onValueModified: window.mapper.setOption("reverse","mouseSpeed",value) } }
+                                RowLayout { Layout.fillWidth: true;Caption { text: "平滑（毫秒）" } CompactSpinBox { from: 0;to: 150;stepSize: 5;value: window.profile.reverse.smoothing;onValueModified: window.mapper.setOption("reverse","smoothing",value) } }
+                            }
+                            MappingWheelBindings { Layout.fillWidth: true;Layout.preferredWidth: 1;Layout.alignment: Qt.AlignTop;config: window.profile.reverse;onEditRequested: window.revealBindingEditor(bindingPreviewPanel) }
                         }
                         Item { Layout.preferredHeight: 14 }
                     }

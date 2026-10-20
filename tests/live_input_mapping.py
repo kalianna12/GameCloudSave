@@ -5,6 +5,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from services import ROOT,Store
 from input_mapping import MappingController
 from mapping_native import WindowsInput,KeyOutput,VirtualPad,RawMouse
+from mapping_model import default_profile,Forward,Reverse
 from PySide6.QtCore import Qt,QEvent
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication,QWidget
@@ -20,6 +21,7 @@ class Target(QWidget):
     def keyReleaseEvent(self,event):self.events.append(('up',event.key()))
     def mousePressEvent(self,event):self.events.append(('mouse-down',event.button().value))
     def mouseReleaseEvent(self,event):self.events.append(('mouse-up',event.button().value))
+    def wheelEvent(self,event):self.events.append(('wheel',event.angleDelta().y()))
 window=Target();window.show();window.activateWindow();window.raise_();QTest.qWait(200)
 transport=WindowsInput();output=KeyOutput(transport);virtual=None;old=QCursor.pos();raw=RawMouse()
 report={}
@@ -56,10 +58,22 @@ try:
     QCursor.setPos(window.mapToGlobal(window.rect().center()));QTest.qWait(30);start=QCursor.pos()
     output.update(set(),[12,6],time.perf_counter());QTest.qWait(60)
     assert QCursor.pos()!=start;report['native_relative_mouse']=True
+    assert transport.foreground()[1]==os.getpid(),'Target focus changed; wheel test refused'
+    profile=default_profile();profile['forward']['sticks']['LS']['mode']='wheel';forward=Forward()
+    desired,move=forward.frame(profile,{'buttons':[],'LS':[0,.5],'RS':[0,0]},.008)
+    output.update(desired,move,time.perf_counter(),forward.wheel_steps);QTest.qWait(40)
+    assert ('wheel',120) in window.events,window.events
+    forward.frame(profile,{'buttons':[],'LS':[0,0],'RS':[0,0]},.008);assert not forward.wheel_steps
+    report['native_stick_to_wheel_and_neutral']=True
     virtual=VirtualPad();slot=virtual.index;virtual.update({'buttons':0x1100,'LT':128,'RT':0,'LX':12000,'LY':20000,'RX':0,'RY':0});QTest.qWait(80)
     state,index=transport.sample(slot)
     assert index==slot and {'A','LB','LT'}.issubset(state['buttons']) and abs(state['LS'][0]-12000/32767)<.01
     virtual.release();QTest.qWait(40);state,index=transport.sample(slot);assert not state['buttons'] and state['LS']==[0.,0.]
+    profile['reverse'].update(mouse='disabled',ramp=0,routes=[{'id':'wheel','source':['M:wheelup'],'targets':['P:RY+']}]);reverse=Reverse()
+    virtual.update(reverse.frame(profile,{'M:wheelup'},[0,0],.008));QTest.qWait(30)
+    assert transport.sample(slot)[0]['RS'][1]>.99
+    virtual.update(reverse.frame(profile,set(),[0,0],.008));QTest.qWait(30)
+    assert transport.sample(slot)[0]['RS']==[0.,0.];report['wheel_to_virtual_stick_xinput_and_neutral']=True
     # Real XInput 30 ms presses, with a deliberate GUI stall. No SendInput is enabled.
     import threading
     from mapping_clock import PollClock

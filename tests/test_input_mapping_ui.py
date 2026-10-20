@@ -7,6 +7,7 @@ from main import Bridge
 from qml_bootstrap import install_incubator
 from PySide6.QtCore import QObject,QUrl,QPoint,QPointF,QMetaObject,Q_ARG,Q_RETURN_ARG,Qt,qInstallMessageHandler
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtTest import QTest
@@ -106,6 +107,40 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         while backend.busy:spin(20)
         window.resize(1040,700);spin(180);window.grabWindow().save(str(output/'light-small.png'))
         assert window.findChild(QObject,'mappingScroll').property('contentHeight')>window.findChild(QObject,'mappingScroll').height()
+        for name in ('mappingModeForward','mappingModeReverse'):
+            tab=window.findChild(QObject,name);assert not tab.property('contentItem').property('truncated'),(name,tab.width(),tab.property('text'))
+        controller.setMode('pad_to_keys');spin(80);flick.setProperty('contentY',flick.property('contentHeight')-flick.height());spin(100)
+        light=window.findChild(QObject,'mappingStick-light');hard=window.findChild(QObject,'mappingStick-hard')
+        assert light.isVisible() and hard.isVisible() and point(light).x()<point(hard).x()
+        control=window.findChild(QObject,'mappingBothArrows');QTest.mouseClick(window,Qt.LeftButton,pos=point(control));spin(80)
+        window.grabWindow().save(str(output/'stick-arrows-light-small.png'))
+        assert controller.profile['forward']['sticks']['LS']['light']['N']==['K:38'],(point(control),flick.property('contentY'),flick.property('contentHeight'),window.height())
+        assert controller.profile['forward']['sticks']['LS']['hard']['SE']==['K:40','K:39']
+        QTest.mouseClick(window,Qt.LeftButton,pos=point(key('P:LS.light.NE')));spin(25)
+        QTest.mouseClick(window,Qt.LeftButton,pos=point(window.findChild(QObject,'mappingStickRecord')));spin(25)
+        QTest.keyPress(window,Qt.Key_Control);QTest.keyClick(window,Qt.Key_F);QTest.keyRelease(window,Qt.Key_Control);spin(60)
+        assert controller.profile['forward']['sticks']['LS']['light']['NE']==['K:162','K:70']
+        assert controller.profile['forward']['sticks']['LS']['hard']['NE']==['K:38','K:39']
+        preset=window.findChild(QObject,'mappingPreset-hard');preset.setProperty('currentIndex',1);QMetaObject.invokeMethod(preset,'activated',Q_ARG(int,1));spin(60)
+        assert controller.profile['forward']['sticks']['LS']['hard']['NE']==['K:87','K:68']
+        window.grabWindow().save(str(output/'stick-settings-light-small.png'))
+        mode=window.findChild(QObject,'mappingStickMode');mode.setProperty('currentIndex',2);QMetaObject.invokeMethod(mode,'activated',Q_ARG(int,2));spin(60)
+        assert controller.profile['forward']['sticks']['LS']['mode']=='wheel'
+        assert window.findChild(QObject,'mappingWheelLight').isVisible() and window.findChild(QObject,'mappingWheelHard').isVisible()
+        controller.setMode('keys_to_pad');spin(80);flick.setProperty('contentY',flick.property('contentHeight')-flick.height());spin(100)
+        for name,index in (('mappingWheel-wheelup',5),('mappingWheel-wheeldown',6)):
+            combo=next((item for item in walk(window.contentItem()) if item.objectName()==name),None)
+            assert combo is not None,[(item.objectName(),item.property('modelData')) for item in walk(window.contentItem()) if item.objectName().startswith('mappingWheel')]
+            combo.setProperty('currentIndex',index);QMetaObject.invokeMethod(combo,'activated',Q_ARG(int,index));spin(50)
+        assert controller.wheelTarget('M:wheelup')=='P:RY+' and controller.wheelTarget('M:wheeldown')=='P:RY-'
+        window.grabWindow().save(str(output/'wheel-settings-light-small.png'))
+        wheel=QWheelEvent(QPointF(500,400),QPointF(window.mapToGlobal(QPoint(500,400))),QPoint(),QPoint(0,120),Qt.NoButton,Qt.NoModifier,Qt.NoScrollPhase,False)
+        app.sendEvent(window,wheel);spin(45)
+        assert controller.live.get('virtualAxes',[0,0,0,0])[3]>0,controller.live
+        wheel=QWheelEvent(QPointF(500,400),QPointF(window.mapToGlobal(QPoint(500,400))),QPoint(),QPoint(0,-120),Qt.NoButton,Qt.NoModifier,Qt.NoScrollPhase,False)
+        app.sendEvent(window,wheel);spin(45)
+        assert controller.live.get('virtualAxes',[0,0,0,0])[3]<0,controller.live
+        spin(350);assert abs(controller.live.get('virtualAxes',[0,0,0,0])[3])<.002,controller.live
         assert not controller.state['enabled']
         QMetaObject.invokeMethod(window.findChild(QObject,'mappingHelp'),'click');spin(100)
         assert window.findChild(QObject,'mappingHelpDialog').property('visible')
@@ -127,4 +162,4 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         assert not errors,errors[:15]
     finally:
         window.close();spin(150);backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine)
-print('PASS: three cached models, two-way drag/drop target highlight/hints, recording, live preview, saved home profile/none selection, no stick reopening, driver detection and small/light scrolling; no injection or driver installation')
+print('PASS: three cached models, drag/drop, recording, saved home profiles, full mode captions, side-by-side light/heavy eight-way presets/custom chords, stick scrolling, wheel-to-stick reversal/neutral and small/light scrolling; no injection or driver installation')

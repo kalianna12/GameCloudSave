@@ -10,6 +10,8 @@ Item {
     property bool surfaceVisible: true
     property bool keyboardCap: false
     property string subLabel: ""
+    property string bindingText: ""
+    property string description: ""
     readonly property bool dropHovered: drop.containsDrag
     readonly property bool controllerSelectable: true
     signal chosen(string token)
@@ -28,8 +30,9 @@ Item {
             visible: key.keyboardCap; anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 4; anchors.topMargin: 3; anchors.bottomMargin: 6
             radius: 4; color: key.pressedLive ? Qt.lighter(Theme.accent,1.1) : "#373c43"; border.color: "#484e56"; border.width: .7
         }
-        Label { anchors.centerIn: key.subLabel ? undefined : parent; x: key.subLabel ? 9 : 0; y: key.subLabel ? 3 : 0; width: parent.width-(key.subLabel ? 14 : 4); horizontalAlignment: key.subLabel ? Text.AlignLeft : Text.AlignHCenter; text: key.label; color: key.pressedLive ? Theme.onAccent : key.keyboardCap ? "#e8ecf2" : Theme.text; font.pixelSize: key.subLabel && key.height<36 ? 9 : key.width<32 ? 10 : 12; elide: Text.ElideRight }
+        Label { anchors.centerIn: key.subLabel || key.bindingText ? undefined : parent; x: key.subLabel ? 9 : 0; y: key.subLabel ? 3 : key.bindingText ? 5 : 0; width: parent.width-(key.subLabel ? 14 : 4); horizontalAlignment: key.subLabel ? Text.AlignLeft : Text.AlignHCenter; text: key.label; color: key.pressedLive ? Theme.onAccent : key.keyboardCap ? "#e8ecf2" : Theme.text; font.pixelSize: key.bindingText ? 19 : key.subLabel && key.height<36 ? 9 : key.width<32 ? 10 : 12; elide: Text.ElideRight }
         Label { visible: !!key.subLabel; x: 9; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: key.subLabel; color: key.pressedLive ? Theme.onAccent : "#929da8"; font.pixelSize: key.height<36 ? 9 : 11 }
+        Label { visible: !!key.bindingText;anchors.bottom: parent.bottom;anchors.bottomMargin: 6;width: parent.width-8;x: 4;text: key.bindingText;color: key.selected ? Theme.accent : Theme.secondary;horizontalAlignment: Text.AlignHCenter;font.pixelSize: 12;elide: Text.ElideRight }
     }
     property bool dragging: false
     property double edgeSince: 0
@@ -84,5 +87,5 @@ Item {
         Label { id: hint;anchors.centerIn: parent;text: "绑定到 "+key.label;color: Theme.onAccent;font.pixelSize: 11 }
     }
     ToolTip.visible: mouse.containsMouse && !key.dragging && !backend.controllerMode && !backend.mapping.dropTarget
-    ToolTip.text: key.token.startsWith("K:") ? backend.mapping.label(key.token) : key.label; ToolTip.delay: 500
+    ToolTip.text: key.description || (key.token.startsWith("K:") ? backend.mapping.label(key.token) : key.label); ToolTip.delay: 500
 }

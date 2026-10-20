@@ -86,7 +86,7 @@ class WindowsInput:
 class KeyOutput:
     """Reference-union ownership: two mappings sharing Shift cannot release each other."""
     def __init__(self,transport):self.transport=transport;self.owned=set();self.wheels={}
-    def update(self,desired,move,now):
+    def update(self,desired,move,now,wheel_steps=()):
         wheels={token for token in desired if token in ('M:wheelup','M:wheeldown')};held=desired-wheels
         modifier=lambda token:token.startswith('K:') and int(token[2:]) in MODIFIERS
         for token in sorted(self.owned-held,key=lambda token:(modifier(token),token)):
@@ -96,6 +96,7 @@ class KeyOutput:
         for token in wheels:
             if now>=self.wheels.get(token,0):self.transport.wheel(token[2:]);self.wheels[token]=now+.4
         self.wheels={token:time for token,time in self.wheels.items() if token in wheels}
+        for direction in wheel_steps:self.transport.wheel(direction)
         self.transport.move(*move)
     def release(self):
         errors=[]

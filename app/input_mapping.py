@@ -8,7 +8,7 @@ import uuid
 from collections import deque
 
 from PySide6.QtCore import QObject,Property,Signal,Slot,QEvent,Qt,QCoreApplication,QTimer
-from mapping_model import default_profile,validate,chord,token_name,Forward,Reverse,PAD_BUTTONS,PAD_OUTPUTS,DIRECTIONS,KEY_NAMES
+from mapping_model import default_profile,validate,chord,token_name,direction_keys,Forward,Reverse,PAD_BUTTONS,PAD_OUTPUTS,DIRECTIONS,KEY_NAMES
 
 
 class MappingController(QObject):
@@ -34,7 +34,7 @@ class MappingController(QObject):
         self._auto_select=True
         self._events=[];self._seen_input=set();self._preview_forward=Forward();self._preview_reverse=Reverse()
         from mapping_preview import InputHistory
-        self._history_model=InputHistory(self);self._pending_sample=None;self._pending_edges=deque(maxlen=512);self._keyboard_preview=[];self._preview_last=time.perf_counter();self._drop_hint='';self._drop_target=''
+        self._history_model=InputHistory(self);self._pending_sample=None;self._pending_edges=deque(maxlen=512);self._keyboard_preview=[];self._preview_last=time.perf_counter();self._drop_hint='';self._drop_target='';self._editor_wheel={}
         self._preview_timer=QTimer(self);self._preview_timer.setTimerType(Qt.PreciseTimer);self._preview_timer.setInterval(8);self._preview_timer.timeout.connect(self.publishPreview)
         self.changed.connect(self.selectionChanged.emit);self.changed.connect(self.modelChanged.emit)
         from mapping_setup import MappingSetup
@@ -217,6 +217,29 @@ class MappingController(QObject):
         old=copy.deepcopy(owner[key]);owner[key]=value
         try:validate(self._draft);self.edit()
         except (ValueError,TypeError,KeyError):owner[key]=old;self.receiveMessage('设置超出可用范围',False)
+    @Slot(str,str,str)
+    def applyStickPreset(self,stick,zone,preset):
+        if stick not in ('LS','RS') or zone not in ('light','hard','both') or preset not in ('wasd','arrows'):return
+        cfg=self._draft['forward']['sticks'][stick]
+        for target in (('light','hard') if zone=='both' else (zone,)):cfg[target]=direction_keys(preset)
+        if not self._target.startswith(stick+'.') or zone!='both':self.selectTarget(stick+'.'+('light' if zone=='both' else zone)+'.N')
+        self.edit()
+    @Slot(str,result=str)
+    def wheelTarget(self,source):
+        route=next((r for r in self._draft['reverse']['routes'] if r['source']==[source]),None)
+        targets=route['targets'] if route else []
+        return targets[0] if len(targets)==1 and targets[0][2:] in ('LX+','LX-','LY+','LY-','RX+','RX-','RY+','RY-') else 'custom' if targets else ''
+    @Slot(str,str)
+    def setWheelTarget(self,source,target):
+        if source not in ('M:wheelup','M:wheeldown') or target not in ('','P:LX+','P:LX-','P:LY+','P:LY-','P:RX+','P:RX-','P:RY+','P:RY-'):return
+        # Only the plain wheel route is edited; modified wheel chords remain independent.
+        route=next((r for r in self._draft['reverse']['routes'] if r['source']==[source]),None)
+        if route is None and target:
+            if len(self._draft['reverse']['routes'])>=160:self.receiveMessage('最多 160 条绑定',False);return
+            route={'id':uuid.uuid4().hex,'source':[source],'targets':[]};self._draft['reverse']['routes'].append(route)
+        if route is not None:
+            self._draft['reverse']['routes']=[r for r in self._draft['reverse']['routes'] if r is route or r['source']!=[source]]
+            route['targets']=[target] if target else [];self._route=route['id'];self.edit()
     @Slot(int)
     def setSlot(self,slot):
         if -1<=slot<=3:
@@ -251,6 +274,7 @@ class MappingController(QObject):
     def save(self):
         try:
             profile=validate(self._draft);self._profiles[self._selected]=profile
+            if self._enabled:self.configureRaw(profile)
             temporary=self.file.with_suffix('.tmp');temporary.write_text(json.dumps({'version':1,'selected':self._selected,'profiles':self._profiles},ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(self.file)
             with self._lock:self._runtime_profile=copy.deepcopy(profile);self._revision+=1
             self._saved_ids.add(self._selected);self._dirty=False;self._wake.set();self._message='配置已保存';self.changed.emit();self.stateChanged.emit()
@@ -270,7 +294,7 @@ class MappingController(QObject):
         if not visible:self.cancelCapture()
         if not visible:
             self._preview_timer.stop();self._events=[];self._history_model.clear();self._seen_input=set();self._preview_forward.reset();self._preview_reverse.reset();self.clearDropHint()
-            with self._lock:self._pending_sample=None;self._pending_edges.clear()
+            with self._lock:self._pending_sample=None;self._pending_edges.clear();self._editor_wheel.clear()
             self._sample={};self._keyboard_preview=[];self.previewChanged.emit();self.keyboardPreviewChanged.emit()
         if visible:self._preview_last=time.perf_counter();self._preview_timer.start();self.ensure_worker();self._setup.detect()
         self._wake.set();self.stateChanged.emit()
@@ -279,6 +303,18 @@ class MappingController(QObject):
     def ensure_worker(self):
         if (self._thread is None or not self._thread.is_alive()) and not self._closed:
             self._thread=threading.Thread(target=self.run,name='input-mapping',daemon=True);self._thread.start()
+    def configureRaw(self,profile):
+        from mapping_native import RawMouse
+        cfg=profile['reverse']
+        needed=profile['mode']=='keys_to_pad' and (cfg['mouse']!='disabled' or any(route['targets'] and any(t in ('M:wheelup','M:wheeldown') for t in route['source']) for route in cfg['routes']))
+        if not needed:
+            if self._raw:self._raw.stop()
+            return
+        host=self._runtime_host or self._host
+        if host is None:raise ValueError('没有可用的映射窗口')
+        if self._raw is None:
+            self._raw=RawMouse();QCoreApplication.instance().installNativeEventFilter(self._raw)
+        self._raw.start(int(host.winId()))
     @Slot(bool)
     def setEnabled(self,enabled):
         if self._closed:return
@@ -286,14 +322,9 @@ class MappingController(QObject):
             try:
                 validate(self._draft)
                 if self._draft['mode']=='keys_to_pad':
-                    from mapping_native import virtual_available,RawMouse
+                    from mapping_native import virtual_available
                     if not virtual_available():raise ValueError('键鼠→手柄需要 vgamepad 与 ViGEmBus；请查看映射帮助')
-                    if self._draft['reverse']['mouse']!='disabled' or any(token in ('M:wheelup','M:wheeldown') for route in self._draft['reverse']['routes'] for token in route['source']):
-                        host=self._runtime_host or self._host
-                        if host is None:raise ValueError('没有可用的映射窗口')
-                        if self._raw is None:
-                            self._raw=RawMouse();QCoreApplication.instance().installNativeEventFilter(self._raw)
-                        self._raw.start(int(host.winId()))
+                    self.configureRaw(self._draft)
                 # The runtime always reads a validated immutable saved copy.
                 if not self.save():
                     if self._raw:self._raw.stop()
@@ -312,6 +343,13 @@ class MappingController(QObject):
     @Slot()
     def cancelCapture(self):self._recording=False;self._capture_held.clear();self.stateChanged.emit()
     def eventFilter(self,watched,event):
+        if self._editor and self._draft['mode']=='keys_to_pad' and event.type()==QEvent.Wheel:
+            if watched is self._host and event.angleDelta().y():
+                token='M:wheelup' if event.angleDelta().y()>0 else 'M:wheeldown'
+                with self._lock:
+                    self._editor_wheel.pop('M:wheeldown' if token=='M:wheelup' else 'M:wheelup',None)
+                    self._editor_wheel[token]=time.perf_counter()+self._draft['reverse']['wheelPulse']/1000
+            # Preview observes the event; normal scrolling and control editing still work.
         if not self._recording:return False
         if event.type() not in (QEvent.KeyPress,QEvent.KeyRelease,QEvent.ShortcutOverride):return False
         if event.type()==QEvent.ShortcutOverride:event.accept();return True
@@ -350,7 +388,7 @@ class MappingController(QObject):
         preview=dict(sample);self._last_capture_age=now-preview.pop('_captured',now)
         keys=set(sample.get('keys',[]));inputs=keys|{'P:'+b for b in sample.get('buttons',[])}
         if self._draft['mode']=='pad_to_keys':
-            desired,move=self._preview_forward.frame(self._draft,sample,dt);preview['outputs']=sorted(desired);preview['mouse']=move
+            desired,move=self._preview_forward.frame(self._draft,sample,dt);preview['outputs']=sorted(desired|{'M:'+d for d in self._preview_forward.wheel_steps});preview['mouse']=move
         else:
             held=set(keys)
             for generic,sides in (('K:16',{'K:160','K:161'}),('K:17',{'K:162','K:163'}),('K:18',{'K:164','K:165'})):
@@ -423,14 +461,18 @@ class MappingController(QObject):
                         known_slot=slot if state else -1;sample_at=now+(0 if state else .5)
                 else:state=None;slot=-1
                 current=transport.foreground();own=current[1]==os.getpid();raw=self._raw;mouse,pulses=raw.take() if raw else ([0,0],set())
-                for token in pulses:wheel_until[token]=now+.045
+                if len(pulses)==1:wheel_until.pop('M:wheeldown' if 'M:wheelup' in pulses else 'M:wheelup',None)
+                for token in pulses:wheel_until[token]=now+profile['reverse'].get('wheelPulse',100)/1000
                 wheel_until={token:until for token,until in wheel_until.items() if until>now};pulses=set(wheel_until)
                 if self._editor:
                     # Full keyboard preview only while our editor has foreground focus.
                     if now>=key_at or own!=last_own:
                         preview_keys=all_preview_keys if own else configured_keys if profile['mode']=='keys_to_pad' else ()
                         monitor_keys=[token for token in preview_keys if transport.held(token)];key_at=now+.008;last_own=own
-                    keys=monitor_keys;delta=list(mouse)
+                    with self._lock:
+                        self._editor_wheel={token:until for token,until in self._editor_wheel.items() if until>now}
+                        editor_pulses=set(self._editor_wheel)
+                    keys=sorted(set(monitor_keys)|pulses|editor_pulses);delta=list(mouse)
                     if own and hasattr(transport,'pointer'):
                         cursor=transport.pointer()
                         if preview_cursor:delta=[cursor[i]-preview_cursor[i] for i in range(2)]
@@ -459,7 +501,7 @@ class MappingController(QObject):
                         if not state:output.release();forward.reset();armed=False
                         if neutral:armed=True
                         if enabled and armed and state:
-                            desired,move=forward.frame(profile,state,dt);output.update(desired,move,now)
+                            desired,move=forward.frame(profile,state,dt);output.update(desired,move,now,forward.wheel_steps)
                         message='映射运行中' if armed and state else '等待手柄连接 / 松开按键并回中摇杆'
                     else:
                         held={t for t in configured_keys if transport.held(t)}|pulses
