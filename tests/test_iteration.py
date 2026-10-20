@@ -61,7 +61,7 @@ class Iteration(unittest.TestCase):
         self.assertFalse(self.bridge.busy)
         self.assertEqual(self.bridge.cloudPreview['name'],'电脑')
     def test_dav_listing_includes_files_and_folders(self):
-        self.store.save_settings({'password':'dummy'})
+        self.store.save_settings({'password':'dummy','dav_url':'https://dav.invalid/fixture'})
         rows=[{'Name':'save.zip','IsDir':False,'Size':12},{'Name':'folder','IsDir':True,'Size':-1}]
         responses=[subprocess.CompletedProcess([],0,'obscured',''),subprocess.CompletedProcess([],0,json.dumps(rows),'')]
         with patch('services.run_process',side_effect=responses) as run:
@@ -98,7 +98,9 @@ class Iteration(unittest.TestCase):
         self.assertIn('余额不足',result['message'])
     def test_confirmed_match_is_persisted(self):
         chosen=Path(self.temp.name)/'chosen-save'; chosen.mkdir()
+        (chosen/'slot.sav').write_bytes(b'fixture save')
         self.bridge.receiveMatch({'id':self.ident,'name':'中文游戏','status':'review','candidates':[{'path':str(chosen)}]})
+        self.bridge.flushMatches()
         self.bridge.applyMatch(self.ident,str(chosen)); self.wait()
         self.assertEqual(self.store.local[self.ident]['save_dir'],str(chosen))
         self.assertEqual(self.bridge.matchResults[0]['status'],'applied')

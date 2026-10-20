@@ -59,6 +59,7 @@ FocusScope {
     ListModel { id: rows; dynamicRoles: true }
     property var sectionRecords: ({})
     function sync() {
+        sectionSync.stop()
         var previousId=focusedSection<rows.count ? rows.get(focusedSection).record.id : ""
         var nextRecords={}
         for(var i=0;i<sections.length;i++) {
@@ -78,7 +79,8 @@ FocusScope {
         var previousIndex=sections.findIndex(function(section) { return section.id===previousId })
         focusedSection=previousIndex>=0 ? previousIndex : Math.max(0,Math.min(focusedSection,rows.count-1))
     }
-    onSectionsChanged: sync()
+    Timer { id: sectionSync;interval: 0;onTriggered: home.sync() }
+    onSectionsChanged: sectionSync.restart()
     Component.onCompleted: sync()
     function scrollBy(delta) {
         vertical.duration=Theme.motion ? 110 : 0

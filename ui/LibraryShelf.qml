@@ -23,20 +23,27 @@ Item {
     signal cloudRequested(var game)
     signal verticalScroll(real delta)
     implicitHeight: section.kind==="store" ? (section.items.length ? 120+coverSize*.94 : 140) : section.kind==="tiles" ? 220*coverSize/176 : section.kind==="recent" ? 300*coverSize/176 : 320*coverSize/176
-    ListModel { id: items; dynamicRoles: true }
+    ListModel { id: items; objectName: "shelfRecords"; dynamicRoles: true }
+    property var recordSignatures: ({})
     function sync() {
         var savedId=selectedId;syncing=true
-        var rows=section.items || []
+        var rows=section.items || [],nextSignatures=Object.create(null)
         for(var i=0;i<rows.length;i++) {
+            var signature=JSON.stringify(rows[i])
+            nextSignatures[rows[i].id]=signature
             var position=-1
             for(var j=i;j<items.count;j++) if(items.get(j).record.id===rows[i].id) { position=j;break }
             if(position<0) items.insert(i,{record:rows[i]})
-            else { if(position!==i) items.move(position,i,1);items.set(i,{record:rows[i]}) }
+            else {
+                if(position!==i) items.move(position,i,1)
+                if(recordSignatures[rows[i].id]!==signature) items.set(i,{record:rows[i]})
+            }
         }
         while(items.count>rows.length) items.remove(items.count-1)
+        recordSignatures=nextSignatures
         var previous=rows.findIndex(function(row) { return row.id===savedId })
         list.currentIndex=Math.max(0,previous)
-        if(rows.length) selectedId=rows[list.currentIndex].id
+        selectedId=rows.length ? rows[list.currentIndex].id : ""
         syncing=false
     }
     onSectionChanged: sync()

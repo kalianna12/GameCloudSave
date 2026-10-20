@@ -13,7 +13,7 @@ from services import Store, write_json
 from PySide6.QtGui import QImage, QColor
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--version', default='2.5.0')
+parser.add_argument('--version', default='2.6.0')
 version = parser.parse_args().version
 test = ROOT / 'test-data' / ('portable-v' + version)
 test.mkdir(parents=True, exist_ok=True)
@@ -22,7 +22,7 @@ exe = program / 'GameCloudSave.exe'
 data = test / 'data'
 store = Store(data)
 store.save_settings({'setup_completed':True, 'guide_dismissed':True, 'watch':False,
-                     'close_to_tray':False, 'playnite':'', 'library':'', 'fullscreen':False})
+                     'close_to_tray':False, 'playnite':'', 'library':'', 'fullscreen':False,'recommendations_enabled':False})
 art = data / 'covers'
 art.mkdir(exist_ok=True)
 games = []
@@ -62,11 +62,23 @@ for design in ('classic', 'shelf', 'cinema', 'atlas'):
         'ReferenceError', 'TypeError', 'is not installed', 'failed to load component',
         'Unhandled ', 'Cannot assign', 'Unable to assign'))]
     assert not errors, (design, errors)
-for name in ('ExperienceData.js', 'WoodMaterials.js', 'InlineImageBrowser.qml', 'CinemaVideo.qml'):
+for name in ('ExperienceData.js', 'WoodMaterials.js', 'InlineImageBrowser.qml', 'CinemaVideo.qml','MappingGamepad.qml','MappingChordEditor.qml'):
     assert (program / '_internal/ui' / name).is_file(), name
 for name in ('QtWebEngineProcess.exe', 'Qt6WebEngineQuick.dll', 'Qt6Multimedia.dll'):
     assert any((program / '_internal').rglob(name)), name
+assert (program/'_internal/vgamepad/win/vigem/client/x64/ViGEmClient.dll').is_file()
+from mapping_model import default_profile
+profile=default_profile();report['mapping']={}
+store.save_settings({'library_design':'classic'})
+for model in ('xbox','ps','joycon'):
+    profile['padModel']=model
+    write_json(store.profile/'input-mapping.json',{'version':1,'selected':'default','profiles':{'default':profile}})
+    screenshot=test/('mapping-'+model+'.png')
+    report['mapping'][model]=run(['--show','mapping','--quit-after',4500,'--screenshot',screenshot])
+    assert screenshot.is_file() and not QImage(str(screenshot)).isNull()
+content=(data/'logs/app.log').read_text(encoding='utf-8')
+assert not any(word in content for word in ('ReferenceError','TypeError','is not installed','failed to load component','Unhandled ','Cannot assign','Unable to assign','Binding loop'))
 report['passed'] = True
 (test / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
-print('PASS: portable self-test, four layouts, screenshots, Qt web/video resources, isolated data')
+print('PASS: portable self-test, four layouts, three mapping models, Qt web/video resources, bundled mapping client and isolated data')
 print(json.dumps(report))

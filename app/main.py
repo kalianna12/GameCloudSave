@@ -1458,7 +1458,7 @@ def main():
     parser.add_argument('--quit-after', type=int, default=0)
     parser.add_argument('--self-test')
     parser.add_argument('--self-test-online')
-    parser.add_argument('--show',choices=('library','cloud','match','settings','import','batch','setup'),default='library')
+    parser.add_argument('--show',choices=('library','cloud','match','settings','import','batch','setup','mapping'),default='library')
     args = parser.parse_args()
     if args.self_test_online:
         import json
@@ -1503,8 +1503,15 @@ def main():
             launch_folder=Path(temporary)/'ScanFixture';launch_folder.mkdir()
             (launch_folder/'ScanFixture.exe').write_bytes(b'not executable fixture')
             assert len(scan(launch_folder)['rows'])==1 and len(digest(archive))==64
+            from mapping_model import default_profile,validate
+            from mapping_templates import make_template,template_catalog
+            assert validate(default_profile()) and all(validate(make_template(row['id'])) for row in template_catalog())
+            if getattr(sys,'frozen',False):
+                import ctypes,importlib.util
+                assert importlib.util.find_spec('vgamepad') is not None
+                ctypes.CDLL(str(RESOURCES/'vgamepad/win/vigem/client/x64/ViGEmClient.dll'))
             gc.collect()
-        Path(args.self_test).write_text('PASS: packaged backup/restore, SQLite, Chinese JSON, DPAPI, rclone, launcher scan, cloud hash module',encoding='utf-8')
+        Path(args.self_test).write_text('PASS: packaged backup/restore, SQLite, Chinese JSON, DPAPI, rclone, launcher scan, cloud hash, mapping templates and bundled client DLL',encoding='utf-8')
         return 0
     app = QApplication(sys.argv)
     app.setApplicationName('GameCloudSave')
@@ -1589,6 +1596,8 @@ def main():
         ident=bridge.matchResults[0]['id'] if bridge.matchResults else ''
         QMetaObject.invokeMethod(window,'openMatch',Q_ARG('QVariant',ident))
         window=window.findChild(QObject,'matchWindow')
+    elif args.show=='mapping':
+        window=window.findChild(QObject,'inputMappingWindow');QMetaObject.invokeMethod(window,'openMapping')
     if args.screenshot:
         def capture():
             path = Path(args.screenshot)

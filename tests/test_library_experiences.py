@@ -66,13 +66,15 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             experience.setProperty('groupMode','category');invoke(experience,'focusFirst');spin(60)
         before=experience.property('selectedId');dispatch(app,root,backend,'right');spin(150)
         assert experience.property('selectedId')!=before,(design,before,root.activeFocusItem(),messages)
-        dispatch(app,root,backend,'activate');spin(100);assert backend.popupActive(),design
+        dispatch(app,root,backend,'menu');spin(100);assert backend.popupActive(),design
         dispatch(app,root,backend,'back');spin(450);assert not backend.popupActive(),design
         backend.setControllerMode(False);QTest.mouseMove(root,QPoint(220,15));spin(800)
         frames=[]
         def frame():frames.append(time.monotonic())
         root.frameSwapped.connect(frame);spin(250);root.frameSwapped.disconnect(frame)
-        if len(frames)>5:
+        # Atlas intentionally animates stars; its pause/visibility behavior is
+        # covered by test_immersive_controls, rather than requiring idle silence.
+        if design!='atlas' and len(frames)>5:
             def ancestry(item):
                 values=[]
                 for _ in range(6):

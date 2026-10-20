@@ -12,7 +12,7 @@ from urllib.request import urlopen
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.5.0');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.6.0');args=parser.parse_args()
 import re
 if not re.fullmatch(r'\d+(\.\d+){0,2}',args.version):raise ValueError('Invalid version')
 release=ROOT/'dist/GameCloudSave';output=ROOT/'build/installer-payload';output.mkdir(parents=True,exist_ok=True)
@@ -22,7 +22,7 @@ shutil.copy2(ROOT/'docs/安装与便携使用说明.txt',release/'使用说明.t
 shutil.copy2(ROOT/('docs/V'+args.version+'发布说明.md'),release/'更新说明.md')
 licenses=release/'licenses';licenses.mkdir(exist_ok=True)
 versions={}
-for package in ('PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','psutil','Pillow','PyInstaller'):
+for package in ('PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','psutil','Pillow','PyInstaller','vgamepad'):
     try:distribution=metadata.distribution(package)
     except metadata.PackageNotFoundError:
         if package=='Pillow':continue
@@ -46,7 +46,8 @@ def license_download(item):
 license_urls={
  'LGPL-3.0.txt':['https://raw.githubusercontent.com/spdx/license-list-data/main/text/LGPL-3.0-only.txt','https://www.gnu.org/licenses/lgpl-3.0.txt'],
  'GPL-3.0.txt':['https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt','https://www.gnu.org/licenses/gpl-3.0.txt'],
- 'GPL-2.0.txt':['https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-2.0-only.txt','https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt']}
+ 'GPL-2.0.txt':['https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-2.0-only.txt','https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt'],
+ 'ViGEmClient-LICENSE.txt':['https://raw.githubusercontent.com/nefarius/ViGEmClient/master/LICENSE']}
 with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(license_download,license_urls.items()))
 python_license=Path(sys.base_prefix)/'LICENSE.txt'
 if python_license.is_file():shutil.copy2(python_license,licenses/'Python-LICENSE.txt')
