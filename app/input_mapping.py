@@ -9,6 +9,7 @@ from collections import deque
 
 from PySide6.QtCore import QObject,Property,Signal,Slot,QEvent,Qt,QCoreApplication,QTimer
 from mapping_model import default_profile,validate,chord,token_name,direction_keys,Forward,Reverse,PAD_BUTTONS,PAD_OUTPUTS,DIRECTIONS,KEY_NAMES
+from mapping_templates import make_template,template_catalog
 
 
 class MappingController(QObject):
@@ -73,6 +74,42 @@ class MappingController(QObject):
     def dropTarget(self):return self._drop_target
     @Property('QVariantList',notify=changed)
     def profiles(self):return [{'id':key,'name':profile['name']} for key,profile in self._profiles.items()]
+    @Property('QVariantList',constant=True)
+    def templates(self):return template_catalog()
+    @Property('QStringList',notify=changed)
+    def addedTemplates(self):return sorted({p['templateId'] for key,p in self._profiles.items() if key in self._saved_ids and isinstance(p.get('templateId'),str)})
+    def importTemplates(self,idents):
+        known={row['id'] for row in self.templates}
+        if any(ident not in known for ident in idents):raise ValueError('游戏模板不存在')
+        additions={};existing={}
+        for key,p in self._profiles.items():
+            if key in self._saved_ids and isinstance(p.get('templateId'),str):existing.setdefault(p['templateId'],key)
+        for ident in idents:
+            if ident not in existing:
+                key='template-'+ident
+                if key in self._profiles:key=uuid.uuid4().hex
+                profile=make_template(ident);profile['padModel']=self.padModel;profile['slot']=self._draft['slot']
+                additions[key]=profile;existing[ident]=key
+        if len(self._profiles)+len(additions)>40:raise ValueError('配置已满，最多 40 份；请先删除不用的配置')
+        if additions:
+            # Import only saved profiles plus the new templates. Keep unrelated unsaved drafts untouched.
+            saved={key:p for key,p in self._profiles.items() if key in self._saved_ids}|additions
+            selected=self._selected if self._selected in saved else next(iter(saved))
+            temporary=self.file.with_suffix('.tmp');temporary.write_text(json.dumps({'version':1,'selected':selected,'profiles':saved},ensure_ascii=False,indent=2),encoding='utf-8');temporary.replace(self.file)
+            self._profiles.update(additions);self._saved_ids.update(additions);self.changed.emit()
+        return existing,len(additions)
+    @Slot(str,result=bool)
+    def addTemplate(self,ident):
+        try:
+            existing,count=self.importTemplates([ident])
+            if existing[ident]!=self._selected:self.selectProfile(existing[ident])
+            self._message='已创建配置，可直接编辑' if count else '已打开现有配置，保留你的修改';self.stateChanged.emit();return True
+        except (ValueError,OSError,TypeError,KeyError) as error:self.receiveMessage(str(error),False);return False
+    @Slot(result=bool)
+    def addAllTemplates(self):
+        try:
+            _,count=self.importTemplates([row['id'] for row in self.templates]);self._message='已添加 '+str(count)+' 组配置，已有模板保持不变' if count else '8 组模板已添加，保留你的修改';self.stateChanged.emit();return True
+        except (ValueError,OSError,TypeError,KeyError) as error:self.receiveMessage(str(error),False);return False
     @Property('QVariantList',notify=changed)
     def profileOptions(self):
         return [{'id':'','label':'无 · 关闭映射','mode':'none'}]+[{'id':key,'label':('🎮 → ⌨  ' if profile['mode']=='pad_to_keys' else '⌨ → 🎮  ')+profile['name'],'mode':profile['mode']} for key,profile in self._profiles.items() if key in self._saved_ids]
@@ -269,7 +306,13 @@ class MappingController(QObject):
         if len(self._profiles)<=1:return
         old=self._selected;self.selectProfile(next(key for key in self._profiles if key!=old));self._profiles.pop(old);self.edit()
     @Slot()
-    def reset(self):self.setEnabled(False);self._draft=default_profile(self._draft['name']);self._target='A';self._route='default-w';self.edit()
+    def reset(self):
+        self.setEnabled(False)
+        if self._draft.get('templateId') in {row['id'] for row in self.templates}:
+            profile=make_template(self._draft['templateId'])
+            for key in ('name','padModel','slot'):profile[key]=self._draft[key]
+        else:profile=default_profile(self._draft['name'])
+        self._draft=profile;self._target='A';self._route='default-w';self.edit()
     @Slot(result=bool)
     def save(self):
         try:

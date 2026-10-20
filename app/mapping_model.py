@@ -72,6 +72,7 @@ def validate(profile):
     result.setdefault('padModel','xbox')
     if result['padModel'] not in ('xbox','ps','joycon'):raise ValueError('手柄模型无效')
     if not isinstance(result.get('name'),str) or not 1<=len(result['name'].strip())<=40:raise ValueError('配置名须为 1 到 40 个字')
+    if 'templateId' in result and not isinstance(result['templateId'],str):raise ValueError('模板标识无效')
     if result.get('mode') not in ('pad_to_keys','keys_to_pad'):raise ValueError('映射方向无效')
     if type(result.get('slot'))!=int or not -1<=result['slot']<=3:raise ValueError('手柄编号无效')
     forward=result.get('forward',{})

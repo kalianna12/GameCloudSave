@@ -37,11 +37,13 @@ ApplicationWindow {
     function choices() {
         var list=[]
         function visit(item) { if(!item.visible || !item.enabled) return;if(item.controllerSelectable) list.push(item);for(var i=0;i<item.children.length;i++) visit(item.children[i]) }
-        visit(contentItem);return list
+        visit(templates.visible ? templates.contentItem : contentItem)
+        if(templates.visible) visit(templates.footer)
+        return list
     }
     function controllerInput(command) {
         if(!navigateWithPad) return true
-        if(command==="back") { if(mapper.state.recording) mapper.cancelCapture();else close();return true }
+        if(command==="back") { if(templates.visible) templates.close();else if(mapper.state.recording) mapper.cancelCapture();else close();return true }
         if(mapper.state.recording) return true
         var current=activeFocusItem,list=choices()
         while(current && list.indexOf(current)<0) current=current.parent
@@ -56,11 +58,12 @@ ApplicationWindow {
             var cross=command==="left" || command==="right" ? Math.abs(dy) : Math.abs(dx)
             if(along>1 && along+cross*2<cost) { cost=along+cross*2;best=candidate }
         })
-        if(best) { best.forceActiveFocus();var scroll=window.scrollView;if(scroll) { var p=best.mapToItem(scroll.contentItem,0,0);if(p.y<0) scroll.contentItem.contentY+=p.y;else if(p.y+best.height>scroll.height) scroll.contentItem.contentY+=p.y+best.height-scroll.height } }
+        if(best) { best.forceActiveFocus();var scroll=templates.visible ? null : window.scrollView;if(scroll) { var p=best.mapToItem(scroll.contentItem,0,0);if(p.y<0) scroll.contentItem.contentY+=p.y;else if(p.y+best.height>scroll.height) scroll.contentItem.contentY+=p.y+best.height-scroll.height } }
         return true
     }
     component Action: AppButton { property bool controllerSelectable: true }
     component Caption: Label { color: Theme.secondary;Layout.fillWidth: true;wrapMode: Text.Wrap;font.pixelSize: 13 }
+    MappingTemplatesDialog { id: templates }
     component StickMeter: Item {
         property var values: [0,0]
         property string caption: ""
@@ -116,7 +119,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true;spacing: 12
                     Label { text: "手柄映射";color: Theme.text;font.pixelSize: 28;font.weight: Font.DemiBold }
-                    AppComboBox { objectName: "mappingProfile";Layout.preferredWidth: 190;model: window.mapper.profiles;textRole: "name";currentIndex: window.mapper.profiles.findIndex(function(p) { return p.id===window.mapper.profileId });onActivated: window.mapper.selectProfile(window.mapper.profiles[currentIndex].id) }
+                    AppComboBox { objectName: "mappingProfile";Layout.preferredWidth: 190;model: window.mapper.profiles;textRole: "name";wrapOptions: true;currentIndex: window.mapper.profiles.findIndex(function(p) { return p.id===window.mapper.profileId });onActivated: window.mapper.selectProfile(window.mapper.profiles[currentIndex].id);ToolTip.visible: hovered && !backend.controllerMode;ToolTip.text: currentText }
                     AppTextField { objectName: "mappingProfileName";Layout.preferredWidth: 180;text: window.profile.name;placeholderText: "配置名称";onEditingFinished: window.mapper.rename(text) }
                     Action { text: "配置管理";onClicked: profilesMenu.open();Menu { id: profilesMenu;MenuItem { text: "新建配置";onTriggered: window.mapper.createProfile() } MenuItem { text: "复制当前配置";onTriggered: window.mapper.duplicate() } MenuItem { text: "删除当前配置";enabled: window.mapper.profiles.length>1;onTriggered: window.mapper.deleteProfile() } } }
                     Item { Layout.fillWidth: true }
@@ -133,6 +136,7 @@ ApplicationWindow {
                     }
                     Switch { objectName: "mappingEnabled";text: "启用映射";checked: window.mapper.state.enabled;onToggled: window.mapper.setEnabled(checked) }
                     Item { Layout.fillWidth: true }
+                    Action { objectName: "mappingTemplates";text: "游戏模板";onClicked: templates.open() }
                     Action { objectName: "mappingDrivers";text: "驱动与组件";onClicked: { window.mapper.setup.detect();drivers.open() } }
                     Action { objectName: "mappingHelp";text: "帮助";onClicked: help.open() }
                 }
