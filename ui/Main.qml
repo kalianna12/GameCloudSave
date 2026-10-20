@@ -211,10 +211,10 @@ ApplicationWindow {
         if(homeVisible && command==="activate") { home.activateSelected();return true }
         var game=homeVisible ? home.selectedGame() : grid.count ? libraryModel.get(Math.max(0,grid.currentIndex)).record : null
         if(!game || !game.id) return false
-        if(command==="activate") controllerGameMenu.showGame(game)
+        if(command==="activate") win.launchGame(game)
         else if(command==="favorite") backend.toggleFavorite(game.id)
-        else if(command==="launch") win.launchGame(game)
-        else if(command==="history") controllerGameMenu.showGame(game)
+        else if(command==="menu") controllerGameMenu.showGame(game)
+        else if(command==="history") { selectGame(game);historyTabs.currentIndex=0;backend.history(game.id);historyDialog.open() }
         else return false
         return true
     }
@@ -289,7 +289,7 @@ ApplicationWindow {
         onSubmitted: function(value) { search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
         onCancelled: search.forceActiveFocus()
     }
-    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: true; onLaunchRequested: function(game) { win.launchGame(game) } }
+    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: true; onLaunchRequested: function(game) { win.launchGame(game) } onSettingsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,0) } }
     function launchGame(game) {
         if(!game || !game.id || backend.busy || launchTransition.running) return
         launchTransition.begin(game,libraryDesign)
@@ -377,8 +377,12 @@ ApplicationWindow {
                 AppComboBox { id: seriesControl; objectName: "seriesFilter"; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
-            Flow {
-                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;spacing: 10
+            Item {
+                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;implicitWidth: actionsFlow.naturalWidth;implicitHeight: actionsFlow.height
+                Flow {
+                id: actionsFlow;anchors.right: parent.right;spacing: 10
+                readonly property real naturalWidth: { var total=0,count=0;for(var i=0;i<children.length;i++) if(children[i].visible) { total+=children[i].width;count++ };return total+Math.max(0,count-1)*spacing }
+                width: Math.min(parent.width,naturalWidth);height: childrenRect.height
                 AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; width: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppComboBox {
                     id: mappingProfileControl;objectName: "homeMappingProfile";width: 240;model: backend.mapping.profileOptions;textRole: "label";wrapOptions: true
@@ -390,6 +394,7 @@ ApplicationWindow {
                 AppButton { id: recommendationsControl; objectName: "recommendationsControl"; text: "游戏推荐"; flat: true; visible: win.alternativeDesign && backend.settings.recommendations_enabled!==false; onClicked: recommendationDialog.open() }
                 AppButton { id: personalControl; objectName: "personalControl"; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
                 AppButton { id: fullscreenControl; objectName: "fullscreenControl"; text: win.fullScreenMode ? "退出全屏" : "全屏"; flat: true; onClicked: win.toggleFullScreen(); ToolTip.visible: hovered && !backend.controllerMode; ToolTip.text: "F11 切换全屏" }
+                }
             }
         }
         Loader {
@@ -487,7 +492,7 @@ ApplicationWindow {
             Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
             Label { objectName: "watchStatus"; visible: backend.settings.watch; text: backend.watchInfo.message; color: backend.watchInfo.failed ? Theme.accent : Theme.secondary; font.pixelSize: 11; Layout.minimumWidth: 0; Layout.maximumWidth: win.width<1100 ? 130 : 300; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && watchStatusHover.hovered; ToolTip.text: text+"\n点击调整自动备份、上传和保留份数"; HoverHandler { id: watchStatusHover; cursorShape: Qt.PointingHandCursor } TapHandler { onTapped: win.openSettingsPage(1) } }
             AppButton { visible: backend.watchInfo.failed>0; text: "重试自动备份/上传"; enabled: backend.settings.watch && !backend.watchInfo.working; onClicked: backend.retryAutoBackups() }
-            Label { visible: backend.gamepadConnected; text: (win.libraryDesign==="atlas" ? "右摇杆 缩放  " : "")+"A 查看  B 返回  X 收藏  Y 存档  Menu 启动"; color: Theme.secondary; font.pixelSize: 11 }
+            Label { visible: backend.gamepadConnected; text: (win.libraryDesign==="atlas" ? "右摇杆 缩放  " : backend.settings.controller_tilt!==false ? "右摇杆 倾斜  " : "")+"A 启动  B 返回  X 收藏  Y 存档  Menu 游戏设置"; color: Theme.secondary; font.pixelSize: 11 }
         }
     }
 
@@ -644,6 +649,7 @@ ApplicationWindow {
     }
     Dialog {
         id: historyDialog; objectName: "historyDialog"; title: activeName + " · 存档记录"; anchors.centerIn: parent; width: Math.min(900,win.width-60); height: Math.min(650,win.height-60); modal: true
+        exit: Transition {}
         Overlay.modal: Rectangle { color: "#bb000000" }
         contentItem: ColumnLayout {
             RowLayout {

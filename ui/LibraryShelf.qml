@@ -55,7 +55,14 @@ Item {
     // Section subtitles repeat browsing instructions; keep the cover shelf quiet.
     function selectedGame() { return section.kind==="tiles" || section.kind==="store" ? null : selectedRecord }
     function selectFirst() { horizontal.stop();list.currentIndex=items.count ? 0 : -1;list.positionViewAtBeginning() }
-    function activateSelected() { if(!items.count) return;if(section.kind==="store") backend.recommendations.open(selectedRecord.id);else if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else detailsRequested(selectedRecord) }
+    function activateSelected() { if(!items.count) return;if(section.kind==="store") backend.recommendations.open(selectedRecord.id);else if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else launchRequested(selectedRecord) }
+    function selectionSceneX() { return list.mapToItem(null,list.currentIndex*(tileWidth+cardGap)-list.contentX+tileWidth/2,0).x }
+    function selectAtSceneX(sceneX) {
+        if(!items.count) return
+        var x=list.mapFromItem(null,sceneX,0).x+list.contentX
+        var next=Math.max(0,Math.min(items.count-1,Math.round((x-tileWidth/2)/(tileWidth+cardGap))))
+        moveSelection(next-list.currentIndex)
+    }
     function moveSelection(direction) {
         if(!items.count) return
         var previousIndex=list.currentIndex
@@ -79,7 +86,7 @@ Item {
         onLaunchRequested: function(game) { shelf.launchRequested(game) }
         onCloudRequested: function(game) { shelf.cloudRequested(game) }
     }
-    NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 180 : 0; easing.type: Easing.OutCubic }
+    NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 115 : 0; easing.type: Easing.OutCubic }
     ListView {
         id: list; objectName: "shelf-"+shelf.section.id
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }

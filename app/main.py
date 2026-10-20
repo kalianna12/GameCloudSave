@@ -34,6 +34,7 @@ class Bridge(QObject):
     notificationReady = Signal(str,str,bool)
     operationCompleted = Signal(str,bool)
     inputModeChanged = Signal()
+    controllerTiltChanged=Signal()
     mediaReady = Signal(object)
     mediaChanged = Signal()
     enrichmentChanged = Signal()
@@ -385,10 +386,21 @@ class Bridge(QObject):
     def setControllerMode(self, value):
         if self._controller_mode != value:
             self._controller_mode=value
+            if not value:self.setControllerTilt(0.,0.)
             self.inputModeChanged.emit()
+    @Property('QVariantList',notify=controllerTiltChanged)
+    def controllerTilt(self):return list(getattr(self,'_controller_tilt',(0.,0.)))
+    @Slot(float,float)
+    def setControllerTilt(self,x,y):
+        values=(max(-1.,min(1.,float(x))),max(-1.,min(1.,float(y))))
+        if values!=getattr(self,'_controller_tilt',(0.,0.)):
+            self._controller_tilt=values;self.controllerTiltChanged.emit()
     @Slot()
     def navigationMoved(self):
         if self.input_feedback:self.input_feedback.play()
+    @Slot(str,int)
+    def previewNavigationSound(self,style,volume):
+        if self.input_feedback:self.input_feedback.play('confirm',style,volume)
     @Slot(result=bool)
     def popupActive(self):
         return self.active_popup() is not None
@@ -396,6 +408,9 @@ class Bridge(QObject):
     def active_popup(self):
         window=QApplication.focusWindow()
         item=window.activeFocusItem() if window is not None and hasattr(window,'activeFocusItem') else None
+        cached=getattr(self,'_popup_cache',None)
+        if cached and cached[0] is window and cached[3] is item and time.perf_counter()-cached[1]<.008:
+            if cached[2] is None or cached[2].property('visible'):return cached[2]
         owner=item
         while owner is not None:
             if owner.inherits('QQuickPopup') and owner.property('visible'):return owner
@@ -407,7 +422,9 @@ class Bridge(QObject):
                 owner=popup.parent()
                 while owner is not None and not owner.inherits('QQuickWindow'):owner=owner.parent()
                 if owner==window:candidates.append(popup)
-        return candidates[-1] if candidates else None
+        result=candidates[-1] if candidates else None
+        self._popup_cache=(window,time.perf_counter(),result,item)
+        return result
 
     @Slot(str,result='QVariantMap')
     def matchResult(self,ident): return next((row for row in self._matches if row['id']==ident),{})
@@ -1530,7 +1547,14 @@ def main():
         if not value:bridge.setControllerMode(False)
         bridge.changed.emit()
     controller.connectedChanged.connect(connected)
-    controller.command.connect(lambda command:dispatch(app,root_window,bridge,command))
+    controller.command.connect(lambda command:dispatch(app,root_window,bridge,command) if command not in ('zoom-in','zoom-out') or root_window.property('libraryDesign')=='atlas' else None)
+    def tilt(x,y):
+        if app.focusWindow() is root_window and root_window.isActive() and root_window.property('libraryDesign')!='atlas':
+            if x or y:bridge.setControllerMode(True)
+            bridge.setControllerTilt(x,y)
+        else:bridge.setControllerTilt(0.,0.)
+    controller.tilt.connect(tilt)
+    app.applicationStateChanged.connect(lambda state:bridge.setControllerTilt(0.,0.) if state!=Qt.ApplicationActive else None)
     if args.startup_report:
         def ready():
             Path(args.startup_report).write_text(str(round(time.perf_counter()-_PROCESS_START,3)),encoding='utf-8')

@@ -7,7 +7,7 @@ from mapping_model import default_profile,validate,direction_keys,token_name,PAD
 _ARROWS={'DUp':(38,'菜单向上'),'DDown':(40,'菜单向下'),'DLeft':(37,'菜单向左'),'DRight':(39,'菜单向右')}
 _TEMPLATES=(
     {'id':'vn','name':'01 · VN / Galgame 阅读型','summary':'双摇杆鼠标 · 确认、快进、历史与菜单',
-     'note':'自动 A 需游戏支持；存读档从菜单操作。Ren’Py 默认没有自动快捷键，Space 是推进对话，不是自动模式。',
+     'note':'自动快捷键依游戏。若光标与选项来回跳动，请关闭游戏原生手柄或另一套映射；本方案不屏蔽实体手柄。',
      'left':('mouse','鼠标定位'),'right':('mouse','鼠标微调'),'leftSpeed':850,'rightSpeed':380,
      'buttons':dict(_ARROWS,A=(13,'确认 / 推进'),B=(27,'取消 / 返回'),X=(162,'按住快进'),Y=(32,'推进对话'),
           LB=('wheelup','历史 / 回看'),RB=(65,'自动（需支持 A 键）'),LT=('middle','隐藏文本（依游戏）'),RT=('left','鼠标确认'),
@@ -65,6 +65,7 @@ def make_template(ident):
     spec=next((row for row in _TEMPLATES if row['id']==ident),None)
     if spec is None:raise ValueError('游戏模板不存在')
     profile=default_profile(spec['name']);profile['templateId']=ident
+    if ident=='vn':profile['forward']['mouseMode']='absolute'
     profile['forward']['buttons']={button:[('K:'+str(key)) if isinstance(key,int) else 'M:'+key] for button,(key,_) in spec['buttons'].items()}
     for stick,field in (('LS','left'),('RS','right')):
         cfg=profile['forward']['sticks'][stick];cfg['mode']=spec[field][0]

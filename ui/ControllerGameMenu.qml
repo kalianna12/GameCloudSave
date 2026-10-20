@@ -6,12 +6,15 @@ Dialog {
     id: menu
     objectName: "controllerGameMenu"
     modal: true; focus: true; closePolicy: Popup.NoAutoClose
+    enter: Transition { NumberAnimation { property: "opacity";from: 0;to: 1;duration: Theme.motion ? 80 : 0 } }
+    exit: Transition {}
     Overlay.modal: Rectangle { color: "#bb000000" }
     property var game: ({})
     property int selectedAction: 0
     property bool useLaunchTransition: false
     signal launchRequested(var game)
-    readonly property var actions: ["启动游戏",game.favorite ? "取消收藏" : "收藏","本地备份","本地备份并上传","关闭"]
+    signal settingsRequested(var game)
+    readonly property var actions: ["启动游戏",game.favorite ? "取消收藏" : "收藏","本地备份","本地备份并上传","游戏设置","关闭"]
     title: game.name || "游戏"
     function showGame(record) { game=record;selectedAction=0;open() }
     function choose(index) {
@@ -19,9 +22,10 @@ Dialog {
         else if(index===1) { backend.toggleFavorite(game.id);game=Object.assign({},game,{favorite:!game.favorite}) }
         else if(index===2) backend.localSave(game.id)
         else if(index===3) backend.cloudSave(game.id)
-        if(index===0 || index===4) close()
+        else if(index===4) { close();settingsRequested(game) }
+        if(index===0 || index===5) close()
     }
-    function usable(index) { return index===4 || !backend.busy && (index<2 || !!game.saveSet && (index!==3 || !!backend.settings.cloud_folder)) }
+    function usable(index) { return index>=4 || !backend.busy && (index<2 || !!game.saveSet && (index!==3 || !!backend.settings.cloud_folder)) }
     function controllerInput(command) {
         if(!visible) return false
         if(command==="back") close()

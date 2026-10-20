@@ -6,7 +6,7 @@ from services import ROOT,Store
 from input_mapping import MappingController
 from mapping_native import WindowsInput,KeyOutput,VirtualPad,RawMouse
 from mapping_model import default_profile,Forward,Reverse
-from PySide6.QtCore import Qt,QEvent
+from PySide6.QtCore import Qt,QEvent,QPoint
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication,QWidget
 from PySide6.QtTest import QTest
@@ -75,6 +75,15 @@ try:
     report['native_recording_enter_arrows_mouse_wheel_no_ui_leak']=True
     QTest.qWait(220)  # Let the captured wheel gesture's tail expire.
     if '--capture-only' in sys.argv:
+        assert transport.foreground()[1]==os.getpid(),'Absolute pointer test lost focus; no input sent'
+        origin=window.mapToGlobal(window.rect().center());QCursor.setPos(origin);QTest.qWait(30);physical=transport.pointer()
+        output.update(set(),[12,6],time.perf_counter(),mouse_mode='absolute');QTest.qWait(30)
+        first=transport.pointer();assert abs(first[0]-physical[0]-12)<=1 and abs(first[1]-physical[1]-6)<=1,(physical,first)
+        QCursor.setPos(origin+QPoint(100,50));QTest.qWait(20)
+        assert transport.foreground()[1]==os.getpid(),'Warp test lost focus; no input sent'
+        output.update(set(),[12,6],time.perf_counter(),mouse_mode='absolute');QTest.qWait(30)
+        second=transport.pointer();assert abs(second[0]-physical[0]-24)<=1 and abs(second[1]-physical[1]-12)<=1,(physical,second)
+        output.release();report['native_absolute_menu_cursor_ignores_warp']=True
         print('PASS: owned-window native keyboard/mouse/wheel capture without UI leakage: '+json.dumps(report),flush=True)
         raise SystemExit(0)
     assert transport.foreground()[1]==os.getpid(),'Target focus changed; mouse test refused'

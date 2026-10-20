@@ -39,7 +39,7 @@ Dialog {
         else if(command==="activate") press(selectedKey)
         else if(command==="favorite") value=value.slice(0,-1)
         else if(command==="history") { words=!words;page=0;selectedKey=0 }
-        else if(command==="launch") finish()
+        else if(command==="menu") finish()
         else if(command==="left" || command==="previous") selectedKey=Math.max(0,selectedKey-1)
         else if(command==="right" || command==="next") selectedKey=Math.min(keyLabels.length-1,selectedKey+1)
         else if(command==="up") selectedKey=Math.max(0,selectedKey-columns)

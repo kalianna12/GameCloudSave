@@ -81,18 +81,11 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         assert controller.currentChord==['K:69','K:124']
         choose_extra('mappingExtraKey','K:124');assert controller.currentChord==['K:69']
         assert not window.findChild(QObject,'mappingStickExtraKey').property('enabled')
-        window.setProperty('navigateWithPad',True);choice=window.findChild(QObject,'mappingExtraKey');choice.forceActiveFocus()
-        for command in ('activate','down','activate'):
-            QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command));spin(40)
-        spin(120)
-        assert controller.currentChord==['K:69','K:66'],controller.currentChord
-        choice.forceActiveFocus()
-        for command in ('activate','back'):
-            QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command));spin(50)
-        spin(120)
-        assert window.isVisible()
-        assert not QMetaObject.invokeMethod(choice,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant','up'))
-        window.setProperty('navigateWithPad',False)
+        choice=window.findChild(QObject,'mappingExtraKey');choice.forceActiveFocus()
+        for command in ('activate','down','back','menu'):
+            QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command));spin(25)
+        assert controller.currentChord==['K:69'] and window.isVisible()
+        choose_extra('mappingExtraKey','K:66');assert controller.currentChord==['K:69','K:66']
         def key(token):return next(item for item in walk(window.contentItem()) if item.property('token')==token and item.isVisible())
         drag(window,key('K:65'),key('P:B'))
         assert controller.profile['forward']['buttons']['B']==['K:65'],controller.profile['forward']['buttons']['B']

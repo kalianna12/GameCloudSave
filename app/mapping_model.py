@@ -56,7 +56,7 @@ def default_profile(name='默认配置'):
     stick=lambda mode:{'mode':mode,'deadzone':.18,'threshold':.72,'speed':1400,'curve':1.5,'smoothing':20,
                        'light':direction_keys('wasd'),'hard':direction_keys('wasd'),'lightExtra':[],'hardExtra':['K:160'],
                        'wheelLight':3,'wheelHard':12,'wheelInvert':False}
-    return {'name':name,'mode':'pad_to_keys','padModel':'xbox','slot':-1,'forward':{'buttons':{'A':['K:32'],'B':['K:27'],'X':['K:69'],'Y':['K:82'],
+    return {'name':name,'mode':'pad_to_keys','padModel':'xbox','slot':-1,'forward':{'mouseMode':'relative','buttons':{'A':['K:32'],'B':['K:27'],'X':['K:69'],'Y':['K:82'],
             'LT':['M:right'],'RT':['M:left']},'sticks':{'LS':stick('keys'),'RS':stick('mouse')}},
             'reverse':{'routes':[{'id':'default-w','source':['K:87'],'targets':['P:LY+']},{'id':'default-s','source':['K:83'],'targets':['P:LY-']},
                        {'id':'default-a','source':['K:65'],'targets':['P:LX-']},{'id':'default-d','source':['K:68'],'targets':['P:LX+']},
@@ -77,6 +77,8 @@ def validate(profile):
     if type(result.get('slot'))!=int or not -1<=result['slot']<=3:raise ValueError('手柄编号无效')
     forward=result.get('forward',{})
     if not isinstance(forward,dict) or not isinstance(forward.get('sticks'),dict):raise ValueError('摇杆配置无效')
+    forward.setdefault('mouseMode','absolute' if result.get('templateId')=='vn' else 'relative')
+    if forward['mouseMode'] not in ('relative','absolute'):raise ValueError('鼠标输出方式无效')
     buttons=forward.get('buttons',{})
     if not isinstance(buttons,dict) or any(key not in PAD_BUTTONS for key in buttons):raise ValueError('手柄按键无效')
     forward['buttons']={key:chord(value) for key,value in buttons.items()}

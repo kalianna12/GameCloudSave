@@ -6,10 +6,9 @@ def dispatch(app,root,bridge,command):
     window=app.focusWindow()
     if window is None:return
     mapping=getattr(bridge,'mapping',None)
-    if mapping is not None and window is mapping._host and mapping._recording:
-        if command=='back':mapping.cancelCapture()
-        return
+    if mapping is not None and window is mapping._host:return
     bridge.setControllerMode(True)
+    if bridge.input_feedback and command in ('activate','menu','back'):bridge.input_feedback.play('back' if command=='back' else 'open' if command=='menu' else 'confirm')
     popup=bridge.active_popup()
     if popup is not None and popup.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
         if QMetaObject.invokeMethod(popup,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
@@ -43,7 +42,7 @@ class State(ctypes.Structure):
     _fields_=[('packet',ctypes.c_uint32),('pad',Pad)]
 
 class Mapper:
-    BUTTONS={0x1000:'activate',0x2000:'back',0x4000:'favorite',0x8000:'history',0x100:'previous',0x200:'next',0x10:'launch'}
+    BUTTONS={0x1000:'activate',0x2000:'back',0x4000:'favorite',0x8000:'history',0x100:'previous',0x200:'next',0x10:'menu'}
     def __init__(self):self.reset()
     def reset(self):self.buttons=0;self.direction='';self.repeat_at=0;self.zoom_direction='';self.zoom_repeat_at=0
     def read(self,pad,now):
@@ -57,10 +56,10 @@ class Mapper:
         elif max(abs(pad.lx),abs(pad.ly))>7849:
             direction=('right' if pad.lx>0 else 'left') if abs(pad.lx)>=abs(pad.ly) else ('up' if pad.ly>0 else 'down')
         if direction!=self.direction:
-            self.direction=direction;self.repeat_at=now+.35
+            self.direction=direction;self.repeat_at=now+.28
             if direction:commands.append(direction)
         elif direction and now>=self.repeat_at:
-            commands.append(direction);self.repeat_at=now+.12
+            commands.append(direction);self.repeat_at=now+.085
         # Independent from left-stick/D-pad navigation; hysteresis prevents
         # tiny stick drift from repeatedly starting or reversing zoom.
         zoom='zoom-in' if pad.ry>10000 else 'zoom-out' if pad.ry< -10000 else ''
@@ -75,10 +74,12 @@ class Mapper:
 
 class Gamepad(QObject):
     command=Signal(str)
+    tilt=Signal(float,float)
     connectedChanged=Signal(bool)
     def __init__(self,app,enabled=lambda:True,exclude=lambda:-1):
         super().__init__(app);self.app=app;self.enabled=enabled;self.exclude=exclude;self.slot=None;self.mapper=Mapper();self.query=None;self.primed=False
-        self.timer=QTimer(self);self.timer.timeout.connect(self.poll)
+        self._tilt=(0.,0.)
+        self.timer=QTimer(self);self.timer.setTimerType(Qt.PreciseTimer);self.timer.timeout.connect(self.poll)
         for library in ('xinput1_4.dll','xinput9_1_0.dll'):
             try:
                 function=ctypes.WinDLL(library).XInputGetState
@@ -89,8 +90,9 @@ class Gamepad(QObject):
         if self.query:self.sync()
     def sync(self,*args):
         self.mapper.reset();self.primed=False
+        if self._tilt!=(0.,0.):self._tilt=(0.,0.);self.tilt.emit(0.,0.)
         if self.query and self.enabled() and self.app.applicationState()==Qt.ApplicationActive:
-            self.timer.start(33 if self.slot is not None else 1500)
+            self.timer.start(16 if self.slot is not None else 500)
         else:
             self.timer.stop()
             if not self.enabled() and self.slot is not None:self.slot=None;self.connectedChanged.emit(False)
@@ -104,9 +106,13 @@ class Gamepad(QObject):
             if self.query(index,ctypes.byref(state))==0:
                 if self.slot is None:
                     self.slot=index;self.mapper.reset();self.mapper.buttons=state.pad.buttons
-                    self.timer.start(33);self.connectedChanged.emit(True)
+                    self.timer.start(16);self.connectedChanged.emit(True)
                 if not self.primed:self.mapper.buttons=state.pad.buttons;self.primed=True
+                def axis(value):return round((1 if value>0 else -1)*max(0,(abs(value)/32767-.12)/.88),3)
+                tilt=(axis(state.pad.rx),axis(state.pad.ry))
+                if tilt!=self._tilt:self._tilt=tilt;self.tilt.emit(*tilt)
                 for command in self.mapper.read(state.pad,time.monotonic()):self.command.emit(command)
                 return
         if self.slot is not None:self.connectedChanged.emit(False)
-        self.slot=None;self.mapper.reset();self.timer.start(1500)
+        self.slot=None;self.mapper.reset();self.timer.start(500)
+        if self._tilt!=(0.,0.):self._tilt=(0.,0.);self.tilt.emit(0.,0.)

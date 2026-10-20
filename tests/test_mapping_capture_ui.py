@@ -87,12 +87,14 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             arm();y=flick.property('contentY');QTest.mouseClick(window,button,pos=QPoint(500,400));spin(180)
             assert not c.state['recording'] and c.currentChord==[token],(button,c.currentChord)
             unchanged(y)
-        # B cancels only recording; directions/A cannot navigate the popup.
-        arm();window.setProperty('navigateWithPad',True);window.requestActivate();spin(100)
-        for command in ('up','down','left','right','activate'):
+        # No gamepad command operates this editor, including B/Menu.
+        arm();window.requestActivate();spin(100)
+        for command in ('up','down','left','right','activate','back','menu'):
             dispatch(app,root,backend,command);assert c.state['recording']
-        dispatch(app,root,backend,'back');spin(180)
-        assert not c.state['recording'] and window.isVisible() and not activations
+        c.receiveSample({'buttons':['B','Start'],'LS':[0,0],'RS':[0,0]})
+        assert c.state['recording'] and c._capture_pad==['P:B','P:Start']
+        c.receiveSample({'buttons':[],'LS':[0,0],'RS':[0,0]});spin(160)
+        assert not c.state['recording'] and c.target=='Start' and window.isVisible() and not activations
         arm();before=list(c.currentChord);QTest.mouseClick(window,Qt.LeftButton,pos=point(cancel));spin(180)
         assert not c.state['recording'] and c.currentChord==before and activations==['cancel']
         # Cancel while a key is held: its repeats/release must not reach controls.
@@ -108,6 +110,14 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         flick.setProperty('contentY',max(0,flick.property('contentY')+point(record).y()-500));spin(30)
         QTest.mouseClick(window,Qt.LeftButton,pos=point(record));spin(60);QTest.keyClick(window,Qt.Key_Return);spin(180)
         assert c.sourceChord==['K:13'] and c.currentChord==['P:A'] and not activations
+        c.record();c.receiveSample({'buttons':['B','Back','Start'],'LS':[0,0],'RS':[0,0]})
+        c.receiveSample({'buttons':[],'LS':[0,0],'RS':[0,0]});spin(80)
+        assert c.sourceChord==['K:13'] and set(c.currentChord)=={'P:B','P:Back','P:Start'}
+        c.record();c.receiveSample({'buttons':[],'LS':[0,0],'RS':[.8,.8]})
+        c.receiveSample({'buttons':[],'LS':[0,0],'RS':[0,0]});spin(80)
+        assert set(c.currentChord)=={'P:RX+','P:RY+'}
+        c.record();c.receiveSample({'buttons':[],'LS':[0,0],'RS':[0,0],'_edges':[{'token':'P:B','down':True,'at':time.time()},{'token':'P:B','down':False,'at':time.time()}]});spin(80)
+        assert c.currentChord==['P:B'] and not c.state['recording']
         # Normal wheel events reach preview again; clicks operate controls again.
         c.setWheelTarget('M:wheeldown','P:RY-');spin(220);wheel(-120);spin(40)
         assert c.live.get('virtualAxes',[0,0,0,0])[3]<0,c.live

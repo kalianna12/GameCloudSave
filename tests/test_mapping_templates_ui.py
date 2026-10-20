@@ -67,13 +67,14 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
         c.selectTarget('A');c.setChord(['K:70']);click('mappingTemplates')
         assert find('mappingAddTemplate').property('text')=='打开配置'
         click('mappingAddTemplate');assert c.currentChord==['K:70'] and c.state['dirty']
-        window.setProperty('navigateWithPad',True);click('mappingTemplates');find('mappingTemplate-vn').forceActiveFocus();spin(20)
+        click('mappingTemplates');find('mappingTemplate-vn').forceActiveFocus();spin(20)
         QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant','down'));spin(40)
-        assert dialog.property('selection')==1,dialog.property('selection')
+        assert dialog.property('selection')==0,dialog.property('selection')
         QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant','back'));spin(120)
-        assert not dialog.property('visible') and window.isVisible()
+        assert dialog.property('visible') and window.isVisible()
+        QMetaObject.invokeMethod(dialog,'close');spin(120)
         errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Cannot assign','Unable to assign','Binding loop','recursive rearrange'))]
         assert not errors,errors
     finally:
         window.close();spin(100);bridge.shutdownWatch();bridge.pool.shutdown(wait=True);shiboken6.delete(engine)
-print('PASS: eight full previews, small/light layout, single and batch import, saved home availability, customized/unsaved preservation and controller modal navigation; isolated data, no injection')
+print('PASS: eight full previews, small/light layout, single and batch import, saved home availability, customized/unsaved preservation and gamepad-inert editor; isolated data, no injection')

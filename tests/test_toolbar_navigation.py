@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         root.resize(1100,800);spin(80)
         invoke(root,'focusFirstContent');pad('up');expect('homeMappingProfile');pad('up');expect('installedFilter')
         pad('down');expect('homeMappingProfile');pad('down');content()
-        focus('homeMappingProfile');pad('up');expect('platformFilter');pad('down');expect('homeMappingProfile')
+        focus('homeMappingProfile');pad('up');expect('sourceFilter');pad('down');expect('homeMappingProfile')
         pad('down');content();pad('up');expect('homeMappingProfile')
         focus('platformFilter');pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
         focus('sourceFilter')
@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         pad('back');spin(50);pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
         focus('homeMappingProfile');pad('activate');spin(70);pad('down')
         assert not root.property('fullScreenMode') and not backend.mapping.state['enabled']
-        pad('back');spin(70);expect('homeMappingProfile');pad('up');expect('platformFilter')
+        pad('back');spin(70);expect('homeMappingProfile');pad('up');expect('sourceFilter')
         # At 900px the tools Flow wraps again: up/down reaches that third row too.
         invoke(root,'navigate','all','');root.resize(900,750);spin(120)
         assert center(controls['fullscreenControl']).y()>center(controls['librarySort']).y()+15

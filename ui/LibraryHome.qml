@@ -36,6 +36,7 @@ FocusScope {
     function activateSelected() { var shelf=currentShelf();if(shelf) shelf.activateSelected() }
     function navigateFocus(direction) {
         var previousSection=focusedSection
+        var previousShelf=currentShelf(),sceneX=previousShelf ? previousShelf.selectionSceneX() : 0
         if(currentFocus && currentFocus!==home) currentFocus.focus=false
         home.forceActiveFocus()
         if(direction==="up" || direction==="down") focusedSection=Math.max(0,Math.min(rows.count-1,focusedSection+(direction==="up" ? -1 : 1)))
@@ -44,10 +45,11 @@ FocusScope {
         vertical.stop();list.currentIndex=focusedSection;list.positionViewAtIndex(focusedSection,ListView.Contain)
         var destination=list.contentY
         list.contentY=previousY
-        if(Math.abs(destination-previousY)>.5) { vertical.duration=Theme.motion ? 190 : 0;vertical.to=destination;vertical.restart() }
+        if(Math.abs(destination-previousY)>.5) { vertical.duration=Theme.motion ? 120 : 0;vertical.to=destination;vertical.restart() }
         else list.contentY=destination
         if(previousSection!==focusedSection) backend.navigationMoved()
         var shelf=home.currentShelf()
+        if(shelf && previousSection!==focusedSection) shelf.selectAtSceneX(sceneX)
         if(shelf && (direction==="left" || direction==="right")) shelf.moveSelection(direction==="left" ? -1 : 1)
     }
     signal browseRequested(string mode,string value)

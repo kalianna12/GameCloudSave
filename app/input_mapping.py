@@ -30,6 +30,7 @@ class MappingController(QObject):
         self._enabled=False;self._editor=False;self._message='映射未启用';self._sample={};self._recording=False;self._capture=[];self._capture_held=set();self._capture_kind='binding'
         self._host=None;self._runtime_host=None;self._raw=None;self._thread=None;self._closed=False;self._stop=threading.Event();self._wake=threading.Event();self._lock=threading.Lock();self._revision=0
         self._capture_draining=set();self._capture_cancel_mouse=False;self._wheel_guard_until=0
+        self._capture_pad=[];self._record_pad_state=set()
         self._transport_factory=transport_factory;self._virtual_factory=virtual_factory
         self._virtual_index=-1
         self._virtual_ready=None
@@ -139,7 +140,7 @@ class MappingController(QObject):
         from mapping_native import virtual_available
         if self._virtual_ready is None:self._virtual_ready=virtual_available()
         return {'enabled':self._enabled,'editor':self._editor,'message':self._message,'recording':self._recording,
-                'captured':[token_name(t) for t in self._capture],'sample':self._sample,'events':self._events,'virtualReady':self._virtual_ready,'dirty':self._dirty}
+                'captured':[self.label(t) for t in self._capture_pad]+[token_name(t) for t in self._capture],'sample':self._sample,'events':self._events,'virtualReady':self._virtual_ready,'dirty':self._dirty}
     @Property('QVariantList',constant=True)
     def allKeys(self):
         order=list(dict.fromkeys([*range(65,91),*range(48,58),*range(112,136),*sorted(KEY_NAMES),*range(7,255)]))
@@ -163,6 +164,15 @@ class MappingController(QObject):
         return token_name(token)
     @Slot()
     def setupChanged(self):self._virtual_ready=None;self.stateChanged.emit()
+    @Slot()
+    def openCompatibilityTool(self):
+        from pathlib import Path
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        base=Path(os.environ.get('ProgramFiles',r'C:\Program Files'))
+        candidates=[base/'Nefarius Software Solutions/HidHide/x64/HidHideClient.exe',base/'Nefarius Software Solutions/HidHide/HidHideClient.exe',base/'Nefarius Software Solutions e.U/HidHideClient/HidHideClient.exe',base/'Nefarius Software Solutions/HidHideClient/HidHideClient.exe']
+        target=next((path for path in candidates if path.is_file()),None)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)) if target else QUrl('https://docs.nefarius.at/projects/HidHide/Simple-Setup-Guide/'))
     def route(self):return next((row for row in self._draft['reverse']['routes'] if row['id']==self._route),{})
     def binding(self):
         if self._target in PAD_BUTTONS:return self._draft['forward']['buttons'],self._target
@@ -251,7 +261,7 @@ class MappingController(QObject):
         if self._drop_target and (not target or target==self._drop_target):self._drop_target='';self._drop_hint='';self.dropHintChanged.emit()
     @Slot(str,str,'QVariant')
     def setOption(self,section,key,value):
-        owner=self._draft['forward']['sticks'].get(section) if section in ('LS','RS') else self._draft['reverse'] if section=='reverse' else None
+        owner=self._draft['forward']['sticks'].get(section) if section in ('LS','RS') else self._draft['reverse'] if section=='reverse' else self._draft['forward'] if section=='forward' else None
         if owner is None or key not in owner or isinstance(owner[key],dict):return
         old=copy.deepcopy(owner[key]);owner[key]=value
         try:validate(self._draft);self.edit()
@@ -351,7 +361,7 @@ class MappingController(QObject):
     def configureRaw(self,profile):
         from mapping_native import RawMouse
         cfg=profile['reverse']
-        needed=profile['mode']=='keys_to_pad' and (cfg['mouse']!='disabled' or any(route['targets'] and any(t in ('M:wheelup','M:wheeldown') for t in route['source']) for route in cfg['routes']))
+        needed=(profile['mode']=='pad_to_keys' and profile['forward'].get('mouseMode')=='absolute') or profile['mode']=='keys_to_pad' and (cfg['mouse']!='disabled' or any(route['targets'] and any(t in ('M:wheelup','M:wheeldown') for t in route['source']) for route in cfg['routes']))
         if not needed:
             if self._raw:self._raw.stop()
             return
@@ -369,7 +379,7 @@ class MappingController(QObject):
                 if self._draft['mode']=='keys_to_pad':
                     from mapping_native import virtual_available
                     if not virtual_available():raise ValueError('键鼠→手柄需要 vgamepad 与 ViGEmBus；请查看映射帮助')
-                    self.configureRaw(self._draft)
+                self.configureRaw(self._draft)
                 # The runtime always reads a validated immutable saved copy.
                 if not self.save():
                     if self._raw:self._raw.stop()
@@ -384,21 +394,39 @@ class MappingController(QObject):
     @Slot()
     @Slot(str)
     def record(self,kind='binding'):
-        self._recording=True;self._capture=[];self._capture_held=set();self._capture_kind=kind;self.stateChanged.emit()
+        self._recording=True;self._capture=[];self._capture_pad=[];self._capture_held=set();self._capture_kind=kind
+        self._record_pad_state=self.padCaptureInputs(self._sample);self.stateChanged.emit()
     @Slot()
     def cancelCapture(self):
-        self._capture_draining.update(self._capture_held)
+        self._capture_draining.update(token for token in self._capture_held if not token.startswith('P:'))
         self._recording=False;self._capture_held.clear();self.stateChanged.emit()
     def finishCapture(self):
-        if not self._capture or self._capture_held:return
+        if not (self._capture or self._capture_pad) or self._capture_held:return
         self._recording=False
         if self._capture_kind=='lightModifier':self.setOption('reverse','lightModifier',self._capture)
-        elif self._draft['mode']=='pad_to_keys':self.setChord(self._capture)
+        elif self._draft['mode']=='pad_to_keys':
+            if self._capture_pad:
+                last=self._capture_pad[-1][2:]
+                if last in PAD_BUTTONS:self.selectTarget(last)
+                else:
+                    stick='LS' if last[0]=='L' else 'RS';tokens=set(self._capture_pad)
+                    direction=('N' if 'P:'+last[0]+'Y+' in tokens else 'S' if 'P:'+last[0]+'Y-' in tokens else '')+('E' if 'P:'+last[0]+'X+' in tokens else 'W' if 'P:'+last[0]+'X-' in tokens else '')
+                    if direction:self.selectTarget(stick+'.light.'+direction)
+            if self._capture:self.setChord(self._capture)
         else:
-            route=self.route()
-            if route:route['source']=list(self._capture);self.edit()
-            else:self.selectSource(self._capture)
+            if self._capture:
+                route=self.route()
+                if route:route['source']=list(self._capture);self.edit()
+                else:self.selectSource(self._capture)
+            if self._capture_pad:self.setChord(self._capture_pad)
         self.stateChanged.emit()
+    def padCaptureInputs(self,sample):
+        inputs={'P:'+button for button in sample.get('buttons',[]) if button in PAD_BUTTONS}
+        for stick,prefix in (('LS','L'),('RS','R')):
+            for axis,value in zip(('X','Y'),sample.get(stick,[0,0])):
+                token='P:'+prefix+axis+('+' if value>=0 else '-')
+                if abs(value)>(.3 if token in self._record_pad_state else .5):inputs.add(token)
+        return inputs
     def captureInput(self,token,pressed):
         if pressed:
             self._capture_held.add(token)
@@ -467,6 +495,24 @@ class MappingController(QObject):
     @Slot(object)
     def receiveSample(self,sample):
         if not self._editor:return
+        if self._recording and self._capture_kind=='binding':
+            for edge in sample.get('_edges',[]):
+                token=edge['token']
+                if not self._recording or not token.startswith('P:'):continue
+                if edge['down']:
+                    self._record_pad_state.add(token);self._capture_held.add(token)
+                    if token not in self._capture_pad and len(self._capture_pad)<12:self._capture_pad.append(token)
+                else:
+                    self._record_pad_state.discard(token);self._capture_held.discard(token);self.finishCapture()
+            if self._recording:
+                current=self.padCaptureInputs(sample)
+                for token in sorted(current-self._record_pad_state):
+                    self._capture_held.add(token)
+                    if token not in self._capture_pad and len(self._capture_pad)<12:self._capture_pad.append(token)
+                released=self._record_pad_state-current
+                self._capture_held.difference_update(released);self._record_pad_state=current
+                if released:self.finishCapture()
+            self.stateChanged.emit()
         now=time.perf_counter();dt=min(.05,max(.001,now-self._preview_last));self._preview_last=now
         preview=dict(sample);self._last_capture_age=now-preview.pop('_captured',now)
         keys=set(sample.get('keys',[]));inputs=keys|{'P:'+b for b in sample.get('buttons',[])}
@@ -566,7 +612,7 @@ class MappingController(QObject):
                     monitor_inputs=current_inputs;self._capture_count+=1
                     self.queuePreview({**(state or {'buttons':[],'LS':[0.,0.],'RS':[0.,0.]}),'keys':keys,'mouseDelta':delta,'connected':state is not None,'slot':slot,'_captured':now},edges)
                 else:monitor_inputs.clear();preview_cursor=None;key_at=0
-                if enabled and all(transport.held(token) for token in ('K:17','K:18','K:123')):
+                if enabled and not self._recording and all(transport.held(token) for token in ('K:17','K:18','K:123')):
                     with self._lock:self._enabled=False
                     enabled=False;output.release()
                     if virtual:virtual.close();virtual=None;self._virtual_index=-1
@@ -584,7 +630,7 @@ class MappingController(QObject):
                         if not state:output.release();forward.reset();armed=False
                         if neutral:armed=True
                         if enabled and armed and state:
-                            desired,move=forward.frame(profile,state,dt);output.update(desired,move,now,forward.wheel_steps)
+                            desired,move=forward.frame(profile,state,dt);output.update(desired,move,now,forward.wheel_steps,profile['forward'].get('mouseMode','relative'),any(mouse))
                         message='映射运行中' if armed and state else '等待手柄连接 / 松开按键并回中摇杆'
                     else:
                         held={t for t in configured_keys if transport.held(t)}|pulses

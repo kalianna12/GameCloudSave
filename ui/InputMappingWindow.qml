@@ -17,7 +17,6 @@ ApplicationWindow {
     readonly property var stick: profile.forward.sticks[editingStick]
     property string editingStick: "LS"
     property bool appendCombo: false
-    property bool navigateWithPad: false
     property var scrollView: null
     property var activeBindingChoice: null
     readonly property bool editingStickBinding: mapper.target.indexOf(editingStick+".")===0
@@ -27,46 +26,17 @@ ApplicationWindow {
     readonly property bool editorReady: editorLoader.status===Loader.Ready
     Timer { interval: 600;running: !window.prepared && Qt.application.state===Qt.ApplicationActive && backend.watchInfo.running===0;onTriggered: window.prepared=true }
     signal returnRequested()
-    onNavigateWithPadChanged: mapper.setAutoSelect(!navigateWithPad)
     onClosing: { mapper.setEditorVisible(false);returnRequested() }
     onVisibleChanged: { if(window.visible) mapper.bindWindow(window);mapper.setPreviewActive(window.active);mapper.setEditorVisible(window.visible && window.visibility!==Window.Minimized) }
     onVisibilityChanged: function(nextVisibility) { mapper.setEditorVisible(window.visible && nextVisibility!==Window.Minimized) }
-    onActiveChanged: mapper.setPreviewActive(window.active)
-    function openMapping() { mapper.bindWindow(window);show();raise();requestActivate() }
+    onActiveChanged: { mapper.setPreviewActive(window.active);if(window.active) backend.setControllerMode(false) }
+    function openMapping() { backend.setControllerMode(false);mapper.bindWindow(window);show();raise();requestActivate() }
     function assign(source,target) { mapper.dropBinding(source,target,appendCombo) }
     function revealBindingEditor(item) {
         var view=window.scrollView
         if(view) { var items=view.contentItem,p=item.mapToItem(items,0,0);items.contentY=Math.max(0,Math.min(items.contentHeight-items.height,items.contentY+p.y-12)) }
     }
-    function choices() {
-        var list=[]
-        function visit(item) { if(!item.visible || !item.enabled) return;if(item.controllerSelectable) list.push(item);for(var i=0;i<item.children.length;i++) visit(item.children[i]) }
-        visit(templates.visible ? templates.contentItem : contentItem)
-        if(templates.visible) visit(templates.footer)
-        return list
-    }
-    function controllerInput(command) {
-        if(mapper.state.recording) { if(command==="back") mapper.cancelCapture();return true }
-        if(!navigateWithPad) return true
-        if(activeBindingChoice && activeBindingChoice.controllerInput(command)) return true
-        if(command==="back") { if(templates.visible) templates.close();else if(mapper.state.recording) mapper.cancelCapture();else close();return true }
-        if(mapper.state.recording) return true
-        var current=activeFocusItem,list=choices()
-        while(current && list.indexOf(current)<0) current=current.parent
-        if(!current) { if(list.length) list[0].forceActiveFocus();return true }
-        if(command==="activate") { if(typeof current.activate==="function") current.activate();else { if(current.checkable) { current.toggle();current.toggled() };current.clicked() };return true }
-        if(["left","right","up","down"].indexOf(command)<0) return true
-        var point=current.mapToItem(contentItem,current.width/2,current.height/2),best=null,cost=Infinity
-        list.forEach(function(candidate) {
-            if(candidate===current) return
-            var p=candidate.mapToItem(contentItem,candidate.width/2,candidate.height/2),dx=p.x-point.x,dy=p.y-point.y
-            var along=command==="left" ? -dx : command==="right" ? dx : command==="up" ? -dy : dy
-            var cross=command==="left" || command==="right" ? Math.abs(dy) : Math.abs(dx)
-            if(along>1 && along+cross*2<cost) { cost=along+cross*2;best=candidate }
-        })
-        if(best) { best.forceActiveFocus();var scroll=templates.visible ? null : window.scrollView;if(scroll) { var p=best.mapToItem(scroll.contentItem,0,0);if(p.y<0) scroll.contentItem.contentY+=p.y;else if(p.y+best.height>scroll.height) scroll.contentItem.contentY+=p.y+best.height-scroll.height } }
-        return true
-    }
+    function controllerInput(command) { return true }
     component Action: AppButton { property bool controllerSelectable: true }
     component Caption: Label { color: Theme.secondary;Layout.fillWidth: true;wrapMode: Text.Wrap;font.pixelSize: 13 }
     Popup {
@@ -80,12 +50,24 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 16
             Label { text: "录入按键";color: Theme.text;font.pixelSize: 22;font.bold: true }
-            Label { Layout.fillWidth: true;text: "按下组合键或滚动鼠标，全部松开后完成。";color: Theme.secondary;wrapMode: Text.Wrap }
+            Label { Layout.fillWidth: true;text: window.reverse ? "键鼠录入输入组合，手柄录入输出组合。全部松开后完成。" : "手柄选择输入按键，键鼠录入输出组合。全部松开后完成。";color: Theme.secondary;wrapMode: Text.Wrap }
+            Label { Layout.fillWidth: true;text: "所有按键均参与录入；取消请用鼠标点击下方按钮。";color: Theme.secondary;wrapMode: Text.Wrap }
             Label { Layout.fillWidth: true;text: (window.mapper.state.captured || []).join(" + ") || "等待输入";color: Theme.accent;font.pixelSize: 19;wrapMode: Text.Wrap }
             Action { id: captureCancel;objectName: "mappingCaptureCancel";text: "取消录入";Layout.alignment: Qt.AlignRight;onClicked: window.mapper.cancelCapture() }
         }
     }
     MappingTemplatesDialog { id: templates }
+    Dialog {
+        id: compatibility;objectName: "mappingCompatibility";title: "游戏内光标跳动";modal: true
+        anchors.centerIn: parent;width: Math.min(620,window.width-64);standardButtons: Dialog.Close
+        ColumnLayout {
+            width: parent.width;spacing: 16
+            Label { Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.text;text: "游戏可能同时收到原生手柄和模拟鼠标，两套输入会争抢选项或光标。先关闭游戏设置里的手柄操作，并停用另一套 Steam Input、JoyToKey 等映射。" }
+            Label { Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "菜单定位适合视觉小说；相对移动适合控制视角。定位方式可以减少游戏重置光标造成的跳动，但不会屏蔽实体手柄。" }
+            Label { Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "游戏不能关闭原生手柄时，可用 HidHide 隔离设备。需要额外驱动和手动配置，并让当前源码 Python 程序仍可读取手柄。" }
+            AppButton { text: "设备隔离工具 / 配置指引";onClicked: window.mapper.openCompatibilityTool() }
+        }
+    }
     component StickMeter: Item {
         property var values: [0,0]
         property string caption: ""
@@ -261,7 +243,6 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Label { text: "详细设置";color: Theme.text;font.pixelSize: 21;font.bold: true }
                             Item { Layout.fillWidth: true }
-                            CheckBox { text: "手柄导航界面";checked: window.navigateWithPad;onToggled: window.navigateWithPad=checked }
                             Action { text: "恢复默认配置";onClicked: window.mapper.reset() }
                         }
                         ColumnLayout {
@@ -305,6 +286,12 @@ ApplicationWindow {
                                 Item { Layout.fillWidth: true }
                             }
                             RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "鼠标速度（像素 / 秒）" } CompactSpinBox { objectName: "mappingMouseSpeed";from: 100;to: 5000;stepSize: 50;value: window.stick.speed;onValueModified: window.mapper.setOption(window.editingStick,"speed",value) } }
+                            RowLayout {
+                                visible: window.stick.mode==="mouse";Layout.fillWidth: true
+                                Caption { text: "鼠标方式" }
+                                AppComboBox { objectName: "mappingMouseMode";Layout.preferredWidth: 230;model: ["菜单定位（视觉小说）","相对移动（视角）"];currentIndex: window.profile.forward.mouseMode==="absolute" ? 0 : 1;onActivated: window.mapper.setOption("forward","mouseMode",currentIndex===0 ? "absolute" : "relative") }
+                                AppButton { text: "游戏内光标跳动？";flat: true;onClicked: compatibility.open() }
+                            }
                             RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "响应曲线 "+window.stick.curve.toFixed(1) } Slider { Layout.preferredWidth: 230;from: .5;to: 3.5;value: window.stick.curve;onMoved: window.mapper.setOption(window.editingStick,"curve",Math.round(value*10)/10) } }
                             RowLayout { visible: window.stick.mode==="mouse";Layout.fillWidth: true;Caption { text: "平滑（毫秒）" } CompactSpinBox { from: 0;to: 150;stepSize: 5;value: window.stick.smoothing;onValueModified: window.mapper.setOption(window.editingStick,"smoothing",value) } }
                         }

@@ -12,11 +12,13 @@ Item {
     property point cursorPoint: Qt.point(width/2,height/2)
     property bool pointerFresh: false
     property real controllerCue: 0
+    readonly property var stick: backend.controllerTilt
+    readonly property bool stickActive: backend.settings.controller_tilt!==false && (Math.abs(stick[0])>.001 || Math.abs(stick[1])>.001)
     readonly property bool available: Theme.motion && !suspended && visible && !!Window.window && Window.window.visible && Window.window.active
     readonly property bool pointerActive: available && !backend.controllerMode && pointer.hovered && pointerFresh
     readonly property bool hot: available && (pointerActive || backend.controllerMode && controllerFocused)
-    readonly property real yaw: !hot ? 0 : pointerActive ? Math.max(-1,Math.min(1,cursorPoint.x/Math.max(1,width)*2-1))*tiltLimit : -tiltLimit*.32*controllerCue
-    readonly property real pitch: !hot ? 0 : pointerActive ? -Math.max(-1,Math.min(1,cursorPoint.y/Math.max(1,height)*2-1))*tiltLimit*.78 : tiltLimit*.16*controllerCue
+    readonly property real yaw: !hot ? 0 : pointerActive ? Math.max(-1,Math.min(1,cursorPoint.x/Math.max(1,width)*2-1))*tiltLimit : stickActive ? stick[0]*tiltLimit : -tiltLimit*.32*controllerCue
+    readonly property real pitch: !hot ? 0 : pointerActive ? -Math.max(-1,Math.min(1,cursorPoint.y/Math.max(1,height)*2-1))*tiltLimit*.78 : stickActive ? stick[1]*tiltLimit*.78 : tiltLimit*.16*controllerCue
     property real sweep: -.8
     function reset() { shine.stop();lift.stop();controllerCue=0;pointerFresh=false;sweep=-.8 }
     function track(position) {

@@ -1,7 +1,10 @@
 <svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="820" height="650" viewBox="0 0 820 650">
-<defs><path id="left" d="M320 135H260C200 135 190 178 190 220V494C190 555 210 575 270 575H320Z"/><path id="right" d="M500 135H560C620 135 630 178 630 220V494C630 555 610 575 550 575H500Z"/></defs>
+<defs><linearGradient id="cyan" x1="0" y1="0" x2="1" y2=".3"><stop stop-color="#04c1da"/><stop offset="1" stop-color="#00b4cc"/></linearGradient><linearGradient id="red" x1="1" y1="0" x2="0" y2=".4"><stop stop-color="#ff493d"/><stop offset="1" stop-color="#fc352d"/></linearGradient><path id="left" d="M320 135H260C200 135 190 178 190 220V494C190 555 210 575 270 575H320Z"/><path id="right" d="M500 135H560C620 135 630 178 630 220V494C630 555 610 575 550 575H500Z"/></defs>
 <g fill="#000" stroke="#000" stroke-width="12" opacity=".035" transform="translate(0 10)"><use xlink:href="#left"/><use xlink:href="#right"/></g>
-<use xlink:href="#left" fill="#00bcd4"/><use xlink:href="#right" fill="#ff4038"/>
+<path d="M253 124C202 124 179 156 179 200M567 124C618 124 641 156 641 200" fill="none" stroke="#d7d5d1" stroke-width="9"/>
+<use xlink:href="#left" fill="url(#cyan)"/><use xlink:href="#right" fill="url(#red)"/>
 <path d="M312 151H320V556H312Z" fill="#00a0b9"/><path d="M500 151H508V556H500Z" fill="#dc302b"/>
 <g fill="#bdc3c7"><rect x="277" y="519" width="18" height="17" rx="3"/><circle cx="537" cy="514" r="14"/></g>
+<g fill="#666762"><rect x="316" y="212" width="6" height="67" rx="3"/><rect x="316" y="394" width="6" height="67" rx="3"/><rect x="498" y="212" width="6" height="67" rx="3"/><rect x="498" y="394" width="6" height="67" rx="3"/></g>
+<path d="M537 506V515H545V507L541 503Z" fill="#a8aeaa"/>
 </svg>

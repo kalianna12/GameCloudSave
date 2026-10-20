@@ -130,6 +130,13 @@ ApplicationWindow {
                     PadCheckBox { text: "界面动效"; checked: backend.settings.animations; enabled: !backend.busy; onToggled: backend.saveSettings({animations:checked}) }
                     PadCheckBox { text: "手柄导航"; checked: backend.settings.gamepad_enabled; enabled: !backend.busy; onToggled: backend.saveSettings({gamepad_enabled:checked}) }
                     PadCheckBox { text: "导航提示音"; checked: backend.settings.navigation_sounds; enabled: !backend.busy; onToggled: backend.saveSettings({navigation_sounds:checked}) }
+                    RowLayout {
+                        Layout.fillWidth: true;visible: backend.settings.navigation_sounds
+                        AppComboBox { objectName: "navigationSoundStyle";model: ["清脆","柔和","电子"];currentIndex: Math.max(0,["clear","soft","arcade"].indexOf(backend.settings.navigation_sound_style));onActivated: { backend.saveSettings({navigation_sound_style:["clear","soft","arcade"][currentIndex]});backend.previewNavigationSound(["clear","soft","arcade"][currentIndex],backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume) } }
+                        Slider { id: soundVolume;objectName: "navigationVolume";Layout.fillWidth: true;from: 0;to: 100;stepSize: 5;value: backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume;onMoved: { if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)});backend.previewNavigationSound(backend.settings.navigation_sound_style || "clear",Math.round(value)) } onPressedChanged: if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)}) }
+                        Label { text: Math.round(soundVolume.value)+"%";color: Theme.secondary }
+                    }
+                    PadCheckBox { text: "右摇杆控制卡片倾斜";checked: backend.settings.controller_tilt!==false;enabled: !backend.busy;onToggled: backend.saveSettings({controller_tilt:checked}) }
                     PadCheckBox { text: "自动备份通知"; checked: backend.settings.tray_notifications; enabled: !backend.busy; onToggled: backend.saveSettings({tray_notifications:checked}) }
                 }
                 AppButton { id: advanced; objectName: "customCoverToggle"; text: "自定义封面来源"; flat: true; checkable: true }

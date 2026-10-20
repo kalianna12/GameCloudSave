@@ -78,6 +78,12 @@ class WindowsInput:
     def move(self,x,y):
         if x or y:
             event=INPUT();event.type=0;event.mi=MOUSEINPUT(x,y,0,1,0,MARKER);self._send(event)
+    def moveAbsolute(self,x,y):
+        left=self.user.GetSystemMetrics(76);top=self.user.GetSystemMetrics(77)
+        width=max(2,self.user.GetSystemMetrics(78));height=max(2,self.user.GetSystemMetrics(79))
+        x=max(left,min(left+width-1,x));y=max(top,min(top+height-1,y))
+        event=INPUT();event.type=0;event.mi=MOUSEINPUT(round((x-left)*65535/(width-1)),round((y-top)*65535/(height-1)),0,0x8000|0x4000|1,0,MARKER)
+        self._send(event);return [x,y]
 
     def wheel(self,direction):
         event=INPUT();event.type=0;event.mi=MOUSEINPUT(0,0,120 if direction=='wheelup' else (-120)&0xffffffff,0x800,0,MARKER);self._send(event)
@@ -85,8 +91,8 @@ class WindowsInput:
 
 class KeyOutput:
     """Reference-union ownership: two mappings sharing Shift cannot release each other."""
-    def __init__(self,transport):self.transport=transport;self.owned=set();self.wheels={}
-    def update(self,desired,move,now,wheel_steps=()):
+    def __init__(self,transport):self.transport=transport;self.owned=set();self.wheels={};self.cursor=None
+    def update(self,desired,move,now,wheel_steps=(),mouse_mode='relative',physical_motion=False):
         wheels={token for token in desired if token in ('M:wheelup','M:wheeldown')};held=desired-wheels
         modifier=lambda token:token.startswith('K:') and int(token[2:]) in MODIFIERS
         for token in sorted(self.owned-held,key=lambda token:(modifier(token),token)):
@@ -97,13 +103,16 @@ class KeyOutput:
             if now>=self.wheels.get(token,0):self.transport.wheel(token[2:]);self.wheels[token]=now+.4
         self.wheels={token:time for token,time in self.wheels.items() if token in wheels}
         for direction in wheel_steps:self.transport.wheel(direction)
-        self.transport.move(*move)
+        if mouse_mode=='absolute':
+            if self.cursor is None or physical_motion:self.cursor=self.transport.pointer()
+            if any(move):self.cursor=self.transport.moveAbsolute(self.cursor[0]+move[0],self.cursor[1]+move[1])
+        else:self.cursor=None;self.transport.move(*move)
     def release(self):
         errors=[]
         for token in sorted(self.owned,key=lambda token:token.startswith('K:') and int(token[2:]) in MODIFIERS):
             try:self.transport.key(token,False)
             except OSError:errors.append(token)
-        self.owned=set(errors);self.wheels.clear()
+        self.owned=set(errors);self.wheels.clear();self.cursor=None
 
 
 def virtual_available():

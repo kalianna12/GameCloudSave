@@ -91,8 +91,9 @@ FocusScope {
         }
         if(!selectedGame.id) return true
         if(command==="favorite") backend.toggleFavorite(selectedId)
-        else if(command==="launch") launchRequested(selectedGame)
-        else if(command==="activate" || command==="history") detailsRequested(selectedGame)
+        else if(command==="activate") launchRequested(selectedGame)
+        else if(command==="menu") detailsRequested(selectedGame)
+        else if(command==="history") cloudRequested(selectedGame)
         return true
     }
     Keys.onPressed: function(event) {
