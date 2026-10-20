@@ -1,0 +1,7 @@
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="820" height="650" viewBox="0 0 820 650">
+<defs><path id="left" d="M320 135H260C200 135 190 178 190 220V494C190 555 210 575 270 575H320Z"/><path id="right" d="M500 135H560C620 135 630 178 630 220V494C630 555 610 575 550 575H500Z"/></defs>
+<g fill="#000" stroke="#000" stroke-width="12" opacity=".035" transform="translate(0 10)"><use xlink:href="#left"/><use xlink:href="#right"/></g>
+<use xlink:href="#left" fill="#00bcd4"/><use xlink:href="#right" fill="#ff4038"/>
+<path d="M312 151H320V556H312Z" fill="#00a0b9"/><path d="M500 151H508V556H500Z" fill="#dc302b"/>
+<g fill="#bdc3c7"><rect x="277" y="519" width="18" height="17" rx="3"/><circle cx="537" cy="514" r="14"/></g>
+</svg>

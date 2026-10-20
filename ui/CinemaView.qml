@@ -15,6 +15,7 @@ Item {
     property bool muted: true
     property bool videoFailed: false
     readonly property bool compact: height<560
+    readonly property bool tight: height<360
     readonly property real filmCellWidth: Math.max(88,(film.height-34)*.70+12)
     readonly property int selectedIndex: games.findIndex(function(g) { return g.id===game.id })
     readonly property bool canPlay: !!media.videoUrl && !launching && visible && !!Window.window && Window.window.visible && Window.window.active && backend.watchInfo.running===0
@@ -93,8 +94,8 @@ Item {
     Rectangle { anchors.fill: parent; gradient: Gradient { GradientStop { position: 0; color: "#10100e14" } GradientStop { position: .55; color: "#00100e14" } GradientStop { position: 1; color: "#ff100e14" } } }
     ColumnLayout {
         objectName: "cinemaInformation"
-        x: cinema.width<900 ? 24 : 42; y: Math.max(12,(filmBand.y-height)*.5); width: Math.min(cinema.width*.58,620); spacing: cinema.compact ? 8 : 16
-        Label { text: cinema.game.name || "没有匹配的游戏"; Layout.fillWidth: true; font.pixelSize: Math.max(24,Math.min(cinema.compact ? 30 : 46,cinema.width*.038)); font.weight: Font.DemiBold; wrapMode: Text.Wrap; maximumLineCount: cinema.compact ? 2 : 3; elide: Text.ElideRight; color: "#fff8ef" }
+        x: cinema.width<900 ? 24 : 42; y: Math.max(12,(filmBand.y-height)*.5); width: Math.min(cinema.width*.58,620); spacing: cinema.tight ? 4 : cinema.compact ? 8 : 16
+        Label { text: cinema.game.name || "没有匹配的游戏"; Layout.fillWidth: true; font.pixelSize: Math.max(cinema.tight ? 20 : 24,Math.min(cinema.tight ? 22 : cinema.compact ? 30 : 46,cinema.width*.038)); font.weight: Font.DemiBold; wrapMode: Text.Wrap; maximumLineCount: cinema.compact ? 2 : 3; elide: Text.ElideRight; color: "#fff8ef" }
         Label { visible: !!cinema.game.series && !cinema.compact; text: cinema.game.series || ""; color: "#e4c7aa"; font.pixelSize: 15; Layout.fillWidth: true; elide: Text.ElideRight }
         Label { text: [cinema.game.category,cinema.game.release_date].filter(Boolean).join("  /  "); visible: !!cinema.game.id; color: "#c9c0d1"; font.pixelSize: 13 }
         Flow {

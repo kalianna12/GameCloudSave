@@ -18,7 +18,7 @@ def dispatch(app,root,bridge,command):
             if popup is not None:QMetaObject.invokeMethod(popup,'close')
             else:
                 window.close()
-                QMetaObject.invokeMethod(root,'restoreLibraryWindow')
+                QMetaObject.invokeMethod(root,'returnFromTool')
         return
     target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
     while target is not None and not target.inherits('QQuickWindow'):
@@ -72,8 +72,8 @@ class Mapper:
 class Gamepad(QObject):
     command=Signal(str)
     connectedChanged=Signal(bool)
-    def __init__(self,app,enabled=lambda:True):
-        super().__init__(app);self.app=app;self.enabled=enabled;self.slot=None;self.mapper=Mapper();self.query=None;self.primed=False
+    def __init__(self,app,enabled=lambda:True,exclude=lambda:-1):
+        super().__init__(app);self.app=app;self.enabled=enabled;self.exclude=exclude;self.slot=None;self.mapper=Mapper();self.query=None;self.primed=False
         self.timer=QTimer(self);self.timer.timeout.connect(self.poll)
         for library in ('xinput1_4.dll','xinput9_1_0.dll'):
             try:
@@ -95,6 +95,7 @@ class Gamepad(QObject):
             self.sync();return
         indices=[self.slot] if self.slot is not None else range(4)
         for index in indices:
+            if index==self.exclude():continue
             state=State()
             if self.query(index,ctypes.byref(state))==0:
                 if self.slot is None:

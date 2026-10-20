@@ -56,6 +56,8 @@ class Bridge(QObject):
         self._status = '就绪'
         from recommendations import Recommendations
         self._recommendations=Recommendations(store,self)
+        from input_mapping import MappingController
+        self._mapping=MappingController(store,self)
         self._dirs = []
         self._history = []
         self._cloud_history = []
@@ -130,6 +132,9 @@ class Bridge(QObject):
 
     @Property(QObject,constant=True)
     def recommendations(self):return self._recommendations
+
+    @Property(QObject,constant=True)
+    def mapping(self):return self._mapping
 
     def refreshWatchInfo(self):
         info=self.watchInfo
@@ -1423,6 +1428,7 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self._mapping.shutdown()
         self._recommendations.shutdown()
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
@@ -1504,6 +1510,8 @@ def main():
     app.aboutToQuit.connect(bridge.cancelEnrichment)
     app.aboutToQuit.connect(bridge.shutdownWatch)
     engine = QQmlApplicationEngine()
+    from qml_bootstrap import install_incubator
+    install_incubator(engine)
     engine.rootContext().setContextProperty('backend', bridge)
     engine.load(QUrl.fromLocalFile(str(RESOURCES / 'ui/Main.qml')))
     if not engine.rootObjects():
@@ -1515,7 +1523,7 @@ def main():
     def activate_window():QMetaObject.invokeMethod(root_window,'restoreLibraryWindow')
     instance.activated.connect(activate_window)
     from gamepad import Gamepad,dispatch
-    controller=Gamepad(app,lambda:bridge.store.settings.get('gamepad_enabled',True))
+    controller=Gamepad(app,lambda:bridge.store.settings.get('gamepad_enabled',True),exclude=lambda:bridge.mapping._virtual_index)
     bridge.settingsChanged.connect(controller.sync)
     def connected(value):
         bridge._gamepad_connected=value

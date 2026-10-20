@@ -1,0 +1,3 @@
+# Optional reverse mapping; the editor can detect and install missing components.
+# On Windows set VGAMEPAD_SKIP_VIGEMBUS_INSTALL=true before pip install.
+vgamepad==0.1.0

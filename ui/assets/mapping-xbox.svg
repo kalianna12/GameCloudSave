@@ -1,0 +1,9 @@
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="820" height="650" viewBox="0 0 820 650">
+<defs><linearGradient id="shell" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff"/><stop offset=".5" stop-color="#f5f5f5"/><stop offset="1" stop-color="#eae9e8"/></linearGradient><path id="body" d="M285 158H535C631 158 674 199 703 270C732 345 775 487 768 552C762 615 702 624 665 591C635 562 612 505 566 493C527 483 293 483 254 493C208 505 185 562 155 591C118 624 58 615 52 552C45 487 88 345 117 270C146 199 189 158 285 158Z"/></defs>
+<use xlink:href="#body" transform="translate(0 10)" fill="#000" stroke="#000" stroke-width="12" opacity=".025"/><use xlink:href="#body" transform="translate(0 6)" fill="#000" stroke="#000" stroke-width="6" opacity=".05"/>
+<use xlink:href="#body" fill="url(#shell)" stroke="#d8d6d3" stroke-width="4"/>
+<path d="M98 339L245 488M722 339L575 488" fill="none" stroke="#e3e1de" stroke-width="3"/>
+<circle cx="410" cy="212" r="24" fill="#e6e4e1"/><path d="M399 199L421 225M421 199L399 225" stroke="#aaa6a0" stroke-width="5" stroke-linecap="round"/>
+<g fill="#fbfbfb" stroke="#e5e3e0" stroke-width="3"><circle cx="285" cy="430" r="64"/><circle cx="640" cy="290" r="67"/></g>
+<path d="M269 385H301V414H330V446H301V475H269V446H240V414H269Z" fill="#e5e3e0"/>
+</svg>

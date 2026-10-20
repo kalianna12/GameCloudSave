@@ -39,14 +39,34 @@ ApplicationWindow {
     property bool fullScreenMode: !!backend.settings.fullscreen
     property int restoreVisibility: Window.Windowed
     function toggleFullScreen() { if(launchTransition.running) return;fullScreenMode=!fullScreenMode;backend.saveLayout({fullscreen:fullScreenMode}) }
-    function applyFullScreen() { if(fullScreenMode) { restoreVisibility=visibility===Window.Maximized ? Window.Maximized : Window.Windowed;showFullScreen() } else if(restoreVisibility===Window.Maximized) showMaximized();else showNormal() }
-    function restoreLibraryWindow() {
-        if(fullScreenMode) { if(visibility!==Window.FullScreen) showFullScreen() }
-        else if(visibility===Window.Hidden || visibility===Window.Minimized) { if(restoreVisibility===Window.Maximized) showMaximized();else showNormal() }
-        raise();requestActivate()
+    function applyFullScreen() {
+        if(fullScreenMode) {
+            if(visibility===Window.FullScreen) return
+            if(visibility===Window.Maximized || visibility===Window.Windowed) restoreVisibility=visibility
+            showFullScreen()
+        } else if(restoreVisibility===Window.Maximized) { if(visibility!==Window.Maximized) showMaximized() }
+        else if(visibility!==Window.Windowed) showNormal()
     }
-    onFullScreenModeChanged: if(libraryReady) applyFullScreen()
-    Shortcut { sequence: "F11"; onActivated: win.toggleFullScreen() }
+    property double lastWindowRestore: 0
+    function restoreLibraryWindow() {
+        var now=Date.now();if(now-lastWindowRestore<180) return;lastWindowRestore=now
+        windowStateApply.stop()
+        var restoring=visibility===Window.Hidden || visibility===Window.Minimized
+        if(restoring) { if(restoreVisibility===Window.Maximized) showMaximized();else showNormal() }
+        else if(fullScreenMode && visibility!==Window.FullScreen) showFullScreen()
+        if(!active) { raise();requestActivate() }
+        if(restoring && fullScreenMode) restoreFullscreenFinish.restart()
+    }
+    function returnFromTool() {
+        // Closing a tool while showing the desktop must not restore/raise the library.
+        if(visibility===Window.Hidden || visibility===Window.Minimized || Qt.application.state!==Qt.ApplicationActive) return
+        if(!active) requestActivate()
+        if(fullScreenMode && visibility!==Window.FullScreen) restoreFullscreenFinish.restart()
+    }
+    Timer { id: restoreFullscreenFinish; interval: 70; onTriggered: if(win.active && win.visible && win.visibility!==Window.Minimized && win.fullScreenMode) win.applyFullScreen() }
+    Timer { id: windowStateApply; interval: 35; onTriggered: if(win.visible && win.visibility!==Window.Minimized) win.applyFullScreen() }
+    onFullScreenModeChanged: if(libraryReady) windowStateApply.restart()
+    Shortcut { objectName: "fullscreenShortcut"; sequence: "F11"; autoRepeat: false; onActivated: win.toggleFullScreen() }
     Shortcut { sequence: "Escape"; enabled: launchTransition.running; onActivated: launchTransition.cancel() }
     Timer { id: launchFocusDelay; interval: 180; onTriggered: if(launchTransition.running) backend.launchFocusChanged() }
     onActiveChanged: if(!active && launchTransition.running) launchFocusDelay.restart()
@@ -56,7 +76,7 @@ ApplicationWindow {
     }
     property int filterFocusIndex: 0
     property int headerFocusIndex: 0
-    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,recommendationsControl,personalControl,fullscreenControl]
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,mappingProfileControl,recommendationsControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
     function goBack() {
@@ -90,13 +110,13 @@ ApplicationWindow {
         if(launchTransition.running) return launchTransition.controllerInput(command)
         if(command==="zoom-in" || command==="zoom-out") { if(libraryDesign==="atlas" && libraryFocus() && experienceLoader.item) experienceLoader.item.controllerInput(command);return true }
         if(command==="back") { if(alternativeDesign && experienceLoader.item && experienceLoader.item.controllerBack()) return true;if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
-        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries]
+        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries,navMapping]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
         var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
         var item=activeFocusItem,side=-1,filter=-1,header=-1
         while(item) { if(side<0) side=sidebar.indexOf(item);if(filter<0) filter=filters.indexOf(item);if(header<0) header=headers.indexOf(item);item=item.parent }
         if(side>=0) {
-            if(command==="right" || command==="activate") { previewSidebar(side);focusFirstContent();return true }
+            if(command==="right" || command==="activate") { if(side===5 && command==="activate") navMapping.clicked();else { previewSidebar(side);focusFirstContent() };return true }
             if(command==="up" || command==="down") { var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);previewSidebar(nextSide);return true }
             return true
         }
@@ -188,7 +208,7 @@ ApplicationWindow {
         }
         while(libraryModel.count>shownGames.length) libraryModel.remove(libraryModel.count-1)
     }
-    onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
+    onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();mappingWindow.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
     function editMetadata() { gameDialog.openFor(activeId,2) }
     function openGame(g) {
@@ -238,9 +258,10 @@ ApplicationWindow {
     BatchWindow { id: batchWindow; objectName: "batchWindow" }
     SetupWizard { id: setupWizard; objectName: "setupWizard" }
     LibraryManager { id: libraryManager; objectName: "libraryManager" }
-    PersonalizationWindow { id: personalization; objectName: "personalization"; onReturnRequested: Qt.callLater(function() { win.restoreLibraryWindow();personalControl.forceActiveFocus() }) }
+    PersonalizationWindow { id: personalization; objectName: "personalization"; onReturnRequested: Qt.callLater(function() { win.returnFromTool();if(win.active) personalControl.forceActiveFocus() }) }
+    InputMappingWindow { id: mappingWindow; onReturnRequested: Qt.callLater(function() { win.returnFromTool();if(win.visible && win.visibility!==Window.Minimized) win.focusContent() }) }
     MatchWindow { id: matchWindow; objectName: "matchWindow"; onBatchRequested: win.openBatch() }
-    Component.onCompleted: { libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
+    Component.onCompleted: { backend.mapping.bindRuntimeWindow(win);libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
 
     Rectangle {
@@ -262,6 +283,7 @@ ApplicationWindow {
                 NavigationButton { id: navSeries; objectName: "navSeries"; width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
                 Item { width: 184; height: 18; Rectangle { anchors.centerIn: parent; width: 160; height: 1; color: Theme.outline } }
                 NavigationButton { objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
+                NavigationButton { id: navMapping; objectName: "mappingNav"; width: 184; iconName: "settings"; text: "手柄映射"; onClicked: mappingWindow.openMapping() }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }
                 NavigationButton { width: 184; iconName: "help"; text: "使用指南"; onClicked: guideDialog.open() }
@@ -293,7 +315,7 @@ ApplicationWindow {
             AppButton { id: importControl; text: "导入游戏"; highlighted: true; onClicked: win.openImport() }
         }
         GridLayout {
-            Layout.fillWidth: true; columns: win.width<1250 ? 1 : 2
+            Layout.fillWidth: true; columns: win.width<1480 ? 1 : 2
             rowSpacing: 2; columnSpacing: 16
             RowLayout {
                 Layout.fillWidth: true
@@ -311,15 +333,19 @@ ApplicationWindow {
                 AppComboBox { id: seriesControl; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
                 Item { Layout.fillWidth: true }
             }
-            RowLayout {
+            Flow {
                 Layout.fillWidth: true; spacing: 10
-                Item { Layout.fillWidth: win.width>=1250 }
-                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; Layout.preferredWidth: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; width: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
+                AppComboBox {
+                    id: mappingProfileControl;objectName: "homeMappingProfile";width: 240;model: backend.mapping.profileOptions;textRole: "label";wrapOptions: true
+                    currentIndex: Math.max(0,backend.mapping.profileOptions.findIndex(function(p) { return p.id===backend.mapping.activeProfile }))
+                    onActivated: backend.mapping.activateProfile(backend.mapping.profileOptions[currentIndex].id)
+                    ToolTip.visible: hovered && !backend.controllerMode;ToolTip.text: currentText+"\n"+backend.mapping.state.message+"\n无 = 关闭；🎮→⌨ 手柄到键鼠，⌨→🎮 键鼠到手柄。"
+                }
                 AppButton { id: layoutControl; objectName: "layoutControl"; text: "布局"; flat: true; onClicked: win.openSettingsPage(2) }
                 AppButton { id: recommendationsControl; objectName: "recommendationsControl"; text: "游戏推荐"; flat: true; visible: win.alternativeDesign && backend.settings.recommendations_enabled!==false; onClicked: recommendationDialog.open() }
                 AppButton { id: personalControl; objectName: "personalControl"; text: "个性化"; flat: true; onClicked: personalization.openPersonalization() }
                 AppButton { id: fullscreenControl; objectName: "fullscreenControl"; text: win.fullScreenMode ? "退出全屏" : "全屏"; flat: true; onClicked: win.toggleFullScreen(); ToolTip.visible: hovered && !backend.controllerMode; ToolTip.text: "F11 切换全屏" }
-                Item { Layout.fillWidth: win.width<1250 }
             }
         }
         Loader {
