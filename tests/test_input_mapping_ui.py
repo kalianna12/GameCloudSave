@@ -62,6 +62,26 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         spin();assert controller.currentChord==['K:162','K:160','K:83'],controller.currentChord
         controller.record('binding');QTest.keyClick(window,Qt.Key_F11);spin()
         assert controller.currentChord==['K:122'] and not root.property('fullScreenMode')
+        def choose_extra(name,token):
+            choice=window.findChild(QObject,name);index=next(i for i,key in enumerate(controller.allKeys) if key['token']==token)
+            choice.setProperty('currentIndex',index);QMetaObject.invokeMethod(choice,'activated',Q_ARG(int,index));spin(30)
+            assert choice.property('currentIndex')==-1
+        controller.selectTarget('X');choose_extra('mappingExtraKey','K:124')
+        assert controller.currentChord==['K:69','K:124']
+        choose_extra('mappingExtraKey','K:124');assert controller.currentChord==['K:69']
+        assert not window.findChild(QObject,'mappingStickExtraKey').property('enabled')
+        window.setProperty('navigateWithPad',True);choice=window.findChild(QObject,'mappingExtraKey');choice.forceActiveFocus()
+        for command in ('activate','down','activate'):
+            QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command));spin(40)
+        spin(120)
+        assert controller.currentChord==['K:69','K:66'],controller.currentChord
+        choice.forceActiveFocus()
+        for command in ('activate','back'):
+            QMetaObject.invokeMethod(window,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command));spin(50)
+        spin(120)
+        assert window.isVisible()
+        assert not QMetaObject.invokeMethod(choice,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant','up'))
+        window.setProperty('navigateWithPad',False)
         def key(token):return next(item for item in walk(window.contentItem()) if item.property('token')==token and item.isVisible())
         drag(window,key('K:65'),key('P:B'))
         assert controller.profile['forward']['buttons']['B']==['K:65'],controller.profile['forward']['buttons']['B']
@@ -94,6 +114,8 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         window.grabWindow().save(str(output/'drivers.png'))
         QMetaObject.invokeMethod(window.findChild(QObject,'mappingDriverDialog'),'close');spin(80)
         controller.setMode('keys_to_pad');spin(150)
+        choose_extra('mappingExtraKey','K:135');controller.choosePad('P:A')
+        assert controller.sourceChord==['K:135'] and controller.currentChord==['P:A']
         window.setProperty('appendCombo',False);drag(window,key('P:A'),key('K:70'))
         window.setProperty('appendCombo',True);drag(window,key('P:LB'),key('K:70'))
         assert controller.sourceChord==['K:70'] and controller.currentChord==['P:A','P:LB'],(controller.sourceChord,controller.currentChord)
@@ -120,6 +142,9 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         QTest.mouseClick(window,Qt.LeftButton,pos=point(window.findChild(QObject,'mappingStickRecord')));spin(25)
         QTest.keyPress(window,Qt.Key_Control);QTest.keyClick(window,Qt.Key_F);QTest.keyRelease(window,Qt.Key_Control);spin(60)
         assert controller.profile['forward']['sticks']['LS']['light']['NE']==['K:162','K:70']
+        assert controller.profile['forward']['sticks']['LS']['hard']['NE']==['K:38','K:39']
+        choose_extra('mappingStickExtraKey','K:125')
+        assert controller.profile['forward']['sticks']['LS']['light']['NE']==['K:162','K:70','K:125']
         assert controller.profile['forward']['sticks']['LS']['hard']['NE']==['K:38','K:39']
         preset=window.findChild(QObject,'mappingPreset-hard');preset.setProperty('currentIndex',1);QMetaObject.invokeMethod(preset,'activated',Q_ARG(int,1));spin(60)
         assert controller.profile['forward']['sticks']['LS']['hard']['NE']==['K:87','K:68']

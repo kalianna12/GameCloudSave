@@ -19,6 +19,9 @@ ApplicationWindow {
     property bool appendCombo: false
     property bool navigateWithPad: false
     property var scrollView: null
+    property var activeBindingChoice: null
+    readonly property bool editingStickBinding: mapper.target.indexOf(editingStick+".")===0
+    readonly property real mappingPanelHeight: Math.max(500,(window.width-100)*.46)+(reverse ? 44 : 0)
     property bool prepared: false
     readonly property bool editorReady: editorLoader.status===Loader.Ready
     Timer { interval: 600;running: !window.prepared && Qt.application.state===Qt.ApplicationActive && backend.watchInfo.running===0;onTriggered: window.prepared=true }
@@ -43,6 +46,7 @@ ApplicationWindow {
     }
     function controllerInput(command) {
         if(!navigateWithPad) return true
+        if(activeBindingChoice && activeBindingChoice.controllerInput(command)) return true
         if(command==="back") { if(templates.visible) templates.close();else if(mapper.state.recording) mapper.cancelCapture();else close();return true }
         if(mapper.state.recording) return true
         var current=activeFocusItem,list=choices()
@@ -165,7 +169,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true;spacing: 20
                             Rectangle {
-                                objectName: "mappingControllerPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.57;Layout.preferredHeight: Math.max(500,(window.width-100)*.46)
+                                objectName: "mappingControllerPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.57;Layout.preferredHeight: window.mappingPanelHeight
                                 radius: 20;color: Theme.dark ? "#24282e" : "#ffffff";border.color: Theme.outline
                                 ColumnLayout {
                                     anchors.fill: parent;anchors.margins: 18;spacing: 8
@@ -191,7 +195,7 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle {
-                                id: bindingPreviewPanel;objectName: "mappingPreviewPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.43;Layout.preferredHeight: Math.max(500,(window.width-100)*.46)
+                                id: bindingPreviewPanel;objectName: "mappingPreviewPanel";Layout.fillWidth: true;Layout.preferredWidth: (window.width-100)*.43;Layout.preferredHeight: window.mappingPanelHeight
                                 radius: 20;color: Theme.surface;border.color: Theme.outline
                                 ColumnLayout {
                                     anchors.fill: parent;anchors.margins: 20;spacing: 10
@@ -203,11 +207,25 @@ ApplicationWindow {
                                         ColumnLayout { Layout.fillWidth: true;Caption { text: "映射输出" } Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: (window.live.outputs || []).map(function(t) { return window.mapper.label(t) }).concat((window.live.mouse || [0,0]).some(function(v) { return v!==0 }) ? ["鼠标移动"] : []).join(" + ") || "等待输入";color: Theme.accent;font.pixelSize: 17 } }
                                     }
                                     Rectangle { Layout.fillWidth: true;height: 1;color: Theme.outline }
-                                    RowLayout { Layout.fillWidth: true;Label { text: "编辑："+window.mapper.bindingLabel;color: Theme.text;font.pixelSize: 15;font.bold: true;Layout.fillWidth: true;elide: Text.ElideRight } CheckBox { text: "追加组合";checked: window.appendCombo;onToggled: window.appendCombo=checked } }
+                                    RowLayout {
+                                        visible: window.reverse;Layout.fillWidth: true
+                                        AppComboBox { objectName: "reverseRouteChoice";Layout.fillWidth: true;model: window.mapper.reverseRoutes;textRole: "label";wrapOptions: true;currentIndex: window.mapper.reverseRoutes.findIndex(function(row) { return row.id===window.mapper.target });onActivated: window.mapper.selectRoute(window.mapper.reverseRoutes[currentIndex].id) }
+                                        Action { text: "删除绑定";onClicked: window.mapper.deleteRoute() }
+                                    }
+                                    RowLayout { Layout.fillWidth: true;Label { text: (window.reverse ? "输入：" : "编辑：")+window.mapper.bindingLabel;color: Theme.text;font.pixelSize: 15;font.bold: true;Layout.fillWidth: true;elide: Text.ElideRight } CheckBox { text: "追加组合";checked: window.appendCombo;onToggled: window.appendCombo=checked } }
                                     Label { objectName: "mappingChord";Layout.fillWidth: true;text: window.mapper.currentChord.map(function(t) { return window.mapper.label(t) }).join(" + ") || "未绑定";color: Theme.accent;wrapMode: Text.Wrap;font.pixelSize: 16 }
-                                    RowLayout { Layout.fillWidth: true;Action { objectName: "mappingRecord";text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } } Action { text: "清空";onClicked: window.mapper.setChord([]) } Item { Layout.fillWidth: true } Action { text: "清除记录";onClicked: window.mapper.clearEvents() } }
+                                    RowLayout {
+                                        Layout.fillWidth: true;spacing: 6
+                                        Action { objectName: "mappingRecord";text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } }
+                                        MappingKeyChoice { objectName: "mappingExtraKey";navigationHost: window;Layout.fillWidth: true;Layout.minimumWidth: 110 }
+                                        Action { text: "清空";onClicked: window.mapper.setChord([]) }
+                                    }
                                     Caption { visible: window.mapper.state.recording;text: "按下组合并全部松开："+(window.mapper.state.captured || []).join(" + ") }
-                                    Caption { text: "按下 "+window.mapper.history.totalPresses+" 次"+(!window.reverse && window.mapper.target.indexOf(".")<0 ? "　当前手柄按键 "+(window.mapper.history.pressCounts["P:"+window.mapper.target] || 0)+" 次" : "") }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Caption { text: "按下 "+window.mapper.history.totalPresses+" 次"+(!window.reverse && window.mapper.target.indexOf(".")<0 ? "　当前手柄按键 "+(window.mapper.history.pressCounts["P:"+window.mapper.target] || 0)+" 次" : "") }
+                                        Action { text: "清除记录";flat: true;implicitHeight: 28;font.pixelSize: 12;onClicked: window.mapper.clearEvents() }
+                                    }
                                     ListView {
                                         objectName: "mappingEventList";Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumHeight: 70;clip: true;model: window.mapper.history;spacing: 4
                                         delegate: RowLayout {
@@ -227,15 +245,6 @@ ApplicationWindow {
                             Item { Layout.fillWidth: true }
                             CheckBox { text: "手柄导航界面";checked: window.navigateWithPad;onToggled: window.navigateWithPad=checked }
                             Action { text: "恢复默认配置";onClicked: window.mapper.reset() }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true;spacing: 12
-                            Label { text: "按键与组合";color: Theme.text;font.pixelSize: 17;font.bold: true }
-                            AppComboBox { id: extraKey;objectName: "mappingExtraKey";Layout.preferredWidth: 200;model: window.mapper.allKeys;textRole: "label" }
-                            Action { text: "添加按键";onClicked: window.mapper.chooseKey(window.mapper.allKeys[extraKey.currentIndex].token) }
-                            AppComboBox { objectName: "reverseRouteChoice";Layout.fillWidth: true;visible: window.reverse;model: window.mapper.reverseRoutes;textRole: "label";currentIndex: window.mapper.reverseRoutes.findIndex(function(row) { return row.id===window.mapper.target });onActivated: window.mapper.selectRoute(window.mapper.reverseRoutes[currentIndex].id) }
-                            Action { visible: window.reverse;text: "删除绑定";onClicked: window.mapper.deleteRoute() }
-                            Item { Layout.fillWidth: true;visible: !window.reverse }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true;visible: !window.reverse;spacing: 16
@@ -262,10 +271,11 @@ ApplicationWindow {
                             }
                             RowLayout {
                                 visible: window.stick.mode==="keys";Layout.fillWidth: true
-                                Label { text: window.mapper.bindingLabel;color: Theme.text;font.pixelSize: 14 }
-                                Caption { text: window.mapper.currentChord.map(function(t) { return window.mapper.label(t) }).join(" + ") || "未绑定";color: Theme.accent }
-                                Action { objectName: "mappingStickRecord";text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } }
-                                Action { objectName: "mappingStickClear";text: "清空";onClicked: window.mapper.setChord([]) }
+                                Label { text: window.editingStickBinding ? window.mapper.bindingLabel : "选择方向或附加键";color: Theme.text;font.pixelSize: 14 }
+                                Caption { text: window.editingStickBinding ? window.mapper.currentChord.map(function(t) { return window.mapper.label(t) }).join(" + ") || "未绑定" : "";color: Theme.accent }
+                                Action { objectName: "mappingStickRecord";enabled: window.editingStickBinding;text: window.mapper.state.recording ? "停止录入" : "录入组合键";highlighted: window.mapper.state.recording;onClicked: { if(window.mapper.state.recording) window.mapper.cancelCapture();else window.mapper.record("binding") } }
+                                MappingKeyChoice { objectName: "mappingStickExtraKey";navigationHost: window;enabled: window.editingStickBinding }
+                                Action { objectName: "mappingStickClear";enabled: window.editingStickBinding;text: "清空";onClicked: window.mapper.setChord([]) }
                             }
                             RowLayout {
                                 visible: window.stick.mode==="wheel";Layout.fillWidth: true;spacing: 20
