@@ -156,7 +156,7 @@ ApplicationWindow {
                         AppComboBox {
                             objectName: "navigationSoundStyle";property bool controllerSelectable: true;soundEvent: "open";Layout.fillWidth: true
                             property var ids: ["auto","classic-clear","classic-soft","classic-arcade","shelf","cinema","atlas","felt","wood","water"]
-                            model: ["跟随布局","轻触","轻柔","清亮","翻书","放映机","星光","绒感 · 低柔","木纹 · 轻敲","涟漪 · 水滴"]
+                            model: ["跟随布局","Switch · 默认","轻柔","清亮","翻书","放映机","星光","绒感 · 低柔","木纹 · 轻敲","涟漪 · 水滴"]
                             currentIndex: Math.max(0,ids.indexOf(backend.audioSettings.navigation_sound_pack))
                             onActivated: { backend.saveAudioSettings({navigation_sound_pack:ids[currentIndex]});backend.previewNavigationVolume(backend.audioSettings.navigation_volume) }
                             SelectionFrame { selected: parent.activeFocus;radius: 6 }

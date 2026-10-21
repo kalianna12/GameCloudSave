@@ -11,7 +11,7 @@ from input_feedback import InputFeedback
 class Bridge(QObject):
     inputModeChanged=Signal();settingsChanged=Signal();audioSettingsChanged=Signal()
     controllerMode=False
-    store=SimpleNamespace(settings={'navigation_sounds':True,'navigation_volume':80,'navigation_sound_style':'soft','library_design':'classic'})
+    store=SimpleNamespace(settings={'navigation_sounds':True,'navigation_volume':80,'navigation_sound_style':'clear','library_design':'classic'})
     def setControllerMode(self,value):self.controllerMode=value;self.inputModeChanged.emit()
 
 app=QApplication([]);bridge=Bridge()
@@ -35,8 +35,8 @@ try:
     QTest.qWait(3200);after=snapshot()
     assert after['state']=='ActiveState' and after['processed']>before['processed']+2500000,(before,after)
     # A layout rebuild monopolises the GUI event loop, but the audio worker must run.
-    feedback.play('switch',design='atlas');QTest.qWait(40)
-    before=snapshot();QTest.qWait(350);after=snapshot()
+    feedback.play('switch',design='classic');QTest.qWait(40)
+    before=snapshot();time.sleep(.35);after=snapshot()
     assert after['backend'].startswith('XAudio2')
     assert after['processed']>before['processed']+250000,(before,after)
     assert sum(after['samples'])>sum(before['samples'])+10000,(before,after)
@@ -46,8 +46,8 @@ try:
         for _ in range(8):feedback.play();QTest.qWait(60)
         feedback.play('group');QTest.qWait(100);feedback.play('confirm');QTest.qWait(100)
     QTest.qWait(650);assert snapshot()['voices']==0
-    for design in ('shelf','cinema','atlas'):
-        assert ('move',design) in played and ('group',design) in played and ('confirm',design) in played,played
+    for bank in ('classic-clear','shelf','cinema','atlas'):
+        assert ('move',bank) in played and ('group',bank) in played and ('confirm',bank) in played,played
     bridge.store.settings['navigation_sounds']=False;bridge.settingsChanged.emit()
     wait(lambda:not snapshot()['enabled']);assert snapshot()['state']=='StoppedState'
     bridge.store.settings['navigation_sounds']=True;bridge.settingsChanged.emit()

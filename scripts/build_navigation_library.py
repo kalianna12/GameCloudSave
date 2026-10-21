@@ -1,4 +1,4 @@
-"""Build the bundled CC0 navigation library from preserved source recordings.
+"""Build navigation samples from preserved recordings with per-bank provenance.
 
 Development only: pip install soundfile (includes numpy). No runtime dependency.
 """
@@ -42,19 +42,32 @@ def prepare(audio,duration,cutoff,target,echo=False):
 
 def build():
     OUTPUT.mkdir(parents=True,exist_ok=True);entries=[]
-    def cue(bank,kind,pack,names,duration,speed=1,cutoff=3500,echo=False,offset=0):
+    def cue(bank,kind,pack,names,duration,speed=1,cutoff=3500,echo=False,offset=0,target=None):
         files=[];origins=[]
         for index,name in enumerate(names.split('|')):
             raw=read(pack,name,speed,offset)
-            audio=prepare(raw,duration,cutoff,.040 if kind=='move' else .055,echo)
+            audio=prepare(raw,duration,cutoff,target if target is not None else .040 if kind=='move' else .055,echo)
             filename=f'{bank}-{kind}-{index+1}.wav'
             sf.write(OUTPUT/filename,audio,RATE,subtype='PCM_16')
             files.append(filename)
             origins.append({'source':f'{pack}/{name}','sha256':hashlib.sha256((SOURCE/pack/name).read_bytes()).hexdigest(),
-                'speed':speed,'maximum_seconds':duration,'offset_seconds':offset,'lowpass_hz':cutoff,'short_echo':echo})
-        entries.append({'bank':bank,'kind':kind,'files':files,'origins':origins})
+                'speed':speed,'maximum_seconds':duration,'offset_seconds':offset,'lowpass_hz':cutoff,'short_echo':echo,
+                'target_rms':target if target is not None else .040 if kind=='move' else .055})
+        entries.append({'bank':bank,'kind':kind,'files':files,'origins':origins,
+            'license':'Nintendo-copyright' if pack=='nintendo-switch' else 'CC0-1.0'})
+    # Keep the persisted classic-clear ID: default/auto profiles get Switch cues
+    # without rewriting any user settings. Other layouts and explicit packs retain
+    # their own sounds. Higher RMS, unchanged .28 peak / eight-voice headroom.
+    for kind,source,duration in (
+        ('move','SeGameIconFocus.wav',.14),
+        ('confirm','SeBtnDecide.wav',.13),
+        ('back','SeFooterDecideBack.wav',.15),
+        ('open','SeDialogOpen.wav',.11),
+        ('group','SeSelectFocus.wav',.24),
+        ('switch','SeDialogOpen_Accent.wav',.58)):
+        cue('classic-clear',kind,'nintendo-switch',source,duration,cutoff=8000,
+            target=.080 if kind=='move' else .095)
     for style,move,confirm,speed,cutoff in (
-        ('clear','rollover2.wav','click2.wav',1,3200),
         ('soft','rollover6.wav','click1.wav',.9,2200),
         ('arcade','rollover5.wav','click3.wav',1.08,4000)):
         bank='classic-'+style
@@ -107,12 +120,14 @@ def build():
         audio[:attack]*=np.sin(np.linspace(0,np.pi/2,attack))**2
         audio[-release:]*=np.sin(np.linspace(np.pi/2,0,release))**2
         filename=f'launch-{name}-launch-1.wav';sf.write(OUTPUT/filename,audio,RATE,subtype='PCM_16')
-        entries.append({'bank':'launch-'+name,'kind':'launch','files':[filename],
+        entries.append({'bank':'launch-'+name,'kind':'launch','files':[filename],'license':'CC0-1.0',
             'origins':[{**origins[0],'layers':origins,'maximum_seconds':duration,'lowpass_hz':cutoff}]})
     launch('warm',1.4,[('interface','confirmation_004.wav',.65,0,0,1),('interface','glass_001.wav',.72,0,.45,.48),('interface','glass_003.wav',.82,0,1.15,.25)],1900)
     launch('projector',1.7,[('projector','projector.mp3',1,1,0,.65),('interface','confirmation_001.wav',.75,0,.15,.6)],2600)
     launch('orbit',1.8,[('interface','glass_001.wav',.55,0,0,.8),('interface','glass_003.wav',.68,0,.32,.55),('interface','confirmation_004.wav',.62,0,.62,.65),('interface','glass_001.wav',.65,0,1.32,.18)],2300)
-    (OUTPUT/'manifest.json').write_text(json.dumps({'version':1,'license':'CC0-1.0','sounds':entries},ensure_ascii=False,indent=2),encoding='utf-8')
+    (OUTPUT/'manifest.json').write_text(json.dumps({'version':2,'license':'mixed',
+        'licenses':{'CC0-1.0':'sources/CREDITS.md',
+            'Nintendo-copyright':'sources/nintendo-switch/NOTICE.md'},'sounds':entries},ensure_ascii=False,indent=2),encoding='utf-8')
     print(f'Built {len(entries)} event banks / {sum(len(e["files"]) for e in entries)} PCM recordings')
 
 if __name__=='__main__':build()

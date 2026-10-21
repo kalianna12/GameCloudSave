@@ -1,13 +1,15 @@
 # 导航提示音
 
-当前使用 `library/manifest.json` 中的 57 组事件、60 个预处理 WAV，素材来自公开的 CC0 音效库，来源与原文件位于 `sources/`。
+当前使用 `library/manifest.json` 中的 57 组事件、60 个预处理 WAV，来源与原文件位于 `sources/`。默认首页采用用户指定的 Nintendo Switch 素材，其余音效使用 CC0 素材；清单分别标注许可，详见 [来源说明](sources/CREDITS.md)。
 
-- 默认首页：Kenney UI Audio / Interface Sounds 的轻触反馈，保留三种音色编号。
+- 默认首页：用户指定的 [Switch 素材库](https://github.com/TOM-BadEN/Nintendo-Switch-Sounds-Effect)，六种交互分别取样，设置中名为“Switch · 默认”；保留原配置编号 `classic-clear`，无需改写用户配置。轻柔、清亮仍可单独选择。Switch 来源版权说明见 [NOTICE](sources/nintendo-switch/NOTICE.md)。
 - 书柜：Kenney 的开书、翻书、放书、合书录音，以及 StarNinjas 的真实翻页录音。
 - 影院：plopkot 的真实放映机录音，配合机械开关声。
 - 星图：Kenney 的玻璃轻响和界面声，降调并添加短回响。
 - 额外可选：绒感（低柔）、木纹（轻敲）、涟漪（水滴）。连同首页三组和三种布局，共九组导航音效；默认自动跟随布局。
 - 游戏启动：启程 1.4 秒、开场 1.7 秒、星际 1.8 秒，可跟随布局或关闭。使用同一批 CC0 素材混合、错开起音和淡入淡出；分层来源与参数记录在清单的 `layers` 字段。
+
+Switch 组保持素材原速，目标 RMS 为移动 0.080、其他交互 0.095，按 0.28 峰值上限限制实际增益。相较旧默认素材实际 RMS 提高约 1.3–4.2 dB，仍满足 8 轨最坏同相叠加不削波；保留全局音量、静音以及其他音效组的既有响度。
 
 移动、确认、返回、打开、分组选择和布局切换分别取样。构建脚本 `scripts/build_navigation_library.py` 负责裁剪、滤波、淡入淡出、峰值与响度处理；开发时需要 soundfile/numpy，运行时仅使用预转换 PCM，无额外依赖或驱动。
 

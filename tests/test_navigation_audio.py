@@ -43,7 +43,28 @@ class AudioTests(unittest.TestCase):
         self.assertIn('rpg/bookOpen.ogg',sources['shelf'])
         self.assertIn('book/book_flip.4.ogg',sources['shelf'])
         self.assertIn('projector/projector.mp3',sources['cinema'])
-        self.assertEqual(MANIFEST['license'],'CC0-1.0')
+        self.assertEqual(MANIFEST['license'],'mixed')
+        for entry in MANIFEST['sounds']:
+            self.assertEqual(entry['license'],'Nintendo-copyright' if entry['bank']=='classic-clear' else 'CC0-1.0')
+
+    def test_default_switch_samples_preserve_provenance_and_louder_safe_levels(self):
+        expected={'move':'SeGameIconFocus.wav','confirm':'SeBtnDecide.wav',
+            'back':'SeFooterDecideBack.wav','open':'SeDialogOpen.wav',
+            'group':'SeSelectFocus.wav','switch':'SeDialogOpen_Accent.wav'}
+        # Measured RMS of the previous default bank, before the Switch replacement.
+        previous={'move':.040,'confirm':.0494,'back':.0437,'open':.055,'group':.039,'switch':.055}
+        for entry in MANIFEST['sounds']:
+            if entry['bank']!='classic-clear':continue
+            kind=entry['kind']
+            self.assertEqual(entry['origins'][0]['source'],'nintendo-switch/'+expected[kind])
+            samples=[v/32768 for v in array('h',pcm(entry['files'][0]))]
+            rms=(sum(v*v for v in samples)/len(samples))**.5
+            self.assertGreater(rms,previous[kind]*1.12,(kind,rms))
+            # Even eight simultaneous, full-volume copies cannot clip the mixer.
+            self.assertLess(max(abs(v) for v in samples)*VOICE_COUNT*MASTER_GAIN,1)
+        notice=(ROOT/'ui/sounds/sources/nintendo-switch/NOTICE.md').read_text(encoding='utf-8')
+        self.assertIn('70614a3e0b912068476ed54d9836d08e8d6878b0',notice)
+        self.assertIn('Nintendo',notice)
 
     def test_windows_packed_abi_and_full_pcm_buffer_lifetime(self):
         self.assertEqual(ctypes.sizeof(Buffer),28+2*ctypes.sizeof(ctypes.c_void_p))

@@ -1,6 +1,10 @@
 {
-  "version": 1,
-  "license": "CC0-1.0",
+  "version": 2,
+  "license": "mixed",
+  "licenses": {
+    "CC0-1.0": "sources/CREDITS.md",
+    "Nintendo-copyright": "sources/nintendo-switch/NOTICE.md"
+  },
   "sounds": [
     {
       "bank": "classic-clear",
@@ -10,15 +14,17 @@
       ],
       "origins": [
         {
-          "source": "ui/rollover2.wav",
-          "sha256": "b94d05c654435c46f331a43447ca70dc77647ddcd4a82d66ada5bbc12b766d06",
+          "source": "nintendo-switch/SeGameIconFocus.wav",
+          "sha256": "1cbd80fa4300eea368405cbd3f8ccaecbf2ae1c9128cceb867ae9ddff5d6b99b",
           "speed": 1,
           "maximum_seconds": 0.14,
           "offset_seconds": 0,
-          "lowpass_hz": 3200,
-          "short_echo": false
+          "lowpass_hz": 8000,
+          "short_echo": false,
+          "target_rms": 0.08
         }
-      ]
+      ],
+      "license": "Nintendo-copyright"
     },
     {
       "bank": "classic-clear",
@@ -28,15 +34,17 @@
       ],
       "origins": [
         {
-          "source": "ui/click2.wav",
-          "sha256": "366a86202b215395eb9bb7376da4200453a0fb6751884e338a9e720f036fce0a",
+          "source": "nintendo-switch/SeBtnDecide.wav",
+          "sha256": "bc73857a32500717175225ee6c94436e3fa3e00335d2db2feaf6bbb608577067",
           "speed": 1,
           "maximum_seconds": 0.13,
           "offset_seconds": 0,
-          "lowpass_hz": 3200,
-          "short_echo": false
+          "lowpass_hz": 8000,
+          "short_echo": false,
+          "target_rms": 0.095
         }
-      ]
+      ],
+      "license": "Nintendo-copyright"
     },
     {
       "bank": "classic-clear",
@@ -46,15 +54,17 @@
       ],
       "origins": [
         {
-          "source": "interface/back_002.wav",
-          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
-          "speed": 0.9,
+          "source": "nintendo-switch/SeFooterDecideBack.wav",
+          "sha256": "96ac2a098f33a73ee00a693f57ea6f807266b612ea5db9b9bda9ae779b4d2e91",
+          "speed": 1,
           "maximum_seconds": 0.15,
           "offset_seconds": 0,
-          "lowpass_hz": 3200,
-          "short_echo": false
+          "lowpass_hz": 8000,
+          "short_echo": false,
+          "target_rms": 0.095
         }
-      ]
+      ],
+      "license": "Nintendo-copyright"
     },
     {
       "bank": "classic-clear",
@@ -64,15 +74,17 @@
       ],
       "origins": [
         {
-          "source": "interface/select_002.wav",
-          "sha256": "9f15b5f93716a3ff8842cff73ef932e81beac2d19972066f690154c1f9322f2b",
-          "speed": 0.9,
+          "source": "nintendo-switch/SeDialogOpen.wav",
+          "sha256": "7368350cb84f2f7da718d449c72af420aa1ef9f4628d15d319cfebb1e1c6144b",
+          "speed": 1,
           "maximum_seconds": 0.11,
           "offset_seconds": 0,
-          "lowpass_hz": 3200,
-          "short_echo": false
+          "lowpass_hz": 8000,
+          "short_echo": false,
+          "target_rms": 0.095
         }
-      ]
+      ],
+      "license": "Nintendo-copyright"
     },
     {
       "bank": "classic-clear",
@@ -82,15 +94,17 @@
       ],
       "origins": [
         {
-          "source": "interface/switch_006.wav",
-          "sha256": "7670954a43028178dada559edfcf96ebda421fb9da41b673f90d84163f37e451",
-          "speed": 0.95,
+          "source": "nintendo-switch/SeSelectFocus.wav",
+          "sha256": "7989d27266f25cc9e6438b6c3bec85ff962113e29777a0c4317ab300e482d5a3",
+          "speed": 1,
           "maximum_seconds": 0.24,
           "offset_seconds": 0,
-          "lowpass_hz": 3200,
-          "short_echo": false
+          "lowpass_hz": 8000,
+          "short_echo": false,
+          "target_rms": 0.095
         }
-      ]
+      ],
+      "license": "Nintendo-copyright"
     },
     {
       "bank": "classic-clear",
@@ -100,15 +114,17 @@
       ],
       "origins": [
         {
-          "source": "interface/confirmation_001.wav",
-          "sha256": "f9d0ef5a5c740c2ac250ac3876db9e4340669044a5bf78ae09192918db3e2ebc",
-          "speed": 0.92,
-          "maximum_seconds": 0.34,
+          "source": "nintendo-switch/SeDialogOpen_Accent.wav",
+          "sha256": "cc395824f13a7aa0cf102a591258b1b65e0f78b1d597074af256d54d8612c243",
+          "speed": 1,
+          "maximum_seconds": 0.58,
           "offset_seconds": 0,
-          "lowpass_hz": 3200,
-          "short_echo": false
+          "lowpass_hz": 8000,
+          "short_echo": false,
+          "target_rms": 0.095
         }
-      ]
+      ],
+      "license": "Nintendo-copyright"
     },
     {
       "bank": "classic-soft",
@@ -124,9 +140,11 @@
           "maximum_seconds": 0.14,
           "offset_seconds": 0,
           "lowpass_hz": 2200,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-soft",
@@ -142,9 +160,11 @@
           "maximum_seconds": 0.13,
           "offset_seconds": 0,
           "lowpass_hz": 2200,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-soft",
@@ -160,9 +180,11 @@
           "maximum_seconds": 0.15,
           "offset_seconds": 0,
           "lowpass_hz": 2200,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-soft",
@@ -178,9 +200,11 @@
           "maximum_seconds": 0.11,
           "offset_seconds": 0,
           "lowpass_hz": 2200,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-soft",
@@ -196,9 +220,11 @@
           "maximum_seconds": 0.24,
           "offset_seconds": 0,
           "lowpass_hz": 2200,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-soft",
@@ -214,9 +240,11 @@
           "maximum_seconds": 0.34,
           "offset_seconds": 0,
           "lowpass_hz": 2200,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-arcade",
@@ -232,9 +260,11 @@
           "maximum_seconds": 0.14,
           "offset_seconds": 0,
           "lowpass_hz": 4000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-arcade",
@@ -250,9 +280,11 @@
           "maximum_seconds": 0.13,
           "offset_seconds": 0,
           "lowpass_hz": 4000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-arcade",
@@ -268,9 +300,11 @@
           "maximum_seconds": 0.15,
           "offset_seconds": 0,
           "lowpass_hz": 4000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-arcade",
@@ -286,9 +320,11 @@
           "maximum_seconds": 0.11,
           "offset_seconds": 0,
           "lowpass_hz": 4000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-arcade",
@@ -304,9 +340,11 @@
           "maximum_seconds": 0.24,
           "offset_seconds": 0,
           "lowpass_hz": 4000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "classic-arcade",
@@ -322,9 +360,11 @@
           "maximum_seconds": 0.34,
           "offset_seconds": 0,
           "lowpass_hz": 4000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "shelf",
@@ -341,7 +381,8 @@
           "maximum_seconds": 0.21,
           "offset_seconds": 0,
           "lowpass_hz": 4600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         },
         {
           "source": "rpg/bookFlip2.ogg",
@@ -350,9 +391,11 @@
           "maximum_seconds": 0.21,
           "offset_seconds": 0,
           "lowpass_hz": 4600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "shelf",
@@ -368,9 +411,11 @@
           "maximum_seconds": 0.29,
           "offset_seconds": 0,
           "lowpass_hz": 3400,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "shelf",
@@ -386,9 +431,11 @@
           "maximum_seconds": 0.26,
           "offset_seconds": 0,
           "lowpass_hz": 3500,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "shelf",
@@ -404,9 +451,11 @@
           "maximum_seconds": 0.2,
           "offset_seconds": 0,
           "lowpass_hz": 4400,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "shelf",
@@ -423,7 +472,8 @@
           "maximum_seconds": 0.4,
           "offset_seconds": 0,
           "lowpass_hz": 4600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         },
         {
           "source": "book/book_flip.8.ogg",
@@ -432,9 +482,11 @@
           "maximum_seconds": 0.4,
           "offset_seconds": 0,
           "lowpass_hz": 4600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "shelf",
@@ -450,9 +502,11 @@
           "maximum_seconds": 0.27,
           "offset_seconds": 0,
           "lowpass_hz": 3800,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "cinema",
@@ -468,9 +522,11 @@
           "maximum_seconds": 0.11,
           "offset_seconds": 1.0,
           "lowpass_hz": 3000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "cinema",
@@ -486,9 +542,11 @@
           "maximum_seconds": 0.24,
           "offset_seconds": 0,
           "lowpass_hz": 3400,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "cinema",
@@ -504,9 +562,11 @@
           "maximum_seconds": 0.15,
           "offset_seconds": 0,
           "lowpass_hz": 2400,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "cinema",
@@ -522,9 +582,11 @@
           "maximum_seconds": 0.24,
           "offset_seconds": 0,
           "lowpass_hz": 3400,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "cinema",
@@ -540,9 +602,11 @@
           "maximum_seconds": 0.24,
           "offset_seconds": 2.1,
           "lowpass_hz": 3400,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "cinema",
@@ -558,9 +622,11 @@
           "maximum_seconds": 0.48,
           "offset_seconds": 0.7,
           "lowpass_hz": 3000,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "atlas",
@@ -577,7 +643,8 @@
           "maximum_seconds": 0.19,
           "offset_seconds": 0,
           "lowpass_hz": 3000,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.04
         },
         {
           "source": "interface/glass_006.wav",
@@ -586,9 +653,11 @@
           "maximum_seconds": 0.19,
           "offset_seconds": 0,
           "lowpass_hz": 3000,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "atlas",
@@ -604,9 +673,11 @@
           "maximum_seconds": 0.4,
           "offset_seconds": 0,
           "lowpass_hz": 3300,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "atlas",
@@ -622,9 +693,11 @@
           "maximum_seconds": 0.18,
           "offset_seconds": 0,
           "lowpass_hz": 2400,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "atlas",
@@ -640,9 +713,11 @@
           "maximum_seconds": 0.4,
           "offset_seconds": 0,
           "lowpass_hz": 2800,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "atlas",
@@ -658,9 +733,11 @@
           "maximum_seconds": 0.23,
           "offset_seconds": 0,
           "lowpass_hz": 2800,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "atlas",
@@ -676,9 +753,11 @@
           "maximum_seconds": 0.58,
           "offset_seconds": 0,
           "lowpass_hz": 2400,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "felt",
@@ -694,9 +773,11 @@
           "maximum_seconds": 0.16,
           "offset_seconds": 0,
           "lowpass_hz": 1500,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "felt",
@@ -712,9 +793,11 @@
           "maximum_seconds": 0.28,
           "offset_seconds": 0,
           "lowpass_hz": 1500,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "felt",
@@ -730,9 +813,11 @@
           "maximum_seconds": 0.19,
           "offset_seconds": 0,
           "lowpass_hz": 1500,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "felt",
@@ -748,9 +833,11 @@
           "maximum_seconds": 0.23,
           "offset_seconds": 0,
           "lowpass_hz": 1500,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "felt",
@@ -766,9 +853,11 @@
           "maximum_seconds": 0.32,
           "offset_seconds": 0,
           "lowpass_hz": 1500,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "felt",
@@ -784,9 +873,11 @@
           "maximum_seconds": 0.48,
           "offset_seconds": 0,
           "lowpass_hz": 1500,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "wood",
@@ -802,9 +893,11 @@
           "maximum_seconds": 0.16,
           "offset_seconds": 0,
           "lowpass_hz": 2600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "wood",
@@ -820,9 +913,11 @@
           "maximum_seconds": 0.28,
           "offset_seconds": 0,
           "lowpass_hz": 2600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "wood",
@@ -838,9 +933,11 @@
           "maximum_seconds": 0.19,
           "offset_seconds": 0,
           "lowpass_hz": 2600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "wood",
@@ -856,9 +953,11 @@
           "maximum_seconds": 0.23,
           "offset_seconds": 0,
           "lowpass_hz": 2600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "wood",
@@ -874,9 +973,11 @@
           "maximum_seconds": 0.32,
           "offset_seconds": 0,
           "lowpass_hz": 2600,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "wood",
@@ -892,9 +993,11 @@
           "maximum_seconds": 0.48,
           "offset_seconds": 0,
           "lowpass_hz": 2600,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "water",
@@ -910,9 +1013,11 @@
           "maximum_seconds": 0.16,
           "offset_seconds": 0,
           "lowpass_hz": 1900,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.04
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "water",
@@ -928,9 +1033,11 @@
           "maximum_seconds": 0.28,
           "offset_seconds": 0,
           "lowpass_hz": 1900,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "water",
@@ -946,9 +1053,11 @@
           "maximum_seconds": 0.19,
           "offset_seconds": 0,
           "lowpass_hz": 1900,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "water",
@@ -964,9 +1073,11 @@
           "maximum_seconds": 0.23,
           "offset_seconds": 0,
           "lowpass_hz": 1900,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "water",
@@ -982,9 +1093,11 @@
           "maximum_seconds": 0.32,
           "offset_seconds": 0,
           "lowpass_hz": 1900,
-          "short_echo": false
+          "short_echo": false,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "water",
@@ -1000,9 +1113,11 @@
           "maximum_seconds": 0.48,
           "offset_seconds": 0,
           "lowpass_hz": 1900,
-          "short_echo": true
+          "short_echo": true,
+          "target_rms": 0.055
         }
-      ]
+      ],
+      "license": "CC0-1.0"
     },
     {
       "bank": "launch-warm",
@@ -1010,6 +1125,7 @@
       "files": [
         "launch-warm-launch-1.wav"
       ],
+      "license": "CC0-1.0",
       "origins": [
         {
           "source": "interface/confirmation_004.wav",
@@ -1055,6 +1171,7 @@
       "files": [
         "launch-projector-launch-1.wav"
       ],
+      "license": "CC0-1.0",
       "origins": [
         {
           "source": "projector/projector.mp3",
@@ -1092,6 +1209,7 @@
       "files": [
         "launch-orbit-launch-1.wav"
       ],
+      "license": "CC0-1.0",
       "origins": [
         {
           "source": "interface/glass_001.wav",

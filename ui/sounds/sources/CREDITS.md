@@ -12,4 +12,6 @@
 
 感谢 Kenney、StarNinjas 和 plopkot。保留 27 个实际使用的原始文件及各压缩包提供的许可文本。放映机源文件使用其作者发布的公开 MP3 试听版本，未下载需要登录的原始 WAV，也没有使用账号接口。
 
-本项目对这些素材进行裁剪、部分降调、滤波、短回响、响度调整和首尾淡入淡出。逐个成品的原文件路径、SHA256、处理参数与事件用途记录在 `../library/manifest.json`；可通过 `scripts/build_navigation_library.py` 重建。这些素材没有取自商业主机或游戏的音效录音。
+本项目对上述 CC0 素材进行裁剪、部分降调、滤波、短回响、响度调整和首尾淡入淡出。逐个成品的原文件路径、SHA256、处理参数与事件用途记录在 `../library/manifest.json`；可通过 `scripts/build_navigation_library.py` 重建。
+
+2026-10-22 按用户指定加入 `nintendo-switch/` 中的六个 Switch 音效原文件，替换默认首页声音。**这部分版权归 Nintendo，不是 CC0**，不适用上表许可；固定来源提交、上游版权说明及用途见 [nintendo-switch/NOTICE.md](nintendo-switch/NOTICE.md)。清单逐项标注许可，不能将整个音效目录视为 CC0。
