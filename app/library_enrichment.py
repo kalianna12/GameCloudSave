@@ -28,10 +28,10 @@ def missing(store,game):
         'cover':not cover_path(store,game),'background':not existing(store,game)}
 
 def cached_lookup(store,game):
-    from library_metadata import lookup
+    from library_metadata import lookup,local_utc_offset
     from services import read_json,write_json
     cache_file=store.root/'enrichment-metadata-cache.json'
-    key=json.dumps(['titles-v3-artwork',game['name'],game.get('source_name'),game.get('aliases'),game.get('steam_appid'),game.get('metadata_steam_appid'),game.get('category'),effective_tags(game)],ensure_ascii=False)
+    key=json.dumps(['titles-v4-region-timezone',local_utc_offset(),game['name'],game.get('source_name'),game.get('aliases'),game.get('steam_appid'),game.get('metadata_steam_appid'),game.get('category'),effective_tags(game)],ensure_ascii=False)
     with store.match_lock:entry=read_json(cache_file,{}).get(key)
     if entry and time.time()-entry['time']<(86400 if entry['fields'].get('release_date') else 300):return entry['fields']
     fields=lookup(game)

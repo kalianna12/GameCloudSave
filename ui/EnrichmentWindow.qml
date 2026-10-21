@@ -15,6 +15,8 @@ ApplicationWindow {
     property bool ownsQuery: false
     property string queryScope: ""
     property string manualId: ""
+    property var saveFollowupIds: []
+    signal saveSearchRequested(var ids)
     readonly property int candidateCount: backend.enrichmentResults.filter(function(row) { return !row.applied && Object.keys(row.fields).length>0 }).length
     ListModel { id: stableRows; dynamicRoles: true }
     AiSettingsDialog { id: aiSettings }
@@ -37,7 +39,7 @@ ApplicationWindow {
         if(backend.enrichmentProgress.running) { show();raise();requestActivate();return }
         var nextScope=JSON.stringify(ids || [])
         manualId=""
-        if(nextScope!==queryScope) { stableRows.clear();selected=({});hasQuery=false;ownsQuery=false;queryScope=nextScope }
+        if(nextScope!==queryScope) { stableRows.clear();selected=({});hasQuery=false;ownsQuery=false;queryScope=nextScope;saveFollowupIds=[] }
         scopeIds=ids || [];var values=options || {}
         dates.checked=values.dates!==false;tags.checked=values.tags!==false;covers.checked=values.covers!==false
         backgrounds.checked=values.backgrounds!==false
@@ -68,7 +70,11 @@ ApplicationWindow {
         target: backend
         function onEnrichmentChanged() { if(window.ownsQuery) window.sync() }
         function onOperationCompleted(action,success) {
-            if(action==="enrichment-apply" && success && window.ownsQuery) { var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=false });window.selected=next }
+            if(action==="enrichment-apply" && success && window.ownsQuery) {
+                var next={};backend.enrichmentResults.forEach(function(row) { next[row.id]=false });window.selected=next
+                var appliedIds=backend.enrichmentResults.filter(function(row) { return row.applied }).map(function(row) { return row.id })
+                window.saveFollowupIds=appliedIds.length ? backend.matchTargetIds("pending",false,appliedIds) : []
+            }
             if(action==="ai-test" && success) ai.checked=true
             if(action==="enrichment-manual" && success && window.manualId) { var next=Object.assign({},window.selected);next[window.manualId]=true;window.selected=next;window.hasQuery=true;window.ownsQuery=true;window.sync();window.manualId="" }
             if(action==="enrichment-artwork" && success && window.manualId) { var next=Object.assign({},window.selected);next[window.manualId]=true;window.selected=next;var row=backend.enrichmentResults.find(function(r) { return r.id===window.manualId });if(row) manual.refreshProposal(row);window.sync() }
@@ -88,6 +94,11 @@ ApplicationWindow {
             AppButton { objectName: "enrichmentClose"; text: "关闭"; onClicked: window.close() }
         }
         Label { visible: !window.manualId; text: "只补缺失内容，查询后预览。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        RowLayout {
+            visible: window.saveFollowupIds.length>0;Layout.fillWidth: true
+            Label { text: "资料已补全，下一步可为这 "+window.saveFollowupIds.length+" 款游戏查找存档。";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary }
+            AppButton { objectName: "enrichmentFindSaves";text: "继续查找存档";enabled: !backend.busy;onClicked: window.saveSearchRequested(window.saveFollowupIds) }
+        }
         Flow {
             visible: !window.manualId; Layout.fillWidth: true; spacing: 12
             CheckBox { id: dates; text: "发行日期"; checked: true; enabled: !backend.busy }

@@ -2,7 +2,7 @@
 from pathlib import Path
 import json
 
-STRONG={'.sav','.save','.sl2','.lsv','.rpgsave','.rmmzsave','.rvdata','.rvdata2','.rxdata','.celeste','.ksd','.es3','.nson'}
+STRONG={'.sav','.save','.sl2','.lsv','.rpgsave','.rmmzsave','.rvdata','.rvdata2','.rxdata','.celeste','.ksd','.es3','.nson','.uberstate'}
 GENERIC={'renpy','documents','my games','saved games','appdata','local','roaming','locallow','packages'}
 
 def evidence(candidate):

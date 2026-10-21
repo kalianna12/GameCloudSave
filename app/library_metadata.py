@@ -1,7 +1,7 @@
 """Best-effort source metadata. Dates never come from model guesses."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode,urlsplit
 from urllib.request import Request,urlopen
 import json,re,time
 
@@ -9,9 +9,14 @@ from library_sources import release_date
 from tag_catalog import normalize_tags,vocabulary,MAX_TAGS
 from catalog_match import title_key,best_match
 
+def local_utc_offset():return int(datetime.now().astimezone().utcoffset().total_seconds())
+
 def fetch(url,body=None):
+    headers={'User-Agent':'GameCloudSave/2.3','Accept':'application/json','Content-Type':'application/json'}
+    if urlsplit(url).hostname=='store.steampowered.com':
+        headers['Cookie']='timezoneOffset='+str(local_utc_offset())+',0'
     request=Request(url,data=json.dumps(body).encode() if body is not None else None,
-                    headers={'User-Agent':'GameCloudSave/2.3','Accept':'application/json','Content-Type':'application/json'})
+                    headers=headers)
     with urlopen(request,timeout=8) as response:data=response.read(2*1024*1024+1)
     if len(data)>2*1024*1024:raise ValueError('资料响应过大')
     return json.loads(data)
@@ -19,8 +24,13 @@ def fetch(url,body=None):
 def steam_date(value):
     if not isinstance(value,dict) or value.get('coming_soon'):return ''
     text=value.get('date','')
+    if not isinstance(text,str):return ''
     parsed=release_date(text)
     if parsed:return parsed
+    chinese=re.fullmatch(r'\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*',text)
+    if chinese:
+        try:return datetime(*map(int,chinese.groups())).date().isoformat()
+        except ValueError:return ''
     # Steam appdetails with l=english returns an English month, independent of OS locale.
     months={name:index for index,name in enumerate(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],1)}
     match=re.fullmatch(r'(\d{1,2}) ([A-Za-z]{3}),? (\d{4})',text)
@@ -40,7 +50,13 @@ def lookup(game):
     appid=str(game.get('steam_appid') or game.get('metadata_steam_appid') or '')
     result={}
     if re.fullmatch(r'\d{1,12}',appid):
-        data=fetch('https://store.steampowered.com/api/appdetails?'+urlencode({'appids':appid,'l':'english'})).get(appid,{})
+        data={};last_error=None
+        for region in ('cn','us'):
+            try:
+                data=fetch('https://store.steampowered.com/api/appdetails?'+urlencode({'appids':appid,'l':'english','cc':region})).get(appid,{})
+                if data.get('success'):break
+            except (OSError,ValueError) as error:last_error=error
+        if not data and last_error:raise last_error
         if data.get('success') and data.get('data',{}).get('type','game')=='game':
             raw=data['data'];date=steam_date(raw.get('release_date'))
             tags=normalize_tags([row.get('description','') for row in raw.get('genres',[])],vocabulary([]))[:MAX_TAGS]
@@ -73,7 +89,7 @@ def complete(store,idents=None):
              (not release_date(game.get('release_date')) and not game.get('release_date_manual') or not effective_tags(game) and not game.get('tags_manual'))]
     cache=read_json(store.root/'metadata-cache.json',{});now=time.time()
     def query(game):
-        key=json.dumps(['metadata-v1',game['id'],game['name'],game.get('steam_appid'),game.get('metadata_steam_appid'),game.get('category'),effective_tags(game)],ensure_ascii=False)
+        key=json.dumps(['metadata-v2-region-timezone',local_utc_offset(),game['id'],game['name'],game.get('steam_appid'),game.get('metadata_steam_appid'),game.get('category'),effective_tags(game)],ensure_ascii=False)
         entry=cache.get(key)
         if entry and now-entry['time']<86400:return game['id'],key,entry['fields'],False
         try:return game['id'],key,lookup(game),False

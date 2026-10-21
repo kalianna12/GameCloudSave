@@ -13,6 +13,16 @@ CATEGORY_TAGS={
  '竞速体育':['竞速','赛车','体育','运动','racing','sports'],
  '音乐节奏':['音乐节奏','音乐','节奏','音游','rhythm','music']}
 STYLE_TAGS=['恐怖','开放世界','合作','恋爱','独立','悬疑','Roguelike','解谜']
+
+def recently_added(game,now=None):
+    from datetime import datetime,timezone,timedelta
+    if not isinstance(game.get('added_at'),str):return False
+    try:
+        added=datetime.fromisoformat(game.get('added_at','').replace('Z','+00:00'))
+        if added.tzinfo is None:return False
+        age=(now or datetime.now(timezone.utc))-added
+        return timedelta(0)<=age<timedelta(days=3)
+    except (ValueError,TypeError):return False
 def unique(values):return list(dict.fromkeys(value.strip() for value in values if isinstance(value,str) and value.strip()))
 def normalized(value):return unicodedata.normalize('NFKC',value or '').casefold().strip()
 def primary(tags):
@@ -44,7 +54,7 @@ def prepare_game(game):
     tags=effective_tags({**game,'tags':unique([*game.get('tags',[]),*game.get('groups',[])])})
     category=game.get('category') or primary(tags)
     name=canonical_series(game.get('series',''))
-    return {**game,'category':category,'tags':tags,'series':name,
+    return {**game,'category':category,'tags':tags,'series':name,'isNew':recently_added(game),
             'searchText':normalized(' '.join([game['name'],category,name,*tags]))}
 def recommend(games,limit=12):
     recent=sorted([game for game in games if game.get('last_played')],key=lambda game:game['last_played'],reverse=True)[:5]
@@ -64,6 +74,8 @@ def sections(games):
     games=[prepare_game(game) for game in games];output=[]
     recent=sorted([game for game in games if game.get('last_played')],key=lambda game:game['last_played'],reverse=True)[:8]
     output.append({'id':'recent','kind':'recent','title':'最近游玩' if recent else '我的游戏','subtitle':'','items':recent or sorted(games,key=lambda game:(not game.get('favorite'),not game.get('installed'),game['name']))[:8],'target':'recent' if recent else 'all','value':''})
+    added=sorted([game for game in games if game['isNew']],key=lambda game:game['added_at'],reverse=True)
+    if added:output.append({'id':'new','kind':'games','title':'新加入','subtitle':'近 3 天加入的游戏','items':added[:12],'target':'new','value':''})
     grouped=defaultdict(list)
     for game in games:grouped[game['category']].append(game)
     tiles=[{'id':name,'name':name,'count':len(rows),'games':rows[:3],'target':'category','value':name} for name,rows in grouped.items()]

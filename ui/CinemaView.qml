@@ -157,6 +157,7 @@ Item {
                     id: poster; x: 6; y: 7; width: parent.width-12; height: parent.height-34; radius: 3; color: "#28212d"; border.color: "#55465c"; border.width: 1
                     clip: true
                     Image { objectName: "cinemaPoster"; anchors.fill: parent; anchors.margins: 2; source: modelData.coverHighUrl || modelData.coverUrl || ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 400 }
+                    NewGameBadge { visible: !!modelData.isNew;anchors.left: parent.left;anchors.top: parent.top;anchors.margins: 5 }
                     Rectangle { anchors.fill: parent; color: "#20fff2d4"; visible: filmHover.hovered && !filmCell.current }
                     SelectionFrame { objectName: "cinemaFocusRing"; selected: filmCell.current; radius: 3; border.width: 4 }
                     HoverHandler { id: filmHover; enabled: !backend.controllerMode }

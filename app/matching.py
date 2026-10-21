@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import time
 
-SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rmmzsave','.rvdata','.rvdata2','.rxdata','.lsv','.sl2','.celeste','.ksd','.es3','.nson'}
+SAVE_TYPES={'.sav','.save','.dat','.json','.slot','.profile','.bin','.rpgsave','.rmmzsave','.rvdata','.rvdata2','.rxdata','.lsv','.sl2','.celeste','.ksd','.es3','.nson','.uberstate'}
 GENERIC_INSTALL={'game','games','common','steamapps','bin','binaries','win64','x64','release','debug'}
 
 def roots_for(local):
@@ -88,6 +88,7 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
         candidate={'path':value,'confidence':round(confidence,2),'reason':reason,'source':origin,'files':files,
                    'fileSummary':', '.join(files[:6]) or '该层未发现常见存档文件，请检查子目录',
                    'score_details':{'developer_match':developer_match,'strong_files':strong},'verified':bool(files),'has_save_evidence':strong,'sample_backup':sample_backup}
+        candidate['evidence_version']=4
         for kind,root in roots.items():
             if path.resolve().is_relative_to(root.resolve()):
                 candidate['root']=kind;candidate['relative']=path.resolve().relative_to(root.resolve()).as_posix();break

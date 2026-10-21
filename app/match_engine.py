@@ -25,6 +25,13 @@ def score_reviews(candidates,scores,weight):
             has_files=path.is_dir() and any((path/name).resolve().is_relative_to(path) and (path/name).is_file() for name in candidate.get('files',[]))
         except (OSError,ValueError):has_files=False
         if not has_files:combined=min(local,combined)
+        candidate.pop('score_note',None)
+        from save_workflow import evidence
+        if candidate.get('evidence_version',0)>=4 and has_files and local>=.85 and not candidate.get('sample_backup') and evidence(candidate):
+            floor=min(local,.86)
+            if combined<floor:
+                combined=floor
+                candidate['score_note']='已核验本机进度文件；AI 低分未覆盖实际存档证据'
         if candidate.get('sample_backup'):combined=min(.55,combined)
         candidate['confidence']=math.floor(combined*100+.5+1e-9)/100
     candidates.sort(key=lambda candidate:-candidate['confidence'])
@@ -122,7 +129,7 @@ def match(store,ident,progress=None,cancel=None):
                 'developers':identity['developers'],'publishers':identity['publishers'],'engine':identity.get('engine',''),
                 'note':identity['note'],'sources':identity['sources'],'scan_modes':list(modes),
                 'ai_warning':warnings.get('ai',''),'network_warning':warnings.get('network',''),'web_warning':warnings.get('web',''),
-                'elapsed':round(time.monotonic()-started,2),'model':store.settings['ai_model'] if store.settings.get('ai_enabled') else '本地规则'}
+                'elapsed':round(time.monotonic()-started,2),'model':store.settings['ai_model'] if store.settings.get('ai_enabled') else '本地规则','scan_version':4}
     pool=ThreadPoolExecutor(max_workers=3)
     futures={pool.submit(scan,item['name'],local,None,None,cancel):'local'}
     if store.settings.get('match_network',True):futures[pool.submit(cached_network,store,item,local,cancel)]='network'
@@ -181,8 +188,8 @@ def match(store,ident,progress=None,cancel=None):
             try:
                 from ai_match import review_directories
                 from services import protect,read_json,write_json
-                signatures=[{'path':c['path'],'files':c['files'],'source_url':c.get('source_url',''),'source':c.get('source','')} for c in candidates[:30]]
-                cache_key=hashlib.sha256(json.dumps(['directory-review-v3',item['name'],store.settings['ai_model'],signatures],sort_keys=True).encode()).hexdigest()
+                signatures=[{'path':c['path'],'files':c['files'],'source_url':c.get('source_url',''),'source':c.get('source',''),'save_evidence':c.get('has_save_evidence',False),'evidence_version':4} for c in candidates[:30]]
+                cache_key=hashlib.sha256(json.dumps(['directory-review-v4-evidence',item['name'],store.settings['ai_model'],signatures],sort_keys=True).encode()).hexdigest()
                 with store.match_lock:reviews=read_json(store.profile/'ai-reviews.json',{});scores=reviews.get(cache_key)
                 if scores is None:
                     with _ai_limit:

@@ -12,11 +12,16 @@ ApplicationWindow {
     property string selectedId: ""
     property bool showConnection: !backend.settings.has_ai_key
     property bool showDetails: false
+    property var followupIds: []
+    property var scopeTargets: []
+    function refreshTargets() { if(!searchScope || searchScope.currentIndex<0 || !installedScope) return;scopeTargets=backend.matchTargetIds(["pending","unsearched","all"][searchScope.currentIndex],installedScope.checked,followupIds) }
+    function openForGames(ids) { openMatcher(ids.length ? ids[0] : "");searchScope.currentIndex=0;installedScope.checked=false;followupIds=ids;refreshTargets() }
+    onFollowupIdsChanged: { if(searchScope) refreshTargets();syncResults() }
     ListModel { id: resultModel; dynamicRoles: true }
     function syncResults() {
         if(!results || !resultFilter || !resultQuery) return
         var savedY=results.contentY
-        var rows=backend.matchResults.filter(function(row) { var game=backend.games.find(function(game) { return game.id===row.id }) || {};return SaveFilters.accept(row,resultFilter.currentIndex,!!game.saveSet,resultQuery.text) })
+        var rows=backend.matchResults.filter(function(row) { var game=backend.games.find(function(game) { return game.id===row.id }) || {};return (!matcher.followupIds.length || matcher.followupIds.indexOf(row.id)>=0) && SaveFilters.accept(row,resultFilter.currentIndex,!!game.saveSet,resultQuery.text) })
         for(var i=0;i<rows.length;i++) {
             var existing=-1
             for(var j=0;j<resultModel.count;j++) if(resultModel.get(j).record.id===rows[i].id) { existing=j; break }
@@ -28,9 +33,10 @@ ApplicationWindow {
     }
     Component.onCompleted: syncResults()
     Connections { target: backend
-        function onGamesChanged() { matcher.syncResults() }
-        function onMatchesChanged() { if(!backend.matching) matcher.syncResults();matcher.currentResult=backend.matchResult(matcher.selectedId) }
+        function onGamesChanged() { matcher.syncResults();matcher.refreshTargets() }
+        function onMatchesChanged() { if(!backend.matching) { matcher.syncResults();matcher.refreshTargets() };matcher.currentResult=backend.matchResult(matcher.selectedId) }
         function onMatchRecordChanged(ident,row) {
+            if(matcher.followupIds.length && matcher.followupIds.indexOf(ident)<0) return
             if(resultFilter.currentIndex!==0 || resultQuery.text) { matcher.syncResults();if(ident===matcher.selectedId) matcher.currentResult=row;return }
             var index=-1
             for(var i=0;i<resultModel.count;i++) if(resultModel.get(i).record.id===ident) { index=i;break }
@@ -51,6 +57,7 @@ ApplicationWindow {
         return local.save_dir || local.install_dir || ""
     }
     function openMatcher(ident) {
+        followupIds=[]
         var s=backend.settings
         enabledSwitch.checked=s.ai_enabled; modelName.text=s.ai_model; apiKey.text=""
         networkSwitch.checked=s.match_network;reviewSwitch.checked=s.match_ai_review;matchWorkers.value=s.match_workers
@@ -58,7 +65,7 @@ ApplicationWindow {
         aiWeight.value=s.match_ai_weight
         if(ident) { selectedId=ident; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===ident }) }
         else if(!selectedId && backend.games.length) { selectedId=backend.matchResults.length ? backend.matchResults[0].id : backend.games[0].id; selector.currentIndex=backend.games.findIndex(function(g) { return g.id===matcher.selectedId }) }
-        show(); raise(); requestActivate()
+        refreshTargets();show(); raise(); requestActivate()
     }
     function label(state) { return state==="ready" ? "可备份" : state==="uploaded" ? "已上传" : state==="local_only" ? "本地已保存" : state==="saving" ? "正在备份" : state==="uploading" ? "正在上传" : state==="running" ? "正在查找" : state==="applied" ? "已设置" : state==="review" ? "请确认目录" : state==="notfound" ? "未找到存档" : state==="failed" ? "失败" : "未查找" }
     onVisibleChanged: if(!visible) apiKey.text=""
@@ -99,10 +106,17 @@ ApplicationWindow {
             }
         }
         RowLayout {
-            AppComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: matcher.selectedId=currentValue }
+            AppComboBox { id: selector; objectName: "matchGameSelector"; Layout.fillWidth: true; model: backend.games; textRole: "name"; valueRole: "id"; onActivated: { matcher.selectedId=currentValue;if(matcher.followupIds.length && matcher.followupIds.indexOf(currentValue)<0) matcher.followupIds=[] } }
             AppButton { text: "查找当前游戏"; enabled: !backend.busy && !!matcher.selectedId; onClicked: backend.matchGames([matcher.selectedId],matcher.aiValues()) }
-            AppButton { text: "查找已安装游戏"; enabled: !backend.busy; onClicked: backend.matchGames(backend.games.filter(function(g) { return g.installed }).map(function(g) { return g.id }),matcher.aiValues()) }
+            AppButton { objectName: "findScopedSaves";text: "查找此范围"; enabled: !backend.busy && matcher.scopeTargets.length>0; onClicked: backend.matchGames(matcher.scopeTargets,matcher.aiValues()) }
+            AppButton { objectName: "findAllSaves";text: "重新查找全部"; enabled: !backend.busy && backend.games.length>0;onClicked: { matcher.followupIds=[];backend.matchGames(backend.matchTargetIds("all",false,[]),matcher.aiValues()) } }
             AppButton { objectName: "stopMatching"; text: backend.matchProgress.cancelled ? "正在停止" : "停止"; enabled: backend.matching && !backend.matchProgress.cancelled; onClicked: backend.cancelMatching() }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            AppComboBox { id: searchScope;objectName: "saveSearchScope";Layout.preferredWidth: 250;model: ["待处理：未查找优先，跳过已设置","仅从未查找","重新查找（含已设置）"];onCurrentIndexChanged: if(installedScope) matcher.refreshTargets() }
+            CheckBox { id: installedScope;objectName: "saveSearchInstalled";text: "仅已安装";checked: true;onToggled: matcher.refreshTargets() }
+            Label { text: (matcher.followupIds.length ? "所选后续 · " : "")+matcher.scopeTargets.length+" 款；当前游戏可随时单独重查";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;font.pixelSize: 12 }
         }
         ColumnLayout {
             visible: backend.matching; Layout.fillWidth: true; spacing: 6
@@ -148,6 +162,7 @@ ApplicationWindow {
                     width: detailsView.availableWidth-14; spacing: 13
                     Label { text: matcher.currentResult.name || "选择游戏，开始匹配"; font.pixelSize: 22; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
                     Label { text: matcher.label(matcher.currentResult.status); color: Theme.secondary }
+                    Label { visible: !!matcher.currentResult.candidates && matcher.currentResult.candidates.length>0 && matcher.currentResult.scan_version!==4;text: "这是旧版文件识别结果，建议重新查找当前游戏以更新进度文件与评分。";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary }
                     Label { visible: ["failed","notfound","local_only"].indexOf(matcher.currentResult.status)>=0; text: matcher.currentResult.message || "未找到存档，请手动选择目录。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: matcher.currentResult.status==="failed" ? "#f4a092" : Theme.secondary }
                     Label { text: matcher.currentResult.ai_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#e3c893" }
                     Label { text: matcher.currentResult.network_warning || ""; visible: !!text; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
@@ -173,8 +188,9 @@ ApplicationWindow {
                                 Label { visible: matcher.showDetails; text: "匹配评分 "+Math.round(modelData.confidence*100)+" / 100"; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { visible: matcher.showDetails; text: modelData.reason || ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
                                 Label { visible: matcher.showDetails && modelData.ai_confidence!==undefined; text: "本地 "+Math.round((modelData.local_confidence!==undefined ? modelData.local_confidence : modelData.confidence)*100)+" 分 / DeepSeek "+Math.round((modelData.ai_confidence || 0)*100)+" 分 · DeepSeek 权重 "+Math.round((modelData.ai_weight || 0)*100)+"%\n"+(modelData.ai_reason || ""); Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                                Label { visible: matcher.showDetails && !!modelData.score_details; text: modelData.score_details ? "开发商目录："+(modelData.score_details.developer_match ? "匹配" : "未确认")+" / 存档文件："+(modelData.verified ? "存在" : "未确认") : ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
+                                Label { visible: matcher.showDetails && !!modelData.score_details; text: modelData.score_details ? "开发商目录："+(modelData.score_details.developer_match ? "匹配" : "未确认")+" / 进度文件："+(modelData.has_save_evidence ? "已核验" : "未核验") : ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                                 Label { text: "文件："+modelData.fileSummary; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                                Label { visible: !!modelData.score_note;text: modelData.score_note || "";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.accent;font.pixelSize: 12 }
                                 Label { text: "尚未确认实际进度文件，请核对后使用"; visible: modelData.has_save_evidence===false; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                                 RowLayout {
                                     AppButton { text: matcher.currentResult.applied_path===modelData.path ? "已使用" : "使用此目录"; enabled: !backend.busy && matcher.currentResult.applied_path!==modelData.path; onClicked: backend.applyMatch(matcher.selectedId,modelData.path) }

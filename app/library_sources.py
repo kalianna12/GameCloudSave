@@ -198,7 +198,7 @@ def import_rows(store,rows,skip_duplicates=False):
             merge_metadata(game,details)
             if last:game['last_played']=last
         game.setdefault('cover','')
-        if not game.get('added_at'):
+        if game_id not in existing and not game.get('added_at'):
             from datetime import datetime,timezone
             game['added_at']=datetime.now(timezone.utc).isoformat(timespec='seconds')
         if row.get('cover') and Path(row['cover']).is_file() and not game['cover']:

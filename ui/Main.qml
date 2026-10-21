@@ -88,7 +88,7 @@ ApplicationWindow {
         var previous=navigationHistory.length ? navigationHistory[navigationHistory.length-1] : {mode:"home",category:"",series:"",search:"",y:0,gridY:0,gridIndex:0}
         navigationHistory=navigationHistory.slice(0,-1)
         searchDelay.stop();search.text=previous.search;searchQuery=previous.search;searchDelay.stop()
-        libraryMode=previous.mode;librarySort=previous.sort || (previous.mode==="recent" ? "recent" : "name");groupFilter=previous.category;seriesFilter=previous.series
+        libraryMode=previous.mode;librarySort=previous.sort || (previous.mode==="recent" ? "recent" : previous.mode==="new" ? "added" : "name");groupFilter=previous.category;seriesFilter=previous.series
         Qt.callLater(function() { if(win.alternativeDesign) win.focusContent();else if(win.homeVisible) home.restorePosition(previous.y);else { grid.currentIndex=Math.min(grid.count-1,previous.gridIndex || 0);grid.contentY=previous.gridY || 0;grid.forceActiveFocus() } })
     }
     function libraryFocus() {
@@ -99,10 +99,10 @@ ApplicationWindow {
     function focusContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusContent();else if(homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() }
     function focusFirstContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusFirst();else if(homeVisible) home.focusFirst();else if(grid.count) grid.navigateFocus(0);else grid.forceActiveFocus() }
     function previewSidebar(index) {
-        var modes=["home","all","recent","favorites","series"]
+        var modes=["home","all","recent","favorites","series","new"]
         if(index<0 || index>=modes.length) return
         searchDelay.stop();search.text="";searchDelay.stop();searchQuery="";groupFilter="";seriesFilter=""
-        libraryMode=modes[index];librarySort=libraryMode==="recent" ? "recent" : "name"
+        libraryMode=modes[index];librarySort=libraryMode==="recent" ? "recent" : libraryMode==="new" ? "added" : "name"
         grid.currentIndex=grid.count ? 0 : -1;grid.contentY=0
         home.resetSelection()
     }
@@ -146,13 +146,13 @@ ApplicationWindow {
         if(launchTransition.running) return launchTransition.controllerInput(command)
         if(command==="zoom-in" || command==="zoom-out") { if(libraryDesign==="atlas" && libraryFocus() && experienceLoader.item) experienceLoader.item.controllerInput(command);return true }
         if(command==="back") { if(alternativeDesign && experienceLoader.item && experienceLoader.item.controllerBack()) return true;if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
-        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries,navMapping]
+        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries,navNew,navMapping]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
         var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
         var item=activeFocusItem,side=-1,filter=-1,header=-1
         while(item) { if(side<0) side=sidebar.indexOf(item);if(filter<0) filter=filters.indexOf(item);if(header<0) header=headers.indexOf(item);item=item.parent }
         if(side>=0) {
-            if(command==="right" || command==="activate") { if(side===5 && command==="activate") navMapping.clicked();else { previewSidebar(side);focusFirstContent() };return true }
+            if(command==="right" || command==="activate") { if(sidebar[side]===navMapping && command==="activate") navMapping.clicked();else { previewSidebar(side);focusFirstContent() };return true }
             if(command==="up" || command==="down") { var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);previewSidebar(nextSide);return true }
             return true
         }
@@ -170,7 +170,7 @@ ApplicationWindow {
             }
             if(command==="left" || command==="previous" || command==="right" || command==="next") {
                 var step=(command==="left" || command==="previous") ? -1 : 1
-                if(columnIndex===0 && step<0) { var sideIndex=Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex) }
+                if(columnIndex===0 && step<0) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex) }
                 else focusToolbar(rows[rowIndex].items[Math.max(0,Math.min(rows[rowIndex].items.length-1,columnIndex+step))].item,false)
                 return true
             }
@@ -198,7 +198,7 @@ ApplicationWindow {
             focusContent()
         }
         if(!homeVisible) grid.adoptFocusedCard()
-        if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
+        if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
         if(command==="up" && (homeVisible ? home.atTop : grid.currentIndex<grid.effectiveColumns)) { focusToolbarFromContent();return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
@@ -218,7 +218,7 @@ ApplicationWindow {
         else return false
         return true
     }
-    ListModel { id: libraryModel; dynamicRoles: true }
+    ListModel { id: libraryModel;objectName: "gameLibraryRecords"; dynamicRoles: true }
     Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
     property var seriesNames: ((backend.librarySections.find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name })
     property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
@@ -227,9 +227,10 @@ ApplicationWindow {
     property var homeRows: {
         var local=localHomeRows
         var recommendations=backend.settings.recommendations_enabled!==false ? backend.recommendations.sections : []
-        return local.slice(0,1).concat(recommendations,local.slice(1))
+        var split=local.length>1 && local[1].id==="new" ? 2 : 1
+        return local.slice(0,split).concat(recommendations,local.slice(split))
     }
-    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
+    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="new" || g.isNew) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
         var ad=a.release_date || "",bd=b.release_date || ""
         if(!ad || !bd) return ad ? -1 : bd ? 1 : a.name.localeCompare(b.name)
         return (librarySort==="release_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad)) || a.name.localeCompare(b.name)
@@ -239,18 +240,23 @@ ApplicationWindow {
         navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex,sort:librarySort}])
         search.text="";searchQuery="";groupFilter="";seriesFilter=""
         if(mode==="tag") { libraryMode="all";search.text="#"+value;searchQuery=search.text.toLowerCase() }
-        else { libraryMode=mode;librarySort=mode==="recent" ? "recent" : "name";if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
+        else { libraryMode=mode;librarySort=mode==="recent" ? "recent" : mode==="new" ? "added" : "name";if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
         Qt.callLater(function() { win.focusFirstContent() })
     }
     onShownGamesChanged: if(libraryReady) syncLibrary()
+    property var librarySignatures: ({})
     function syncLibrary() {
+        var signatures={},selectedId=grid.currentIndex>=0 && grid.currentIndex<libraryModel.count ? libraryModel.get(grid.currentIndex).record.id : ""
         for(var i=0;i<shownGames.length;i++) {
+            var signature=JSON.stringify(shownGames[i]);signatures[shownGames[i].id]=signature
             var position=-1
             for(var j=i;j<libraryModel.count;j++) if(libraryModel.get(j).record.id===shownGames[i].id) { position=j;break }
             if(position<0) libraryModel.insert(i,{record:shownGames[i]})
-            else { if(position!==i) libraryModel.move(position,i,1);libraryModel.set(i,{record:shownGames[i]}) }
+            else { if(position!==i) libraryModel.move(position,i,1);if(librarySignatures[shownGames[i].id]!==signature) libraryModel.set(i,{record:shownGames[i]}) }
         }
         while(libraryModel.count>shownGames.length) libraryModel.remove(libraryModel.count-1)
+        librarySignatures=signatures
+        var current=shownGames.findIndex(function(g) { return g.id===selectedId });if(current>=0) grid.currentIndex=current
     }
     onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();mappingWindow.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
@@ -277,6 +283,7 @@ ApplicationWindow {
     }
     function openCloud() { guideDialog.close(); cloudWindow.openBrowser() }
     function openMatch(ident) { guideDialog.close(); matchWindow.openMatcher(ident || "") }
+    function openSaveSearch(ids) { if(ids.length) { guideDialog.close();matchWindow.openForGames(ids) } }
     function openImport() { guideDialog.close(); importWindow.openImporter() }
     function openBatch() { guideDialog.close();batchWindow.openBatch() }
     function openSetup() { guideDialog.close();setupWizard.openWizard() }
@@ -295,7 +302,7 @@ ApplicationWindow {
         launchTransition.begin(game,libraryDesign)
     }
     LaunchTransition { id: launchTransition; anchors.fill: parent; z: 500; onCommitted: function(game) { backend.launch(game.id) } }
-    EnrichmentWindow { id: enrichmentWindow }
+    EnrichmentWindow { id: enrichmentWindow;onSaveSearchRequested: function(ids) { if(ids.length) { hide();win.openSaveSearch(ids) } } }
     Connections { target: backend; function onEnrichmentRequested(ids,options) { win.openEnrichment(ids,options,true) } }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
     ImportWindow { id: importWindow; objectName: "importWindow" }
@@ -325,6 +332,7 @@ ApplicationWindow {
                 NavigationButton { id: navRecent; objectName: "navRecent"; width: 184; iconName: "play"; text: "最近游玩"; selected: libraryMode==="recent"; onClicked: win.navigate("recent","") }
                 NavigationButton { id: navFavorites; objectName: "navFavorites"; width: 184; iconName: "star"; text: "收藏"; selected: libraryMode==="favorites"; onClicked: win.navigate("favorites","") }
                 NavigationButton { id: navSeries; objectName: "navSeries"; width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
+                NavigationButton { id: navNew;objectName: "navNew";width: 184;iconName: "star";text: "新加入";selected: libraryMode==="new";onClicked: win.navigate("new","") }
                 Item { width: 184; height: 18; Rectangle { anchors.centerIn: parent; width: 160; height: 1; color: Theme.outline } }
                 NavigationButton { objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
                 NavigationButton { id: navMapping; objectName: "mappingNav"; width: 184; iconName: "settings"; text: "手柄映射"; onClicked: mappingWindow.openMapping() }
@@ -345,7 +353,7 @@ ApplicationWindow {
             AppButton { id: backButton; objectName: "libraryBack"; text: "返回"; visible: libraryMode!=="home" || searchTokens.length>0; onClicked: win.goBack() }
             RowLayout {
                 spacing: 12
-                Label { text: searchTokens.length ? "搜索结果" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: win.width<1100 ? 23 : 28; font.weight: Font.DemiBold; color: Theme.text }
+                Label { text: searchTokens.length ? "搜索结果" : libraryMode==="new" ? "新加入 · 近 3 天" : libraryMode==="home" ? "游戏库" : libraryMode==="favorites" ? "我的收藏" : libraryMode==="recent" ? "最近游玩" : libraryMode==="group" || libraryMode==="category" ? groupFilter : libraryMode==="series" ? "系列游戏" : "全部游戏"; font.pixelSize: win.width<1100 ? 23 : 28; font.weight: Font.DemiBold; color: Theme.text }
                 Label { text: shownGames.length.toString(); color: Theme.secondary; font.pixelSize: 12; leftPadding: 9; rightPadding: 9; topPadding: 4; bottomPadding: 4; background: Rectangle { radius: 8; color: Theme.surface } }
             }
             Item { Layout.fillWidth: true }
@@ -402,7 +410,7 @@ ApplicationWindow {
             Layout.fillWidth: true; Layout.fillHeight: true
             sourceComponent: LibraryExperience {
                 objectName: "libraryExperience"; design: win.libraryDesign; games: win.shownGames; coverSize: homeCoverSize; launching: launchTransition.running
-                onBoundaryRequested: function(direction) { if(direction==="up") win.focusToolbarFromContent();else { var index=Math.max(0,["home","all","recent","favorites","series"].indexOf(win.libraryMode));win.focusControls([navHome,navAll,navRecent,navFavorites,navSeries],index) } }
+                onBoundaryRequested: function(direction) { if(direction==="up") win.focusToolbarFromContent();else { var index=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(win.libraryMode));win.focusControls([navHome,navAll,navRecent,navFavorites,navSeries,navNew],index) } }
                 onDetailsRequested: function(game) { win.openGame(game) }
                 onLaunchRequested: function(game) { win.launchGame(game) }
                 onCloudRequested: function(game) { selectGame(game);historyTabs.currentIndex=0;backend.history(activeId);historyDialog.open() }
@@ -413,6 +421,7 @@ ApplicationWindow {
             id: home; objectName: "libraryHome"; visible: homeVisible && libraryDesign==="classic"
             Layout.fillWidth: true; Layout.fillHeight: true; sections: homeRows
             coverSize: homeCoverSize; cardGap: homeGap; recentPreview: homeRecentPreview
+            onSaveSearchRequested: function(ids) { win.openSaveSearch(ids) }
             onBrowseRequested: function(mode,value) { win.navigate(mode,value) }
             onDetailsRequested: function(game) { win.openGame(game) }
             onLaunchRequested: function(game) { win.launchGame(game) }

@@ -33,6 +33,7 @@ Item {
         Rectangle { x: 8; y: 12; width: 30; height: 2; color: Theme.accent; opacity: .65 }
         Rectangle { x: 8; y: parent.height-14; width: 30; height: 2; color: Theme.accent; opacity: .65 }
         SelectionFrame { objectName: "spineFocusRing"; selected: book.selected; radius: 3 }
+        NewGameBadge { visible: !!book.game.isNew;width: 38;height: 18;anchors.horizontalCenter: parent.horizontalCenter;y: 6 }
     }
     Item {
         id: volume; objectName: "bookVolume"; x: 6; y: 48-book.lift; visible: !book.spines || book.raised
@@ -51,6 +52,7 @@ Item {
             Rectangle { anchors.fill: parent; color: "transparent"; radius: 3; border.color: "#40ffffff"; border.width: 1 }
             Rectangle { anchors.fill: parent; visible: book.sunlight>0; gradient: Gradient { GradientStop { position: 0; color: Qt.rgba(1,.88,.65,book.sunlight*1.5) } GradientStop { position: .65; color: "transparent" } GradientStop { position: 1; color: "#08000000" } } }
             SelectionFrame { objectName: "bookFocusRing"; selected: book.selected; radius: 3 }
+            NewGameBadge { visible: !!book.game.isNew;anchors.left: parent.left;anchors.top: parent.top;anchors.margins: 6 }
             Label { visible: !!book.game.favorite; text: "★"; color: "#ffe0a0"; font.pixelSize: 21; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; style: Text.Outline; styleColor: "#773b23" }
         }
     }

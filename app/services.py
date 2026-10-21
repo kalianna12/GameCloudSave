@@ -321,6 +321,7 @@ class Store:
             platform=platform_for(row)
             if platforms is not None and platform not in platforms:continue
             ident = str(uuid.UUID(row['_id']['$guid']))
+            is_new=ident not in existing
             cover = ''
             relative = row.get('CoverImage') or ''
             if relative:
@@ -335,6 +336,9 @@ class Store:
                                'platform':platform,'external_id':str(row.get('GameId',''))}
             if platform=='steam' and str(row.get('GameId','')).isdigit():existing[ident]['steam_appid']=str(row['GameId'])
             fields=playnite_metadata(row)
+            if is_new:
+                from datetime import datetime,timezone
+                existing[ident]['added_at']=datetime.now(timezone.utc).isoformat(timespec='seconds')
             merge_metadata(existing[ident],fields)
             if platform!='steam':existing[ident].pop('steam_appid',None)
             # Installation paths are specific to the importing computer.

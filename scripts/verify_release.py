@@ -13,7 +13,7 @@ if args.phase=='unit':
         if any(isinstance(node,ast.ClassDef) and any(isinstance(base,ast.Attribute) and base.attr=='TestCase' or isinstance(base,ast.Name) and base.id=='TestCase' for base in node.bases) for node in tree.body):cases.append(path.name)
 else:
     cases=['test_shelf_incremental_ui.py','test_recommendation_refresh_ui.py','test_recommendations_ui.py','test_home_transfer_ui.py',
-           'test_home_spatial_input.py','test_layout_audio_ui.py','test_navigation_audio_output.py','test_audio_settings_ui.py','test_navigation_latency_ui.py','test_toolbar_navigation.py','test_fullscreen_lifecycle.py','test_mapping_chord_editor_ui.py',
+           'test_home_spatial_input.py','test_layout_audio_ui.py','test_navigation_audio_output.py','test_audio_settings_ui.py','test_navigation_latency_ui.py','test_new_games_save_scope_ui.py','test_toolbar_navigation.py','test_fullscreen_lifecycle.py','test_mapping_chord_editor_ui.py',
            'test_input_mapping_ui.py','test_mapping_capture_ui.py','test_mapping_performance_ui.py','test_mapping_model_geometry_ui.py',
            'test_mapping_templates_ui.py','test_save_ui.py','test_async_artwork.py','test_inline_artwork_ui.py',
            'test_immersive_controls.py','test_library_experiences.py','test_launch_ui.py','test_cinema_backdrop.py','test_ui_enrichment.py',

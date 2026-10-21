@@ -63,6 +63,7 @@ FocusScope {
     signal detailsRequested(var game)
     signal launchRequested(var game)
     signal cloudRequested(var game)
+    signal saveSearchRequested(var ids)
     ListModel { id: rows; dynamicRoles: true }
     property var sectionRecords: ({})
     property var sectionSignatures: ({})
@@ -112,6 +113,7 @@ FocusScope {
             onDetailsRequested: function(game) { home.detailsRequested(game) }
             onLaunchRequested: function(game) { home.launchRequested(game) }
             onCloudRequested: function(game) { home.cloudRequested(game) }
+            onSaveSearchRequested: function(ids) { home.saveSearchRequested(ids) }
             onVerticalScroll: function(delta) { home.scrollBy(delta) }
         }
         ScrollBar.vertical: ScrollBar {}

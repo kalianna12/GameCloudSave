@@ -21,6 +21,7 @@ Item {
     signal detailsRequested(var game)
     signal launchRequested(var game)
     signal cloudRequested(var game)
+    signal saveSearchRequested(var ids)
     signal verticalScroll(real delta)
     implicitHeight: section.kind==="store" ? (section.items.length ? 120+coverSize*.94 : 140) : section.kind==="tiles" ? 220*coverSize/176 : section.kind==="recent" ? 300*coverSize/176 : 320*coverSize/176
     ListModel { id: items; objectName: "shelfRecords"; dynamicRoles: true }
@@ -53,6 +54,7 @@ Item {
         height: 32; spacing: 8
         Label { text: shelf.section.title || ""; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.text }
         Item { Layout.fillWidth: true }
+        AppButton { objectName: "newGamesSaveSearch";visible: shelf.section.id==="new";text: "查找这些游戏存档";flat: true;enabled: !backend.busy && shelf.section.items.some(function(g) { return !g.saveSet });onClicked: shelf.saveSearchRequested(shelf.section.items.filter(function(g) { return !g.saveSet }).map(function(g) { return g.id })) }
         AppBusyIndicator { implicitWidth: 20; implicitHeight: 20; visible: shelf.section.kind==="store" && !!shelf.section.loading; running: visible }
         AppButton { objectName: "refresh-"+shelf.section.id; visible: !!shelf.section.refresh; text: "刷新"; flat: true; enabled: !shelf.section.loading; onClicked: backend.recommendations.refreshSection(shelf.section.id) }
         AppButton { visible: shelf.section.kind!=="store" || !!shelf.section.page; text: shelf.section.kind==="store" ? "查看商店" : "查看全部"; flat: true; onClicked: { if(shelf.section.kind==="store") backend.recommendations.open(shelf.section.id);else shelf.browseRequested(shelf.section.target || "all",shelf.section.value || "") } }

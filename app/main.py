@@ -56,6 +56,8 @@ class Bridge(QObject):
         self._gamepad_connected=False
         self._controller_mode=False
         self.input_feedback=None
+        self.newGameTimer=QTimer(self);self.newGameTimer.setInterval(3600000)
+        self.newGameTimer.timeout.connect(self.refreshNewGames);self.newGameTimer.start()
         self.settingsChanged.connect(self.audioSettingsChanged.emit)
         self._audio_values={}
         self.audioTimer=QTimer(self);self.audioTimer.setSingleShot(True)
@@ -158,6 +160,11 @@ class Bridge(QObject):
                      'coverHighUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.high_thumbnails[game['id']])).toString() if game['id'] in self.store.high_thumbnails else '',
                      'saveSet': bool(self.store.local.get(game['id'], {}).get('save_dir'))} for game in map(prepare_game,self.store.games)]
         return self._games_cache
+
+    def refreshNewGames(self):
+        from library_catalog import recently_added
+        if self._games_cache is not None and any(game.get('isNew',False)!=recently_added(game) for game in self._games_cache):
+            self._games_cache=None;self.gamesChanged.emit()
 
     @Property('QVariantList',notify=gamesChanged)
     def librarySections(self):
@@ -1295,7 +1302,10 @@ class Bridge(QObject):
     @Slot('QVariantList','QVariantMap')
     def matchGames(self,idents,values=None):
         if self._busy: return
-        idents=list(dict.fromkeys(idents))
+        known={game['id']:game for game in self.store.games}
+        idents=[ident for ident in dict.fromkeys(idents) if ident in known]
+        if not idents:
+            self._status='此范围没有需要查找的游戏';self.changed.emit();return
         self.beginMatching(idents,'查找存档')
         def match():
             if values:self.store.save_settings(values)
@@ -1303,13 +1313,16 @@ class Bridge(QObject):
             clear()
             count=0
             results={row['id']:row for row in self.store.match_report}
-            games={game['id']:game for game in self.store.games if game['id'] in idents}
+            games={ident:known[ident] for ident in idents}
             def one(ident):
                 if self._cancel_match.is_set():return None
                 game=games[ident]
                 self.matchReady.emit({'id':ident,'name':game['name'],'status':'running','message':'查找存档…','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''})
-                try:return self.store.match_game(ident,self.matchReady.emit,self._cancel_match)
-                except Exception as error:return {'id':ident,'name':game['name'],'status':'failed','message':str(error) if isinstance(error,ValueError) else '本地扫描失败，请检查目录权限','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
+                try:result=self.store.match_game(ident,self.matchReady.emit,self._cancel_match)
+                except Exception as error:result={'id':ident,'name':game['name'],'status':'failed','message':str(error) if isinstance(error,ValueError) else '本地扫描失败，请检查目录权限','candidates':[],'checked':[],'aliases':[],'english_name':'','note':''}
+                from datetime import datetime,timezone
+                result.update(completed=not self._cancel_match.is_set(),checked_at=datetime.now(timezone.utc).isoformat(timespec='seconds'))
+                return result
             with ThreadPoolExecutor(max_workers=max(1,min(3,int(self.store.settings.get('match_workers',2))))) as workers:
                 pending={workers.submit(one,ident):ident for ident in games}
                 for future in as_completed(pending):
@@ -1322,6 +1335,11 @@ class Bridge(QObject):
                     self.store.save_match_report(list(results.values()));count+=1
             return f'已停止 · 完成 {count} 款游戏' if self._cancel_match.is_set() else f'查找完成 · {count} 款游戏'
         self.job('match',match)
+
+    @Slot(str,bool,'QVariantList',result='QVariantList')
+    def matchTargetIds(self,scope,installed_only,idents):
+        from save_search import targets
+        return targets(self.store,scope,installed_only,idents)
 
     @Slot()
     def cancelMatching(self):
