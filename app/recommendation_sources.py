@@ -2,6 +2,7 @@
 import json
 import math
 import re
+import time
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -16,11 +17,17 @@ SECTIONS = {
 
 
 def request(url, limit=4 * 1024 * 1024):
-    with urlopen(Request(url, headers={'User-Agent': 'GameCloudSave/2.5', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.5'}), timeout=10) as response:
-        raw = response.read(limit + 1)
-    if len(raw) > limit:
-        raise ValueError('商店响应过大')
-    return raw
+    deadline=time.monotonic()+20
+    with urlopen(Request(url, headers={'User-Agent': 'GameCloudSave/2.6', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.5','Cache-Control':'no-cache'}), timeout=8) as response:
+        parts=[];size=0
+        read=getattr(response,'read1',response.read)
+        while True:
+            if time.monotonic()>deadline:raise TimeoutError('商店读取超时')
+            block=read(min(65536,limit+1-size))
+            if not block:break
+            parts.append(block);size+=len(block)
+            if size>limit:raise ValueError('商店响应过大')
+    return b''.join(parts)
 
 
 def image_url(value):

@@ -22,7 +22,7 @@ AbstractButton {
                     Rotation { origin.x: poster.width/2; origin.y: poster.height/2; axis.x: 0; axis.y: 1; axis.z: 0; angle: effect.yaw },
                     Rotation { origin.x: poster.width/2; origin.y: poster.height/2; axis.x: 1; axis.y: 0; axis.z: 0; angle: effect.pitch }
                 ]
-                Image { id: artwork; anchors.fill: parent; source: tile.record.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(640,400) }
+                Image { id: artwork; objectName: "storeArtwork"; anchors.fill: parent; source: tile.record.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(640,400) }
                 Label { anchors.centerIn: parent; width: parent.width-24; text: tile.record.name || ""; visible: !artwork.source.toString() || artwork.status===Image.Error; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: Theme.secondary }
                 Rectangle {
                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -40,6 +40,15 @@ AbstractButton {
                 visible: tile.record.discount>0; anchors { left: parent.left; top: parent.top; margins: 8 }
                 width: discountLabel.implicitWidth+14; height: 25; radius: 4; color: Theme.accent
                 Label { id: discountLabel; anchors.centerIn: parent; text: "−"+(tile.record.discount || 0)+"%"; color: Theme.onAccent; font.bold: true; font.pixelSize: 12 }
+            }
+            IconButton {
+                objectName: "retryStoreArtwork"; z: 12
+                anchors { right: parent.right; top: parent.top; margins: 8 }
+                iconName: "refresh"; hint: tile.record.artworkLoading ? "正在重试图片" : "图片加载失败，点击重试"
+                overArtwork: true
+                visible: artwork.status===Image.Error || (!!tile.record.artworkFailed && artwork.status!==Image.Ready)
+                enabled: !tile.record.artworkLoading
+                onClicked: backend.recommendations.retryArtwork(tile.record.id,tile.record.category)
             }
         }
         TitleLabel { y: coverArea.height+8; width: parent.width; text: tile.record.name || ""; scrolling: tile.scrolling; elide: Text.ElideRight; font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.text }

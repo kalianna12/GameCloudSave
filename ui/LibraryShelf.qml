@@ -36,7 +36,7 @@ Item {
             if(position<0) items.insert(i,{record:rows[i]})
             else {
                 if(position!==i) items.move(position,i,1)
-                if(recordSignatures[rows[i].id]!==signature) items.set(i,{record:rows[i]})
+                if(recordSignatures[rows[i].id]!==signature) items.setProperty(i,"record",rows[i])
             }
         }
         while(items.count>rows.length) items.remove(items.count-1)
@@ -140,6 +140,7 @@ Item {
     Label {
         visible: shelf.section.kind==="store" && !!items.count && !!shelf.section.message
         anchors { right: parent.right; bottom: parent.bottom }
+        width: Math.min(implicitWidth,parent.width);elide: Text.ElideRight
         text: shelf.section.message || ""; color: Theme.secondary; font.pixelSize: 11
     }
 }

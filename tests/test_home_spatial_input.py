@@ -31,7 +31,6 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
     store.settings['navigation_volume']=0
     backend=SafeBridge(store)
     from input_feedback import InputFeedback
-    from PySide6.QtMultimedia import QSoundEffect
     backend.input_feedback=InputFeedback(app,backend,ROOT)
     engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend);engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')))
     assert engine.rootObjects(),messages
@@ -45,7 +44,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
     def shelf():return invoke(home,'currentShelf')
     def pad(command,delay=45):dispatch(app,root,backend,command);spin(delay)
     try:
-        assert all(effect.status()==QSoundEffect.Ready for effect in backend.input_feedback.sounds.values()),[(key,effect.status()) for key,effect in backend.input_feedback.sounds.items()]
+        assert len(backend.input_feedback.audio.sounds)==12 and all(backend.input_feedback.audio.sounds.values())
         # Actual outer content edges, rather than the centre of a stretched grid cell.
         full=root.findChild(QObject,'fullscreenControl');installed=root.findChild(QObject,'installedFilter')
         for width in (1440,1920,2560):

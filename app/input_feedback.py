@@ -1,7 +1,6 @@
 """Switch input ownership on real input, without polling the mouse or audio."""
 import time
-from pathlib import Path
-from PySide6.QtCore import QObject, QEvent, Qt, QUrl
+from PySide6.QtCore import QObject, QEvent, Qt, QTimer
 from PySide6.QtGui import QCursor
 
 
@@ -11,16 +10,20 @@ class InputFeedback(QObject):
         self.app, self.bridge = app, bridge
         self.pointer = QCursor.pos()
         self.hidden = False
-        self.last_sound = 0.0
-        from PySide6.QtMultimedia import QSoundEffect
-        self.sounds={}
-        for style in ('clear','soft','arcade'):
-            for kind in ('move','confirm','back','open'):
-                effect=QSoundEffect(self);effect.setSource(QUrl.fromLocalFile(str(Path(resources)/'ui/sounds'/(style+'-'+kind+'.wav'))));self.sounds[style,kind]=effect
+        self.last_sound = {}
+        from navigation_audio import NavigationAudio
+        self.audio=NavigationAudio(resources,self)
+        bridge.settingsChanged.connect(self.sync_audio)
         bridge.inputModeChanged.connect(self.sync_cursor)
         app.applicationStateChanged.connect(self.application_state)
         app.aboutToQuit.connect(self.release_cursor)
+        app.aboutToQuit.connect(self.audio.shutdown)
         app.installEventFilter(self)
+        self.sync_audio()
+
+    def sync_audio(self):
+        settings=self.bridge.store.settings
+        self.audio.set_enabled(self.app.applicationState()==Qt.ApplicationActive and settings.get('navigation_sounds',True) and settings.get('navigation_volume',80)>0)
 
     def sync_cursor(self):
         if self.bridge.controllerMode and self.app.applicationState() == Qt.ApplicationActive:
@@ -40,6 +43,7 @@ class InputFeedback(QObject):
         if state != Qt.ApplicationActive:
             self.bridge.setControllerMode(False)
         self.sync_cursor()
+        self.sync_audio()
 
     def eventFilter(self, watched, event):
         if not self.bridge.controllerMode:
@@ -63,10 +67,13 @@ class InputFeedback(QObject):
         if not self.bridge.store.settings.get('navigation_sounds', True):
             return
         now = time.monotonic()
-        if now - self.last_sound < (.045 if kind=='move' else .025):
+        if now - self.last_sound.get(kind,0) < (.030 if kind=='move' else .025):
             return
-        self.last_sound = now
+        self.last_sound[kind] = now
         style=style or self.bridge.store.settings.get('navigation_sound_style','clear')
-        effect=self.sounds.get((style,kind),self.sounds['clear','move'])
         level=self.bridge.store.settings.get('navigation_volume',80) if volume is None else volume
-        effect.setVolume(max(0,min(100,level))/100);effect.play()
+        if level<=0:return
+        # A settings preview can be audible even while the saved volume is muted.
+        if volume is not None and self.app.applicationState()==Qt.ApplicationActive:
+            self.audio.set_enabled(True);QTimer.singleShot(300,self.sync_audio)
+        self.audio.play(kind,style,max(0,min(100,level)))
