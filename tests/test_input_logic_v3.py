@@ -1,6 +1,6 @@
 """Capture, legacy menu-pointer compatibility and output separation without native injection."""
 from pathlib import Path
-import copy,math,sys,tempfile,time,unittest,wave
+import copy,json,math,sys,tempfile,time,unittest,wave
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from PySide6.QtCore import QCoreApplication
 from services import ROOT,Store
@@ -68,12 +68,13 @@ class InputLogic(unittest.TestCase):
             finally:c.shutdown()
     def test_sound_assets_are_distinct_short_pcm_and_settings_are_validated(self):
         frames=set()
-        for style in ('clear','soft','arcade'):
-            for kind in ('move','confirm','back','open'):
-                with wave.open(str(ROOT/'ui/sounds'/f'{style}-{kind}.wav'),'rb') as audio:
+        manifest=json.loads((ROOT/'ui/sounds/library/manifest.json').read_text(encoding='utf-8'))
+        for entry in manifest['sounds']:
+            for filename in entry['files']:
+                with wave.open(str(ROOT/'ui/sounds/library'/filename),'rb') as audio:
                     self.assertEqual(audio.getnchannels(),1);self.assertEqual(audio.getsampwidth(),2)
-                    self.assertLess(audio.getnframes()/audio.getframerate(),.16);frames.add(audio.readframes(audio.getnframes()))
-        self.assertEqual(len(frames),12)
+                    self.assertLess(audio.getnframes()/audio.getframerate(),.61);frames.add(audio.readframes(audio.getnframes()))
+        self.assertGreaterEqual(len(frames),36)
         with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
             store=Store(folder,'sound-validation')
             for values in ({'navigation_volume':101},{'navigation_volume':True},{'navigation_sound_style':'bad'},{'controller_tilt':1}):

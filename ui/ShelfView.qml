@@ -27,7 +27,7 @@ Item {
             for(var i=0;i<groups.length;i++) if(groups[i].items.some(function(g) { return g.id===selectedId })) { currentRow=i;break }
         }
         shelves.positionViewAtIndex(currentRow,ListView.Contain)
-        var row=shelves.itemAtIndex(currentRow);if(row) row.reveal()
+        var row=shelves.itemAtIndex(currentRow);if(row && typeof row.reveal==="function") row.reveal()
     }
     onSelectedIdChanged: { pickedId="";Qt.callLater(reveal) }
     onGroupsChanged: { currentRow=0;Qt.callLater(reveal) }

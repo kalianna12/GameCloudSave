@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
     def shelf():return invoke(home,'currentShelf')
     def pad(command,delay=45):dispatch(app,root,backend,command);spin(delay)
     try:
-        assert len(backend.input_feedback.audio.sounds)==12 and all(backend.input_feedback.audio.sounds.values())
+        assert backend.input_feedback.audio.ready and len(backend.input_feedback.audio.sounds)==36
         # Actual outer content edges, rather than the centre of a stretched grid cell.
         full=root.findChild(QObject,'fullscreenControl');installed=root.findChild(QObject,'installedFilter')
         for width in (1440,1920,2560):
@@ -102,7 +102,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
         assert mapper.read(pad_state,1)==['menu']
         errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Cannot assign','Unable to assign','Binding loop','recursive rearrange'))]
         assert not errors,errors[:12]
-        print('PASS: current-X home navigation, outer-edge toolbar alignment, stick tilt/reset/disable, A/Menu/Y across four layouts, 12 preloaded sounds; median dispatch %.2fms; no real game launch'%statistics.median(timings))
+        print('PASS: current-X home navigation, outer-edge toolbar alignment, stick tilt/reset/disable, A/Menu/Y across four layouts, 36 preloaded sound events; median dispatch %.2fms; no real game launch'%statistics.median(timings))
     finally:
-        backend.input_feedback.release_cursor();app.removeEventFilter(backend.input_feedback)
+        backend.input_feedback.release_cursor();backend.input_feedback.audio.shutdown();app.removeEventFilter(backend.input_feedback)
         backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine)

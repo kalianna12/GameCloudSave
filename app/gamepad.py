@@ -8,8 +8,14 @@ def dispatch(app,root,bridge,command):
     mapping=getattr(bridge,'mapping',None)
     if mapping is not None and window is mapping._host:return
     bridge.setControllerMode(True)
-    if bridge.input_feedback and command in ('activate','menu','back'):bridge.input_feedback.play('back' if command=='back' else 'open' if command=='menu' else 'confirm')
     popup=bridge.active_popup()
+    target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
+    themed_combo=False
+    while target is not None and not target.inherits('QQuickWindow'):
+        if target.inherits('QQuickComboBox') and target.property('soundEvent'):themed_combo=True;break
+        target=target.parent()
+    if bridge.input_feedback and command in ('activate','menu','back') and not (command=='activate' and themed_combo):
+        bridge.input_feedback.play('back' if command=='back' else 'open' if command=='menu' else 'confirm')
     if popup is not None and popup.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
         if QMetaObject.invokeMethod(popup,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
     # Only explicit controller windows/popups, the library and combo lists are supported.

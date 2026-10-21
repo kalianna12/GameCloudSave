@@ -132,9 +132,17 @@ ApplicationWindow {
                     PadCheckBox { text: "导航提示音"; checked: backend.settings.navigation_sounds; enabled: !backend.busy; onToggled: backend.saveSettings({navigation_sounds:checked}) }
                     RowLayout {
                         Layout.fillWidth: true;visible: backend.settings.navigation_sounds
-                        AppComboBox { objectName: "navigationSoundStyle";model: ["清脆","柔和","电子"];currentIndex: Math.max(0,["clear","soft","arcade"].indexOf(backend.settings.navigation_sound_style));onActivated: { backend.saveSettings({navigation_sound_style:["clear","soft","arcade"][currentIndex]});backend.previewNavigationSound(["clear","soft","arcade"][currentIndex],backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume) } }
-                        Slider { id: soundVolume;objectName: "navigationVolume";Layout.fillWidth: true;from: 0;to: 100;stepSize: 5;value: backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume;onMoved: { if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)});backend.previewNavigationSound(backend.settings.navigation_sound_style || "clear",Math.round(value)) } onPressedChanged: if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)}) }
+                        AppComboBox { objectName: "navigationSoundStyle";model: ["首页 · 轻触","首页 · 轻柔","首页 · 清亮"];currentIndex: Math.max(0,["clear","soft","arcade"].indexOf(backend.settings.navigation_sound_style));onActivated: { backend.saveSettings({navigation_sound_style:["clear","soft","arcade"][currentIndex]});backend.previewNavigationSound(["clear","soft","arcade"][currentIndex],backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume) } }
+                        Slider { id: soundVolume;objectName: "navigationVolume";Layout.fillWidth: true;from: 0;to: 100;stepSize: 5;value: backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume;onMoved: { if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)});backend.previewNavigationVolume(Math.round(value)) } onPressedChanged: if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)}) }
                         Label { text: Math.round(soundVolume.value)+"%";color: Theme.secondary }
+                    }
+                    Label { visible: backend.settings.navigation_sounds; text: "音效随布局切换：书柜翻书、影院放映机、星图轻响"; color: Theme.secondary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    Flow {
+                        visible: backend.settings.navigation_sounds; Layout.fillWidth: true; Layout.preferredHeight: childrenRect.height; spacing: 6
+                        Repeater {
+                            model: [{id:"classic",name:"试听首页"},{id:"shelf",name:"试听书柜"},{id:"cinema",name:"试听影院"},{id:"atlas",name:"试听星图"}]
+                            AppButton { required property var modelData; property bool controllerSelectable: true; objectName: "previewSound-"+modelData.id; text: modelData.name; flat: true; onClicked: backend.previewLayoutSound(modelData.id) }
+                        }
                     }
                     PadCheckBox { text: "右摇杆控制卡片倾斜";checked: backend.settings.controller_tilt!==false;enabled: !backend.busy;onToggled: backend.saveSettings({controller_tilt:checked}) }
                     PadCheckBox { text: "自动备份通知"; checked: backend.settings.tray_notifications; enabled: !backend.busy; onToggled: backend.saveSettings({tray_notifications:checked}) }

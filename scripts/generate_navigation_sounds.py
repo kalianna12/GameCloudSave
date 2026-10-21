@@ -1,4 +1,4 @@
-"""Generate original short UI feedback tones. No console/game audio samples used."""
+"""Legacy tone generator. Active audio now comes from build_navigation_library.py."""
 from pathlib import Path
 import math,struct,wave
 

@@ -1,0 +1,684 @@
+{
+  "version": 1,
+  "license": "CC0-1.0",
+  "sounds": [
+    {
+      "bank": "classic-clear",
+      "kind": "move",
+      "files": [
+        "classic-clear-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/rollover2.wav",
+          "sha256": "b94d05c654435c46f331a43447ca70dc77647ddcd4a82d66ada5bbc12b766d06",
+          "speed": 1,
+          "maximum_seconds": 0.14,
+          "offset_seconds": 0,
+          "lowpass_hz": 3200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-clear",
+      "kind": "confirm",
+      "files": [
+        "classic-clear-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/click2.wav",
+          "sha256": "366a86202b215395eb9bb7376da4200453a0fb6751884e338a9e720f036fce0a",
+          "speed": 1,
+          "maximum_seconds": 0.13,
+          "offset_seconds": 0,
+          "lowpass_hz": 3200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-clear",
+      "kind": "back",
+      "files": [
+        "classic-clear-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_002.wav",
+          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
+          "speed": 0.9,
+          "maximum_seconds": 0.15,
+          "offset_seconds": 0,
+          "lowpass_hz": 3200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-clear",
+      "kind": "open",
+      "files": [
+        "classic-clear-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/select_002.wav",
+          "sha256": "9f15b5f93716a3ff8842cff73ef932e81beac2d19972066f690154c1f9322f2b",
+          "speed": 0.9,
+          "maximum_seconds": 0.11,
+          "offset_seconds": 0,
+          "lowpass_hz": 3200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-clear",
+      "kind": "group",
+      "files": [
+        "classic-clear-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/switch_006.wav",
+          "sha256": "7670954a43028178dada559edfcf96ebda421fb9da41b673f90d84163f37e451",
+          "speed": 0.95,
+          "maximum_seconds": 0.24,
+          "offset_seconds": 0,
+          "lowpass_hz": 3200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-clear",
+      "kind": "switch",
+      "files": [
+        "classic-clear-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_001.wav",
+          "sha256": "f9d0ef5a5c740c2ac250ac3876db9e4340669044a5bf78ae09192918db3e2ebc",
+          "speed": 0.92,
+          "maximum_seconds": 0.34,
+          "offset_seconds": 0,
+          "lowpass_hz": 3200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-soft",
+      "kind": "move",
+      "files": [
+        "classic-soft-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/rollover6.wav",
+          "sha256": "acea59ec6dfdfdf04701c646298b1d80e593f4e2ebb6702ba6dc9bb24db1b62d",
+          "speed": 0.9,
+          "maximum_seconds": 0.14,
+          "offset_seconds": 0,
+          "lowpass_hz": 2200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-soft",
+      "kind": "confirm",
+      "files": [
+        "classic-soft-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/click1.wav",
+          "sha256": "359c8c98ecd48368f45b84d3a9b9d7e68cf3ac2fefcdbf32367b8482da76c9c7",
+          "speed": 0.9,
+          "maximum_seconds": 0.13,
+          "offset_seconds": 0,
+          "lowpass_hz": 2200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-soft",
+      "kind": "back",
+      "files": [
+        "classic-soft-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_002.wav",
+          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
+          "speed": 0.9,
+          "maximum_seconds": 0.15,
+          "offset_seconds": 0,
+          "lowpass_hz": 2200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-soft",
+      "kind": "open",
+      "files": [
+        "classic-soft-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/select_002.wav",
+          "sha256": "9f15b5f93716a3ff8842cff73ef932e81beac2d19972066f690154c1f9322f2b",
+          "speed": 0.9,
+          "maximum_seconds": 0.11,
+          "offset_seconds": 0,
+          "lowpass_hz": 2200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-soft",
+      "kind": "group",
+      "files": [
+        "classic-soft-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/switch_006.wav",
+          "sha256": "7670954a43028178dada559edfcf96ebda421fb9da41b673f90d84163f37e451",
+          "speed": 0.95,
+          "maximum_seconds": 0.24,
+          "offset_seconds": 0,
+          "lowpass_hz": 2200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-soft",
+      "kind": "switch",
+      "files": [
+        "classic-soft-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_001.wav",
+          "sha256": "f9d0ef5a5c740c2ac250ac3876db9e4340669044a5bf78ae09192918db3e2ebc",
+          "speed": 0.92,
+          "maximum_seconds": 0.34,
+          "offset_seconds": 0,
+          "lowpass_hz": 2200,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-arcade",
+      "kind": "move",
+      "files": [
+        "classic-arcade-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/rollover5.wav",
+          "sha256": "0cc661357969d912f8c9500bdd5ce865af8b7f6e4238b4545d3eff7bc4293eb9",
+          "speed": 1.08,
+          "maximum_seconds": 0.14,
+          "offset_seconds": 0,
+          "lowpass_hz": 4000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-arcade",
+      "kind": "confirm",
+      "files": [
+        "classic-arcade-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/click3.wav",
+          "sha256": "9649d0ed86f2129e39568922eda43da25c287ca0d2905328ecddbd70d11fbb34",
+          "speed": 1.08,
+          "maximum_seconds": 0.13,
+          "offset_seconds": 0,
+          "lowpass_hz": 4000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-arcade",
+      "kind": "back",
+      "files": [
+        "classic-arcade-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_002.wav",
+          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
+          "speed": 0.9,
+          "maximum_seconds": 0.15,
+          "offset_seconds": 0,
+          "lowpass_hz": 4000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-arcade",
+      "kind": "open",
+      "files": [
+        "classic-arcade-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/select_002.wav",
+          "sha256": "9f15b5f93716a3ff8842cff73ef932e81beac2d19972066f690154c1f9322f2b",
+          "speed": 0.9,
+          "maximum_seconds": 0.11,
+          "offset_seconds": 0,
+          "lowpass_hz": 4000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-arcade",
+      "kind": "group",
+      "files": [
+        "classic-arcade-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/switch_006.wav",
+          "sha256": "7670954a43028178dada559edfcf96ebda421fb9da41b673f90d84163f37e451",
+          "speed": 0.95,
+          "maximum_seconds": 0.24,
+          "offset_seconds": 0,
+          "lowpass_hz": 4000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "classic-arcade",
+      "kind": "switch",
+      "files": [
+        "classic-arcade-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_001.wav",
+          "sha256": "f9d0ef5a5c740c2ac250ac3876db9e4340669044a5bf78ae09192918db3e2ebc",
+          "speed": 0.92,
+          "maximum_seconds": 0.34,
+          "offset_seconds": 0,
+          "lowpass_hz": 4000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "shelf",
+      "kind": "move",
+      "files": [
+        "shelf-move-1.wav",
+        "shelf-move-2.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookFlip3.ogg",
+          "sha256": "c85db5dceb3f1df073e960630277eaa88a5afda0477c1ddd68dad707621767be",
+          "speed": 1,
+          "maximum_seconds": 0.21,
+          "offset_seconds": 0,
+          "lowpass_hz": 4600,
+          "short_echo": false
+        },
+        {
+          "source": "rpg/bookFlip2.ogg",
+          "sha256": "3409042acbfaebc24c1a6327dc073e36f9250841712e96c5040da566a97df73c",
+          "speed": 1,
+          "maximum_seconds": 0.21,
+          "offset_seconds": 0,
+          "lowpass_hz": 4600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "shelf",
+      "kind": "confirm",
+      "files": [
+        "shelf-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookPlace2.ogg",
+          "sha256": "831874e8fd142d4d0a03ff009f1f83966338a7878c0f6f38c613ae5b80dd731e",
+          "speed": 1,
+          "maximum_seconds": 0.29,
+          "offset_seconds": 0,
+          "lowpass_hz": 3400,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "shelf",
+      "kind": "back",
+      "files": [
+        "shelf-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookClose.ogg",
+          "sha256": "81e976532565f4372abd14e83d2684195fa548d0a28d345de221e56052454f32",
+          "speed": 1,
+          "maximum_seconds": 0.26,
+          "offset_seconds": 0,
+          "lowpass_hz": 3500,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "shelf",
+      "kind": "open",
+      "files": [
+        "shelf-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookOpen.ogg",
+          "sha256": "953390534377222bee89ac8cd9e60a58fdc037c71a4d7c18c43cd647c7f34ba8",
+          "speed": 0.95,
+          "maximum_seconds": 0.2,
+          "offset_seconds": 0,
+          "lowpass_hz": 4400,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "shelf",
+      "kind": "group",
+      "files": [
+        "shelf-group-1.wav",
+        "shelf-group-2.wav"
+      ],
+      "origins": [
+        {
+          "source": "book/book_flip.4.ogg",
+          "sha256": "4b66e2f2222ad5365f417cdb66a14c81254f4ccac59598e2b9cf334cbca136c4",
+          "speed": 1,
+          "maximum_seconds": 0.4,
+          "offset_seconds": 0,
+          "lowpass_hz": 4600,
+          "short_echo": false
+        },
+        {
+          "source": "book/book_flip.8.ogg",
+          "sha256": "0a39301fbbd9cf422148bebab3c1c8b5bd9eaf08dd780d98832d0ebacbefb35e",
+          "speed": 1,
+          "maximum_seconds": 0.4,
+          "offset_seconds": 0,
+          "lowpass_hz": 4600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "shelf",
+      "kind": "switch",
+      "files": [
+        "shelf-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookOpen.ogg",
+          "sha256": "953390534377222bee89ac8cd9e60a58fdc037c71a4d7c18c43cd647c7f34ba8",
+          "speed": 0.7,
+          "maximum_seconds": 0.27,
+          "offset_seconds": 0,
+          "lowpass_hz": 3800,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "cinema",
+      "kind": "move",
+      "files": [
+        "cinema-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "projector/projector.mp3",
+          "sha256": "3d6d62d03ead29399fcf603e8753ea5db098a9e40e06ca81099f7fbd999eae29",
+          "speed": 1,
+          "maximum_seconds": 0.11,
+          "offset_seconds": 1.0,
+          "lowpass_hz": 3000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "cinema",
+      "kind": "confirm",
+      "files": [
+        "cinema-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/switch30.wav",
+          "sha256": "a98e9ba057410bdc3c43bb5bdeaee889bddc0edfa12a61aba62c1c9c273c7ab5",
+          "speed": 1,
+          "maximum_seconds": 0.24,
+          "offset_seconds": 0,
+          "lowpass_hz": 3400,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "cinema",
+      "kind": "back",
+      "files": [
+        "cinema-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_004.wav",
+          "sha256": "cfc3b43cfe3d3157258d643a4bcb787b03416358a0c03c9ec16622610f07558f",
+          "speed": 0.85,
+          "maximum_seconds": 0.15,
+          "offset_seconds": 0,
+          "lowpass_hz": 2400,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "cinema",
+      "kind": "open",
+      "files": [
+        "cinema-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/switch27.wav",
+          "sha256": "4302484e4ff8d4091adedab252b3f57e65be7ff5b6117bf8936a501b4f90b04c",
+          "speed": 0.9,
+          "maximum_seconds": 0.24,
+          "offset_seconds": 0,
+          "lowpass_hz": 3400,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "cinema",
+      "kind": "group",
+      "files": [
+        "cinema-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "projector/projector.mp3",
+          "sha256": "3d6d62d03ead29399fcf603e8753ea5db098a9e40e06ca81099f7fbd999eae29",
+          "speed": 1,
+          "maximum_seconds": 0.24,
+          "offset_seconds": 2.1,
+          "lowpass_hz": 3400,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "cinema",
+      "kind": "switch",
+      "files": [
+        "cinema-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "projector/projector.mp3",
+          "sha256": "3d6d62d03ead29399fcf603e8753ea5db098a9e40e06ca81099f7fbd999eae29",
+          "speed": 1,
+          "maximum_seconds": 0.48,
+          "offset_seconds": 0.7,
+          "lowpass_hz": 3000,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "atlas",
+      "kind": "move",
+      "files": [
+        "atlas-move-1.wav",
+        "atlas-move-2.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_002.wav",
+          "sha256": "bb9f5cc2ac93cd6f810d7642ddb2b825b9b067ffdaedd6197c68135850e9cb5f",
+          "speed": 0.8,
+          "maximum_seconds": 0.19,
+          "offset_seconds": 0,
+          "lowpass_hz": 3000,
+          "short_echo": true
+        },
+        {
+          "source": "interface/glass_006.wav",
+          "sha256": "12d3de80a48f8dd1a96874b120efc8e7cf35278b303b6fb27a35fbce9f0b37ea",
+          "speed": 0.8,
+          "maximum_seconds": 0.19,
+          "offset_seconds": 0,
+          "lowpass_hz": 3000,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "atlas",
+      "kind": "confirm",
+      "files": [
+        "atlas-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_001.wav",
+          "sha256": "39182b395a30b34e18cbcf842922552b23da5b010a52b7777557e02a405f083e",
+          "speed": 0.78,
+          "maximum_seconds": 0.4,
+          "offset_seconds": 0,
+          "lowpass_hz": 3300,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "atlas",
+      "kind": "back",
+      "files": [
+        "atlas-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_004.wav",
+          "sha256": "cfc3b43cfe3d3157258d643a4bcb787b03416358a0c03c9ec16622610f07558f",
+          "speed": 0.7,
+          "maximum_seconds": 0.18,
+          "offset_seconds": 0,
+          "lowpass_hz": 2400,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "atlas",
+      "kind": "open",
+      "files": [
+        "atlas-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/select_005.wav",
+          "sha256": "e0f14f9ca1fbc0fb8dc49bc5133747d86f15c9d79a0c8bcb7973d7526d092841",
+          "speed": 0.85,
+          "maximum_seconds": 0.4,
+          "offset_seconds": 0,
+          "lowpass_hz": 2800,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "atlas",
+      "kind": "group",
+      "files": [
+        "atlas-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_003.wav",
+          "sha256": "4d0e3e12541fd177b1acb56b1c26fc587f213fea41b15d505b81789fceaa53bc",
+          "speed": 0.7,
+          "maximum_seconds": 0.23,
+          "offset_seconds": 0,
+          "lowpass_hz": 2800,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "atlas",
+      "kind": "switch",
+      "files": [
+        "atlas-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_004.wav",
+          "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+          "speed": 0.8,
+          "maximum_seconds": 0.58,
+          "offset_seconds": 0,
+          "lowpass_hz": 2400,
+          "short_echo": true
+        }
+      ]
+    }
+  ]
+}

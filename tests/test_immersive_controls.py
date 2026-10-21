@@ -124,5 +124,5 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     frames_idle=[];root.frameSwapped.connect(lambda:frames_idle.append(1));spin(250);assert len(frames_idle)<=5,len(frames_idle)
     errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign','not a function','is not defined'))]
     assert not errors,errors
-    feedback.release_cursor();app.removeEventFilter(feedback);backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine)
+    feedback.audio.shutdown();feedback.release_cursor();app.removeEventFilter(feedback);backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine)
 print('PASS: single mouse/category focus, larger filmstrip, fullscreen B/X/native/tray returns, real right-stick mapping, live cached sky/pause rules, three persisted woods, sunlight toggle and idle shelf')

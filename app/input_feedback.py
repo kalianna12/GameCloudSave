@@ -5,14 +5,14 @@ from PySide6.QtGui import QCursor
 
 
 class InputFeedback(QObject):
-    def __init__(self, app, bridge, resources):
+    def __init__(self, app, bridge, resources, *, audio_muted=False):
         super().__init__(app)
         self.app, self.bridge = app, bridge
         self.pointer = QCursor.pos()
         self.hidden = False
         self.last_sound = {}
         from navigation_audio import NavigationAudio
-        self.audio=NavigationAudio(resources,self)
+        self.audio=NavigationAudio(resources,self,muted=audio_muted)
         bridge.settingsChanged.connect(self.sync_audio)
         bridge.inputModeChanged.connect(self.sync_cursor)
         app.applicationStateChanged.connect(self.application_state)
@@ -63,17 +63,20 @@ class InputFeedback(QObject):
             self.bridge.setControllerMode(False)
         return False
 
-    def play(self,kind='move',style=None,volume=None):
+    def play(self,kind='move',style=None,volume=None,design=None):
         if not self.bridge.store.settings.get('navigation_sounds', True):
             return
         now = time.monotonic()
-        if now - self.last_sound.get(kind,0) < (.030 if kind=='move' else .025):
+        if kind=='move' and now-max(self.last_sound.get('switch',0),self.last_sound.get('group',0))<.09:return
+        if now - self.last_sound.get(kind,0) < (.055 if kind=='move' else .08 if kind in ('switch','group') else .025):
             return
         self.last_sound[kind] = now
         style=style or self.bridge.store.settings.get('navigation_sound_style','clear')
+        design=design or self.bridge.store.settings.get('library_design','classic')
+        bank=design if design in ('shelf','cinema','atlas') else 'classic-'+style
         level=self.bridge.store.settings.get('navigation_volume',80) if volume is None else volume
         if level<=0:return
         # A settings preview can be audible even while the saved volume is muted.
         if volume is not None and self.app.applicationState()==Qt.ApplicationActive:
             self.audio.set_enabled(True);QTimer.singleShot(300,self.sync_audio)
-        self.audio.play(kind,style,max(0,min(100,level)))
+        self.audio.play(kind,bank,max(0,min(100,level)))

@@ -374,7 +374,7 @@ ApplicationWindow {
                 }
                 AppComboBox { id: platformControl; objectName: "platformFilter"; quiet: true; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 130; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
                 AppComboBox { id: sourceControl; objectName: "sourceFilter"; quiet: true; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 120; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
-                AppComboBox { id: seriesControl; objectName: "seriesFilter"; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: seriesFilter=currentIndex>0 ? currentText : "" }
+                AppComboBox { id: seriesControl; objectName: "seriesFilter"; soundEvent: "group"; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: { backend.navigationEvent("group",win.libraryDesign);seriesFilter=currentIndex>0 ? currentText : "" } }
                 Item { Layout.fillWidth: true }
             }
             Item {

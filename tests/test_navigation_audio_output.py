@@ -1,40 +1,58 @@
-"""Exercise the real Qt output silently, including idle, rapid events and settings."""
+"""Real Qt output on its own thread, muted; GUI stalls must not interrupt PCM."""
 from pathlib import Path
 from types import SimpleNamespace
 import sys,time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
 from PySide6.QtCore import QObject,Signal,Qt
 from PySide6.QtWidgets import QApplication,QWidget
-from PySide6.QtMultimedia import QtAudio
 from PySide6.QtTest import QTest
 from input_feedback import InputFeedback
 
 class Bridge(QObject):
     inputModeChanged=Signal();settingsChanged=Signal()
     controllerMode=False
-    store=SimpleNamespace(settings={'navigation_sounds':True,'navigation_volume':80,'navigation_sound_style':'soft'})
+    store=SimpleNamespace(settings={'navigation_sounds':True,'navigation_volume':80,'navigation_sound_style':'soft','library_design':'classic'})
     def setControllerMode(self,value):self.controllerMode=value;self.inputModeChanged.emit()
 
-app=QApplication([]);bridge=Bridge();feedback=InputFeedback(app,bridge,Path(__file__).resolve().parents[1])
-assert feedback.audio.sink is not None,'This hardware test requires an audio output'
-# Mute the sink before opening a window. Still render all voices through the real backend.
-feedback.audio.sink.setVolume(0)
-window=QWidget();window.resize(340,150);window.show();window.activateWindow();window.raise_();QTest.qWait(250)
-assert app.applicationState()==Qt.ApplicationActive
-audio=feedback.audio;assert audio.enabled and len(audio.sounds)==12
-sink=audio.sink;before=sink.processedUSecs();QTest.qWait(3200)
-assert sink.state()==QtAudio.ActiveState and sink.processedUSecs()>before+2500000,(sink.state(),sink.error())
-for _ in range(50):feedback.play();QTest.qWait(30)
-feedback.play('confirm');assert len(audio.stream.mixer.voices)>=1
-QTest.qWait(250);assert not audio.stream.mixer.voices
-assert sink is audio.sink and sink.state()==QtAudio.ActiveState
-bridge.store.settings['navigation_sounds']=False;bridge.settingsChanged.emit()
-assert not audio.enabled and sink.state()==QtAudio.StoppedState
-feedback.play();assert not audio.stream.mixer.voices
-bridge.store.settings['navigation_sounds']=True;bridge.settingsChanged.emit();QTest.qWait(80)
-assert audio.enabled and sink.state()==QtAudio.ActiveState
-window.hide();QTest.qWait(150)
-assert app.applicationState()!=Qt.ApplicationActive
-assert not audio.enabled and not audio.stream.mixer.voices
-audio.shutdown();window.close()
-print('PASS: real Qt sink stays warm after idle; 50 rapid moves and confirm drain smoothly; mute/focus release; speakers muted')
+app=QApplication([]);bridge=Bridge()
+feedback=InputFeedback(app,bridge,Path(__file__).resolve().parents[1],audio_muted=True)
+audio=feedback.audio;states=[];played=[]
+audio.inspected.connect(states.append);audio.played.connect(lambda kind,bank:played.append((kind,bank)))
+window=QWidget();window.resize(340,150)
+def wait(condition):
+    deadline=time.monotonic()+6
+    while time.monotonic()<deadline:
+        app.processEvents();time.sleep(.002)
+        if condition():return
+    raise AssertionError(('Audio deadline',states[-2:]))
+def snapshot():
+    count=len(states);audio.inspectRequested.emit();wait(lambda:len(states)>count);return states[-1]
+try:
+    window.show();window.activateWindow();window.raise_()
+    wait(lambda:audio.ready and app.applicationState()==Qt.ApplicationActive)
+    assert len(audio.sounds)==36
+    before=snapshot();assert before['available'] and before['enabled']
+    QTest.qWait(3200);after=snapshot()
+    assert after['state']=='ActiveState' and after['processed']>before['processed']+2500000,(before,after)
+    # A layout rebuild monopolises the GUI event loop, but the audio worker must run.
+    feedback.play('switch',design='atlas');QTest.qWait(40)
+    before=snapshot();QTest.qWait(350);after=snapshot()
+    assert after['backend'].startswith('XAudio2')
+    assert after['processed']>before['processed']+250000,(before,after)
+    assert sum(after['samples'])>sum(before['samples'])+10000,(before,after)
+    assert after['underruns']==before['underruns'],(before,after)
+    for design in ('classic','shelf','cinema','atlas'):
+        bridge.store.settings['library_design']=design
+        for _ in range(8):feedback.play();QTest.qWait(60)
+        feedback.play('group');QTest.qWait(100);feedback.play('confirm');QTest.qWait(100)
+    QTest.qWait(650);assert snapshot()['voices']==0
+    for design in ('shelf','cinema','atlas'):
+        assert ('move',design) in played and ('group',design) in played and ('confirm',design) in played,played
+    bridge.store.settings['navigation_sounds']=False;bridge.settingsChanged.emit()
+    wait(lambda:not snapshot()['enabled']);assert snapshot()['state']=='StoppedState'
+    bridge.store.settings['navigation_sounds']=True;bridge.settingsChanged.emit()
+    wait(lambda:snapshot()['state']=='ActiveState')
+    window.hide();wait(lambda:not snapshot()['enabled'])
+    assert snapshot()['voices']==0
+    print('PASS: 36 event banks; 350ms GUI freeze without PCM starvation; four layout voices, rapid movement, idle, settings/focus release; output muted')
+finally:audio.shutdown();window.close()

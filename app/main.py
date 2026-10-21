@@ -398,9 +398,22 @@ class Bridge(QObject):
     @Slot()
     def navigationMoved(self):
         if self.input_feedback:self.input_feedback.play()
+
+    @Slot(str,str)
+    def navigationEvent(self,kind,design):
+        if kind in ('move','confirm','back','open','group','switch') and self.input_feedback:
+            self.input_feedback.play(kind,design=design or None)
+
+    @Slot(str)
+    def previewLayoutSound(self,design):
+        if design in ('classic','shelf','cinema','atlas') and self.input_feedback:
+            self.input_feedback.play('switch',design=design)
     @Slot(str,int)
     def previewNavigationSound(self,style,volume):
-        if self.input_feedback:self.input_feedback.play('confirm',style,volume)
+        if self.input_feedback:self.input_feedback.play('confirm',style,volume,design='classic')
+    @Slot(int)
+    def previewNavigationVolume(self,volume):
+        if self.input_feedback:self.input_feedback.play('confirm',volume=volume)
     @Slot(result=bool)
     def popupActive(self):
         return self.active_popup() is not None
@@ -896,6 +909,9 @@ class Bridge(QObject):
 
     @Slot('QVariantMap')
     def saveSettings(self, values):
+        design=values.get('library_design')
+        if design in ('classic','shelf','cinema','atlas') and design!=self.store.settings.get('library_design','classic'):
+            self.navigationEvent('switch',design)
         def save():
             self.store.save_settings(values)
             return '设置已保存'

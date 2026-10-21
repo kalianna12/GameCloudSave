@@ -7,10 +7,12 @@ C.ComboBox {
     property bool controllerBrowsing: false
     property bool wrapOptions: false
     property bool quiet: false
+    property string soundEvent: ""
     function controllerInput(command) {
         if(command!=="activate" && command!=="back" && command!=="up" && command!=="down") return false
         if(!popup.visible) {
             if(command!=="activate") return false
+            if(soundEvent) backend.navigationEvent("open","")
             controllerIndex=Math.max(0,currentIndex);controllerBrowsing=true;popup.open();return true
         }
         if(!controllerBrowsing) controllerIndex=Math.max(0,highlightedIndex>=0 ? highlightedIndex : currentIndex)

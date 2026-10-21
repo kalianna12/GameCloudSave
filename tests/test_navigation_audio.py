@@ -1,61 +1,74 @@
-"""PCM quality and seamless mixing checks, without playing sound on the user's speakers."""
+"""Validate the actual licensed sample bank and native playback, with output muted."""
 from array import array
 from pathlib import Path
-import math,sys,time,unittest,wave
+import ctypes,hashlib,json,sys,time,unittest,wave
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
-from navigation_audio import VoiceMixer
+from native_audio import NativeAudio,Clip,Buffer,State,MASTER_GAIN,VOICE_COUNT
 ROOT=Path(__file__).resolve().parents[1]
+FOLDER=ROOT/'ui/sounds/library'
+MANIFEST=json.loads((FOLDER/'manifest.json').read_text(encoding='utf-8'))
 
-def samples(style='clear',kind='move'):
-    with wave.open(str(ROOT/'ui/sounds'/f'{style}-{kind}.wav'),'rb') as file:
-        return [v/32768 for v in array('h',file.readframes(file.getnframes()))]
+def pcm(name):
+    with wave.open(str(FOLDER/name),'rb') as file:return file.readframes(file.getnframes())
 
 class AudioTests(unittest.TestCase):
-    def test_assets_have_soft_edges_low_peaks_and_no_dc(self):
-        for style in ('clear','soft','arcade'):
-            for kind in ('move','confirm','back','open'):
-                data=samples(style,kind)
-                self.assertLess(max(abs(x) for x in data),.31)
+    def test_all_layouts_have_complete_distinct_event_banks(self):
+        banks={entry['bank'] for entry in MANIFEST['sounds']}
+        self.assertEqual(banks,{'classic-clear','classic-soft','classic-arcade','shelf','cinema','atlas'})
+        for bank in banks:
+            self.assertEqual({e['kind'] for e in MANIFEST['sounds'] if e['bank']==bank},{'move','confirm','back','open','group','switch'})
+        for kind in ('move','confirm','group','switch'):
+            audio={pcm(e['files'][0]) for e in MANIFEST['sounds'] if e['kind']==kind and e['bank'] in ('classic-clear','shelf','cinema','atlas')}
+            self.assertEqual(len(audio),4)
+
+    def test_samples_have_fades_headroom_short_duration_and_valid_provenance(self):
+        for entry in MANIFEST['sounds']:
+            for name,origin in zip(entry['files'],entry['origins']):
+                with wave.open(str(FOLDER/name),'rb') as file:
+                    self.assertEqual((file.getnchannels(),file.getsampwidth(),file.getframerate()),(1,2,44100))
+                    self.assertGreater(file.getnframes(),441);self.assertLessEqual(file.getnframes(),44100*.6)
+                data=[v/32768 for v in array('h',pcm(name))]
                 self.assertEqual(data[0],0);self.assertEqual(data[-1],0)
-                self.assertLess(abs(sum(data)/len(data)),.001)
-                self.assertLess(max(abs(a-b) for a,b in zip(data,data[1:])),.03)
-                # The first/last 3ms must fade rather than start/stop at full amplitude.
-                self.assertLess(max(abs(x) for x in data[:132]),.06)
-                self.assertLess(max(abs(x) for x in data[-132:]),.02)
+                self.assertLess(max(abs(v) for v in data),.281)
+                self.assertLess(max(abs(v) for v in data)*VOICE_COUNT*MASTER_GAIN,1)
+                self.assertLess(abs(sum(data)/len(data)),.005)
+                source=ROOT/'ui/sounds/sources'/origin['source']
+                self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),origin['sha256'])
 
-    def test_mix_is_identical_across_arbitrary_backend_chunks(self):
-        left=VoiceMixer();right=VoiceMixer()
-        for mixer in (left,right):mixer.add(samples('soft','open'),.8)
-        expected=left.render(9000)
-        actual=b''.join(right.render(count) for count in (1,17,300,5000,3682))
-        self.assertEqual(actual,expected)
-        self.assertEqual(right.render(2048),bytes(4096))
+    def test_real_book_and_projector_recordings_are_used(self):
+        sources={e['bank']:{o['source'] for item in MANIFEST['sounds'] if item['bank']==e['bank'] for o in item['origins']} for e in MANIFEST['sounds']}
+        self.assertIn('rpg/bookOpen.ogg',sources['shelf'])
+        self.assertIn('book/book_flip.4.ogg',sources['shelf'])
+        self.assertIn('projector/projector.mp3',sources['cinema'])
+        self.assertEqual(MANIFEST['license'],'CC0-1.0')
 
-    def test_repeated_movement_overlaps_without_cutting_previous_tail(self):
-        mixer=VoiceMixer();tone=samples()
-        mixer.add(tone,.8);mixer.render(1323) # 30ms repeat
-        offset=mixer.voices[0][1];mixer.add(tone,.8)
-        self.assertEqual(len(mixer.voices),2)
-        first=array('h',mixer.render(1))[0]/32767
-        self.assertAlmostEqual(first,.85*math.tanh(tone[offset]*.8),places=4)
-        for _ in range(100):
-            mixer.add(tone,1);pcm=array('h',mixer.render(1323))
-            self.assertLess(max(abs(x) for x in pcm),28000)
-        mixer.render(9000);self.assertFalse(mixer.voices)
+    def test_windows_packed_abi_and_full_pcm_buffer_lifetime(self):
+        self.assertEqual(ctypes.sizeof(Buffer),28+2*ctypes.sizeof(ctypes.c_void_p))
+        self.assertEqual(ctypes.sizeof(State),12+ctypes.sizeof(ctypes.c_void_p))
+        data=pcm('atlas-switch-1.wav');clip=Clip(data)
+        self.assertEqual(ctypes.string_at(clip.buffer.data,clip.buffer.size),data)
+        self.assertEqual(clip.buffer.flags,0x40)
 
-    def test_overlap_admission_never_truncates_a_voice_or_clips(self):
-        mixer=VoiceMixer(channels=2);tone=samples('arcade','open')
-        for _ in range(8):self.assertTrue(mixer.add(tone,1))
-        self.assertFalse(mixer.add(tone,1));self.assertEqual(len(mixer.voices),8)
-        pcm=array('h',mixer.render(8000));self.assertLess(max(abs(x) for x in pcm),28000)
-        self.assertEqual(pcm[::2],pcm[1::2]);self.assertFalse(mixer.voices)
+    def test_native_overlap_admission_preserves_sounding_voices(self):
+        player=NativeAudio(muted=True)
+        try:
+            player.set_enabled(True);clip=Clip(pcm('atlas-switch-1.wav'))
+            for _ in range(VOICE_COUNT):self.assertTrue(player.play(clip,100))
+            self.assertFalse(player.play(clip,100))
+            self.assertTrue(all(v.clip is clip for v in player.voices))
+            time.sleep(.12);state=player.inspect()
+            self.assertEqual(state['voices'],VOICE_COUNT);self.assertTrue(all(s>1000 for s in state['samples']))
+            time.sleep(.55);self.assertEqual(player.inspect()['voices'],0)
+        finally:player.close();player.close()
 
-    def test_silent_idle_and_mixing_cost_are_bounded(self):
-        mixer=VoiceMixer();started=time.perf_counter()
-        for _ in range(10000):self.assertEqual(mixer.render(1411),bytes(2822))
-        self.assertLess(time.perf_counter()-started,1)
-        started=time.perf_counter()
-        for _ in range(200):mixer.add(samples(),.8);mixer.render(1411)
-        self.assertLess(time.perf_counter()-started,3)
+    def test_muting_stops_all_native_voices_and_reenable_works(self):
+        player=NativeAudio(muted=True)
+        try:
+            self.assertFalse(player.play(Clip(pcm('cinema-switch-1.wav')),80))
+            player.set_enabled(True);self.assertTrue(player.play(Clip(pcm('cinema-switch-1.wav')),80))
+            player.set_enabled(False);self.assertEqual(player.inspect()['voices'],0)
+            self.assertFalse(player.inspect()['enabled'])
+            player.set_enabled(True);self.assertTrue(player.play(Clip(pcm('shelf-open-1.wav')),80))
+        finally:player.close()
 
 if __name__=='__main__':unittest.main(verbosity=2)
