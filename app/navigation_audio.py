@@ -64,7 +64,7 @@ class NavigationAudio(QObject):
     def __init__(self,resources,parent=None,*,muted=False):
         super().__init__(parent)
         self.enabled=False;self.ready=False;self.sounds={};self.clips={};self.backend=None
-        self.closed=False;self.variants={}
+        self.closed=False;self.variants={};self.volume=80
         self.workerThread=QThread(self);self.workerThread.setObjectName('navigation-audio-loader')
         self.worker=AudioLoader(resources,muted);self.worker.moveToThread(self.workerThread)
         self.workerThread.started.connect(self.worker.initialize)
@@ -77,7 +77,7 @@ class NavigationAudio(QObject):
     def loaded(self,result):
         self.backend,self.clips=result;self.sounds={key:len(clips) for key,clips in self.clips.items()}
         self.ready=self.backend is not None
-        if self.backend and not self.closed:self.set_enabled(self.enabled)
+        if self.backend and not self.closed:self.set_volume(self.volume);self.set_enabled(self.enabled)
         self.readyChanged.emit()
 
     def set_enabled(self,enabled):
@@ -93,11 +93,22 @@ class NavigationAudio(QObject):
         if not variants:return False
         index=self.variants.get(key,0)%len(variants)
         try:
-            if self.backend.play(variants[index],volume):
+            self.set_volume(volume)
+            if self.backend.play(variants[index],100):
                 self.variants[key]=index+1;self.played.emit(kind,bank);return True
         except OSError as error:
             logging.getLogger(__name__).warning('Navigation output changed: %s',error)
         return False
+
+    def set_volume(self,volume):
+        self.volume=max(0,min(100,volume))
+        if self.backend and not self.closed:
+            try:self.backend.set_volume(self.volume)
+            except OSError as error:logging.getLogger(__name__).warning('Navigation volume changed: %s',error)
+
+    def stop_launch(self):
+        if self.backend and not self.closed:
+            self.backend.stop_clips({clip for (bank,kind),clips in self.clips.items() if kind=='launch' for clip in clips})
 
     def shutdown(self):
         if self.closed:return

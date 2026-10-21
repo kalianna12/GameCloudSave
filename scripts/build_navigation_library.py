@@ -82,6 +82,36 @@ def build():
     cue('atlas','open','interface','select_005.wav',.40,.85,2800,True)
     cue('atlas','group','interface','glass_003.wav',.23,.7,2800,True)
     cue('atlas','switch','interface','confirmation_004.wav',.58,.8,2400,True)
+    for bank,pack,move,confirm,speed,cutoff in (
+        ('felt','ui','rollover6.wav','click1.wav',.65,1500),
+        ('wood','rpg','bookPlace2.ogg','bookClose.ogg',1.2,2600),
+        ('water','interface','glass_006.wav','glass_003.wav',.65,1900)):
+        cue(bank,'move',pack,move,.16,speed,cutoff)
+        cue(bank,'confirm',pack,confirm,.28,speed,cutoff)
+        cue(bank,'back','interface','back_002.wav',.19,speed,cutoff)
+        cue(bank,'open',pack,move,.23,speed*.85,cutoff)
+        cue(bank,'group',pack,confirm,.32,speed*.9,cutoff)
+        cue(bank,'switch','interface','confirmation_004.wav',.48,speed,cutoff,True)
+
+    def launch(name,duration,layers,cutoff):
+        audio=np.zeros(round(duration*RATE));origins=[]
+        for pack,source,speed,offset,delay,gain in layers:
+            raw=read(pack,source,speed,offset)
+            raw=prepare(raw,min(duration-delay,len(raw)/RATE),cutoff,.055,True)
+            start=round(delay*RATE);count=min(len(raw),len(audio)-start)
+            audio[start:start+count]+=raw[:count]*gain
+            origins.append({'source':f'{pack}/{source}','sha256':hashlib.sha256((SOURCE/pack/source).read_bytes()).hexdigest(),
+                'speed':speed,'offset_seconds':offset,'delay_seconds':delay,'gain':gain})
+        audio=prepare(audio,duration,cutoff,.055)
+        attack=round(RATE*.035);release=round(RATE*.16)
+        audio[:attack]*=np.sin(np.linspace(0,np.pi/2,attack))**2
+        audio[-release:]*=np.sin(np.linspace(np.pi/2,0,release))**2
+        filename=f'launch-{name}-launch-1.wav';sf.write(OUTPUT/filename,audio,RATE,subtype='PCM_16')
+        entries.append({'bank':'launch-'+name,'kind':'launch','files':[filename],
+            'origins':[{**origins[0],'layers':origins,'maximum_seconds':duration,'lowpass_hz':cutoff}]})
+    launch('warm',1.4,[('interface','confirmation_004.wav',.65,0,0,1),('interface','glass_001.wav',.72,0,.45,.48),('interface','glass_003.wav',.82,0,1.15,.25)],1900)
+    launch('projector',1.7,[('projector','projector.mp3',1,1,0,.65),('interface','confirmation_001.wav',.75,0,.15,.6)],2600)
+    launch('orbit',1.8,[('interface','glass_001.wav',.55,0,0,.8),('interface','glass_003.wav',.68,0,.32,.55),('interface','confirmation_004.wav',.62,0,.62,.65),('interface','glass_001.wav',.65,0,1.32,.18)],2300)
     (OUTPUT/'manifest.json').write_text(json.dumps({'version':1,'license':'CC0-1.0','sounds':entries},ensure_ascii=False,indent=2),encoding='utf-8')
     print(f'Built {len(entries)} event banks / {sum(len(e["files"]) for e in entries)} PCM recordings')
 

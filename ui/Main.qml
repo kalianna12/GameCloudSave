@@ -427,17 +427,18 @@ ApplicationWindow {
                 while(item && item!==grid) { if(item.libraryIndex!==undefined) { currentIndex=item.libraryIndex;return } item=item.parent }
             }
             function navigateFocus(index) {
-                var previousIndex=currentIndex,previousY=contentY
-                gridScroll.stop();currentIndex=index
-                positionViewAtIndex(currentIndex,GridView.Contain)
-                var destination=contentY
+                var previousIndex=currentIndex
+                currentIndex=index
+                var start=Math.floor(index/effectiveColumns)*cellHeight,destination=gridScroll.running ? gridScroll.to : contentY
+                if(start<destination) destination=start
+                else if(start+cellHeight>destination+height) destination=start+cellHeight-height
+                destination=Math.max(originY,Math.min(Math.max(originY,contentHeight-height),destination))
                 if(win.activeFocusItem && win.activeFocusItem!==grid) win.activeFocusItem.focus=false
-                forceActiveFocus();contentY=previousY
-                if(Math.abs(destination-previousY)>.5) { gridScroll.to=destination;gridScroll.restart() }
-                else contentY=destination
+                forceActiveFocus()
+                if(Math.abs(destination-(gridScroll.running ? gridScroll.to : contentY))>.5) { gridScroll.to=destination;gridScroll.restart() }
                 if(previousIndex!==currentIndex) backend.navigationMoved()
             }
-            NumberAnimation { id: gridScroll; target: grid; property: "contentY"; duration: Theme.motion ? 190 : 0; easing.type: Easing.OutCubic }
+            NumberAnimation { id: gridScroll; target: grid; property: "contentY"; duration: Theme.motion ? 75 : 0; easing.type: Easing.OutCubic }
             Keys.onPressed: function(event) {
                 var commands={};commands[Qt.Key_Left]="left";commands[Qt.Key_Right]="right";commands[Qt.Key_Up]="up";commands[Qt.Key_Down]="down";commands[Qt.Key_Return]="activate";commands[Qt.Key_Enter]="activate";commands[Qt.Key_Escape]="back"
                 if(commands[event.key]) event.accepted=win.controllerInput(commands[event.key])

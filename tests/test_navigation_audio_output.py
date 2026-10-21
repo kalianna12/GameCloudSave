@@ -9,7 +9,7 @@ from PySide6.QtTest import QTest
 from input_feedback import InputFeedback
 
 class Bridge(QObject):
-    inputModeChanged=Signal();settingsChanged=Signal()
+    inputModeChanged=Signal();settingsChanged=Signal();audioSettingsChanged=Signal()
     controllerMode=False
     store=SimpleNamespace(settings={'navigation_sounds':True,'navigation_volume':80,'navigation_sound_style':'soft','library_design':'classic'})
     def setControllerMode(self,value):self.controllerMode=value;self.inputModeChanged.emit()
@@ -30,7 +30,7 @@ def snapshot():
 try:
     window.show();window.activateWindow();window.raise_()
     wait(lambda:audio.ready and app.applicationState()==Qt.ApplicationActive)
-    assert len(audio.sounds)==36
+    assert len(audio.sounds)==57
     before=snapshot();assert before['available'] and before['enabled']
     QTest.qWait(3200);after=snapshot()
     assert after['state']=='ActiveState' and after['processed']>before['processed']+2500000,(before,after)
@@ -54,5 +54,5 @@ try:
     wait(lambda:snapshot()['state']=='ActiveState')
     window.hide();wait(lambda:not snapshot()['enabled'])
     assert snapshot()['voices']==0
-    print('PASS: 36 event banks; 350ms GUI freeze without PCM starvation; four layout voices, rapid movement, idle, settings/focus release; output muted')
+    print('PASS: 57 event banks; 350ms GUI freeze without PCM starvation; four layout voices, rapid movement, idle, settings/focus release; output muted')
 finally:audio.shutdown();window.close()

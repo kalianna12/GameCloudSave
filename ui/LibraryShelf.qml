@@ -75,10 +75,11 @@ Item {
         var previousIndex=list.currentIndex
         list.currentIndex=Math.max(0,Math.min(items.count-1,list.currentIndex+direction));shelf.selectedId=items.get(list.currentIndex).record.id
         if(previousIndex!==list.currentIndex) backend.navigationMoved()
-        var previousX=list.contentX
-        list.positionViewAtIndex(list.currentIndex,ListView.Contain)
-        var destination=list.contentX;list.contentX=previousX
-        if(Math.abs(destination-previousX)>.5) { horizontal.to=destination;horizontal.restart() }
+        var start=list.currentIndex*(tileWidth+cardGap),destination=scrollTarget
+        if(start<destination) destination=start
+        else if(start+tileWidth>destination+list.width) destination=start+tileWidth-list.width
+        destination=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),destination))
+        if(Math.abs(destination-scrollTarget)>.5) { horizontal.to=destination;horizontal.restart() }
     }
     function move(direction) {
         var step=Math.max(tileWidth+cardGap,Math.floor((list.width+cardGap)/(tileWidth+cardGap))*(tileWidth+cardGap))
@@ -93,7 +94,7 @@ Item {
         onLaunchRequested: function(game) { shelf.launchRequested(game) }
         onCloudRequested: function(game) { shelf.cloudRequested(game) }
     }
-    NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 115 : 0; easing.type: Easing.OutCubic }
+    NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 75 : 0; easing.type: Easing.OutCubic }
     ListView {
         id: list; objectName: "shelf-"+shelf.section.id
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }

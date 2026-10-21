@@ -7,7 +7,7 @@ import threading
 import os
 from pathlib import Path
 import sys
-from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl, QTimer, qInstallMessageHandler, QMetaObject, Q_ARG,QCoreApplication,Qt
+from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl, QTimer, qInstallMessageHandler, QMetaObject, Q_ARG,QCoreApplication,Qt,QPointF
 if QCoreApplication.instance() is None:QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QFileDialog, QSystemTrayIcon, QMenu
@@ -20,6 +20,8 @@ class Bridge(QObject):
     restorePreviewChanged = Signal()
     gamesChanged = Signal()
     settingsChanged = Signal()
+    audioSettingsChanged = Signal()
+    audioSaveFailed = Signal(str)
     cloudChanged = Signal()
     directoriesChanged = Signal()
     matchesChanged = Signal()
@@ -54,6 +56,11 @@ class Bridge(QObject):
         self._gamepad_connected=False
         self._controller_mode=False
         self.input_feedback=None
+        self.settingsChanged.connect(self.audioSettingsChanged.emit)
+        self._audio_values={}
+        self.audioTimer=QTimer(self);self.audioTimer.setSingleShot(True)
+        self.audioTimer.timeout.connect(self.flushAudioSettings)
+        self.audioSaveFailed.connect(self.audioSaveError)
         self._status = '就绪'
         from recommendations import Recommendations
         self._recommendations=Recommendations(store,self)
@@ -390,6 +397,10 @@ class Bridge(QObject):
             self.inputModeChanged.emit()
     @Property('QVariantList',notify=controllerTiltChanged)
     def controllerTilt(self):return list(getattr(self,'_controller_tilt',(0.,0.)))
+    @Property(QPointF,notify=controllerTiltChanged)
+    def controllerTiltPoint(self):return QPointF(*getattr(self,'_controller_tilt',(0.,0.)))
+    @Property(bool,notify=settingsChanged)
+    def controllerTiltEnabled(self):return self.store.settings.get('controller_tilt',True)
     @Slot(float,float)
     def setControllerTilt(self,x,y):
         values=(max(-1.,min(1.,float(x))),max(-1.,min(1.,float(y))))
@@ -407,30 +418,83 @@ class Bridge(QObject):
     @Slot(str)
     def previewLayoutSound(self,design):
         if design in ('classic','shelf','cinema','atlas') and self.input_feedback:
-            self.input_feedback.play('switch',design=design)
+            self.input_feedback.play('switch',design=design,use_pack=False)
     @Slot(str,int)
     def previewNavigationSound(self,style,volume):
         if self.input_feedback:self.input_feedback.play('confirm',style,volume,design='classic')
     @Slot(int)
     def previewNavigationVolume(self,volume):
         if self.input_feedback:self.input_feedback.play('confirm',volume=volume)
+    @Property('QVariantMap',notify=audioSettingsChanged)
+    def audioSettings(self):
+        from audio_settings import DEFAULTS
+        return {key:self.store.settings.get(key,value) for key,value in DEFAULTS.items()}
+    @Slot('QVariantMap')
+    def saveAudioSettings(self,values):
+        from audio_settings import validate
+        try:values=validate(dict(values))
+        except ValueError as error:self.audioSaveError(str(error));return
+        self.store.settings.update(values);self._audio_values.update(values)
+        self.audioSettingsChanged.emit();self.audioTimer.start(180)
+    def flushAudioSettings(self):
+        self.audioTimer.stop()
+        if not self._audio_values:return
+        from services import read_json,write_json
+        values=self._audio_values;self._audio_values={};path=self.store.profile/'settings.json'
+        def persist():
+            try:
+                saved=read_json(path,{})
+                write_json(path,{**saved,**values})
+            except (OSError,ValueError) as error:self.audioSaveFailed.emit(str(error))
+        self.pool.submit(persist)
+    @Slot(str)
+    def audioSaveError(self,error):
+        self._status='音效设置未保存：'+error;self.changed.emit()
+    @Slot()
+    def playLaunchSound(self):
+        if self.input_feedback:self.input_feedback.play_launch()
+    @Slot()
+    def stopLaunchSound(self):
+        if self.input_feedback:self.input_feedback.audio.stop_launch()
+    @Slot()
+    def previewLaunchSound(self):
+        if self.input_feedback:self.input_feedback.play_launch()
     @Slot(result=bool)
     def popupActive(self):
         return self.active_popup() is not None
 
     def active_popup(self):
+        from shiboken6 import isValid
         window=QApplication.focusWindow()
         item=window.activeFocusItem() if window is not None and hasattr(window,'activeFocusItem') else None
         cached=getattr(self,'_popup_cache',None)
         if cached and cached[0] is window and cached[3] is item and time.perf_counter()-cached[1]<.008:
-            if cached[2] is None or cached[2].property('visible'):return cached[2]
+            if cached[2] is None or isValid(cached[2]) and cached[2].property('visible'):return cached[2]
         owner=item
         while owner is not None:
             if owner.inherits('QQuickPopup') and owner.property('visible'):return owner
             owner=owner.parent()
         candidates=[]
         if window is not None:
-            for popup in window.findChildren(QObject):
+            generation=getattr(self,'_popup_generation',0)
+            tree=getattr(self,'_popup_tree',None)
+            tracked=self.input_feedback is not None
+            if not tree or tree[0] is not window or tree[1]!=generation or not tracked:
+                # Separate tool windows can have thousands of hidden mapping keys.
+                # Their descendants cannot contain a popup belonging to this window.
+                nodes=set();stack=[window];popups=[]
+                while stack:
+                    node=stack.pop()
+                    if node is not window and node.inherits('QQuickWindow'):continue
+                    if node.inherits('QQuickToolTip'):continue
+                    nodes.add(node)
+                    if node.inherits('QQuickPopup'):popups.append(node)
+                    stack.extend(reversed(node.children()))
+                self._popup_scans=getattr(self,'_popup_scans',0)+1
+                tree=(window,getattr(self,'_popup_generation',0),popups,nodes)
+                self._popup_tree=tree
+            for popup in tree[2]:
+                if not isValid(popup):continue
                 if not popup.inherits('QQuickPopup') or popup.inherits('QQuickToolTip') or not popup.property('visible'):continue
                 owner=popup.parent()
                 while owner is not None and not owner.inherits('QQuickWindow'):owner=owner.parent()
@@ -1461,6 +1525,7 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self.flushAudioSettings()
         self._mapping.shutdown()
         self._recommendations.shutdown()
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)

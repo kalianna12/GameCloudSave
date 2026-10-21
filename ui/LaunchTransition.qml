@@ -20,11 +20,13 @@ Item {
         if(running) return
         game=record;design=style;sent=false;ready=false;animationDone=false;progress=0;fade=1;running=true
         backend.beginLaunchPresentation(launch.Window.window)
+        backend.playLaunchSound()
         intro.restart();sendTimer.interval=Theme.motion ? 120 : 0;sendTimer.restart()
     }
     function commit() { if(running && !sent) { sent=true;committed(game) } }
     function maybeFinish() { if(running && animationDone && ready) Qt.callLater(function() { if(launch.running && launch.animationDone && launch.ready && !outro.running) outro.restart() }) }
     function cancel() {
+        backend.stopLaunchSound()
         sendTimer.stop();intro.stop();outro.stop()
         if(sent) backend.cancelLaunchWait();else backend.releaseLaunchPresentation()
         running=false;progress=0

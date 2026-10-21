@@ -34,9 +34,13 @@ ApplicationWindow {
         var list=choices(),current=activeFocusItem
         while(current && list.indexOf(current)<0) current=current.parent
         if(!current) { focusDesign();return true }
+        if(current.audioVolumeControl && (command==="left" || command==="right")) {
+            current.adjustVolume(command==="left" ? -5 : 5);return true
+        }
         if(command==="activate") {
+            if(current.audioVolumeControl) { backend.previewNavigationVolume(Math.round(current.value));return true }
             if(current.checkable) { current.toggle();current.toggled() }
-            current.clicked();return true
+            if(typeof current.clicked==="function") current.clicked();return true
         }
         if(["up","down","left","right"].indexOf(command)<0) return true
         var origin=current.mapToItem(contentItem,current.width/2,current.height/2),best=null,cost=Infinity
@@ -129,16 +133,51 @@ ApplicationWindow {
                     Layout.fillWidth: true; spacing: 4
                     PadCheckBox { text: "界面动效"; checked: backend.settings.animations; enabled: !backend.busy; onToggled: backend.saveSettings({animations:checked}) }
                     PadCheckBox { text: "手柄导航"; checked: backend.settings.gamepad_enabled; enabled: !backend.busy; onToggled: backend.saveSettings({gamepad_enabled:checked}) }
-                    PadCheckBox { text: "导航提示音"; checked: backend.settings.navigation_sounds; enabled: !backend.busy; onToggled: backend.saveSettings({navigation_sounds:checked}) }
+                    PadCheckBox { objectName: "navigationSounds";text: "界面与游戏启动音效"; checked: backend.audioSettings.navigation_sounds; onToggled: backend.saveAudioSettings({navigation_sounds:checked}) }
                     RowLayout {
-                        Layout.fillWidth: true;visible: backend.settings.navigation_sounds
-                        AppComboBox { objectName: "navigationSoundStyle";model: ["首页 · 轻触","首页 · 轻柔","首页 · 清亮"];currentIndex: Math.max(0,["clear","soft","arcade"].indexOf(backend.settings.navigation_sound_style));onActivated: { backend.saveSettings({navigation_sound_style:["clear","soft","arcade"][currentIndex]});backend.previewNavigationSound(["clear","soft","arcade"][currentIndex],backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume) } }
-                        Slider { id: soundVolume;objectName: "navigationVolume";Layout.fillWidth: true;from: 0;to: 100;stepSize: 5;value: backend.settings.navigation_volume===undefined ? 80 : backend.settings.navigation_volume;onMoved: { if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)});backend.previewNavigationVolume(Math.round(value)) } onPressedChanged: if(!pressed) backend.saveSettings({navigation_volume:Math.round(value)}) }
-                        Label { text: Math.round(soundVolume.value)+"%";color: Theme.secondary }
+                        Layout.fillWidth: true;enabled: backend.audioSettings.navigation_sounds
+                        Label { text: "音量";color: Theme.secondary;Layout.preferredWidth: 64 }
+                        Slider {
+                            id: soundVolume;objectName: "navigationVolume";property bool controllerSelectable: true;property bool audioVolumeControl: true
+                            Layout.fillWidth: true;from: 0;to: 100;stepSize: 5;value: backend.audioSettings.navigation_volume
+                            Accessible.name: "音效音量，左右调整，上下离开"
+                            function adjustVolume(delta) {
+                                var level=Math.max(0,Math.min(100,Math.round(value)+delta))
+                                backend.saveAudioSettings({navigation_volume:level});backend.previewNavigationVolume(level)
+                            }
+                            onMoved: { backend.saveAudioSettings({navigation_volume:Math.round(value)});backend.previewNavigationVolume(Math.round(value)) }
+                            SelectionFrame { selected: soundVolume.activeFocus;radius: 6 }
+                        }
+                        Label { text: Math.round(soundVolume.value)+"%";color: Theme.secondary;Layout.preferredWidth: 42 }
                     }
-                    Label { visible: backend.settings.navigation_sounds; text: "音效随布局切换：书柜翻书、影院放映机、星图轻响"; color: Theme.secondary; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true;enabled: backend.audioSettings.navigation_sounds
+                        Label { text: "导航音效";color: Theme.secondary;Layout.preferredWidth: 64 }
+                        AppComboBox {
+                            objectName: "navigationSoundStyle";property bool controllerSelectable: true;soundEvent: "open";Layout.fillWidth: true
+                            property var ids: ["auto","classic-clear","classic-soft","classic-arcade","shelf","cinema","atlas","felt","wood","water"]
+                            model: ["跟随布局","轻触","轻柔","清亮","翻书","放映机","星光","绒感 · 低柔","木纹 · 轻敲","涟漪 · 水滴"]
+                            currentIndex: Math.max(0,ids.indexOf(backend.audioSettings.navigation_sound_pack))
+                            onActivated: { backend.saveAudioSettings({navigation_sound_pack:ids[currentIndex]});backend.previewNavigationVolume(backend.audioSettings.navigation_volume) }
+                            SelectionFrame { selected: parent.activeFocus;radius: 6 }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true;enabled: backend.audioSettings.navigation_sounds
+                        Label { text: "启动游戏";color: Theme.secondary;Layout.preferredWidth: 64 }
+                        AppComboBox {
+                            objectName: "launchSound";property bool controllerSelectable: true;soundEvent: "open";Layout.fillWidth: true
+                            property var ids: ["auto","off","warm","projector","orbit"]
+                            model: ["跟随布局","关闭","启程 · 1.4 秒","开场 · 1.7 秒","星际 · 1.8 秒"]
+                            currentIndex: Math.max(0,ids.indexOf(backend.audioSettings.launch_sound))
+                            onActivated: { backend.saveAudioSettings({launch_sound:ids[currentIndex]});backend.previewLaunchSound() }
+                            SelectionFrame { selected: parent.activeFocus;radius: 6 }
+                        }
+                        AppButton { objectName: "previewLaunchSound";property bool controllerSelectable: true;text: "试听";flat: true;enabled: backend.audioSettings.launch_sound!=="off";onClicked: backend.previewLaunchSound() }
+                    }
+                    Label { text: "跟随布局保留各模式特色。启动音不增加游戏等待时间；音量为 0 时静音。"; color: Theme.secondary; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     Flow {
-                        visible: backend.settings.navigation_sounds; Layout.fillWidth: true; Layout.preferredHeight: childrenRect.height; spacing: 6
+                        visible: backend.audioSettings.navigation_sounds; Layout.fillWidth: true; Layout.preferredHeight: childrenRect.height; spacing: 6
                         Repeater {
                             model: [{id:"classic",name:"试听首页"},{id:"shelf",name:"试听书柜"},{id:"cinema",name:"试听影院"},{id:"atlas",name:"试听星图"}]
                             AppButton { required property var modelData; property bool controllerSelectable: true; objectName: "previewSound-"+modelData.id; text: modelData.name; flat: true; onClicked: backend.previewLayoutSound(modelData.id) }

@@ -48,10 +48,12 @@ class Voice:
         self.flush=method(self.pointer,22,C.c_int32)
         self.volume=method(self.pointer,12,C.c_int32,C.c_float,C.c_uint32)
         self.get_state=method(self.pointer,25,None,C.POINTER(State),C.c_uint32)
-        self.clip=None
+        self.clip=None;self.retired=[]
 
     def state(self):
-        result=State();self.get_state(self.pointer,C.byref(result),0);return result
+        result=State();self.get_state(self.pointer,C.byref(result),0)
+        if not result.queued:self.retired.clear()
+        return result
 
     def play(self,clip,gain):
         self.clip=clip # Own the sample memory until XAudio2 has consumed the buffer.
@@ -60,16 +62,19 @@ class Voice:
         check(self.start(self.pointer,0,0))
 
     def reset(self):
-        check(self.stop(self.pointer,0,0));check(self.flush(self.pointer));self.clip=None
+        check(self.stop(self.pointer,0,0));check(self.flush(self.pointer))
+        # Flush is asynchronous. Retain PCM until GetState confirms zero buffers.
+        if self.clip:self.retired.append(self.clip)
+        self.clip=None
 
     def close(self):
         if self.pointer:
-            method(self.pointer,18,None)(self.pointer);self.pointer=None;self.clip=None
+            method(self.pointer,18,None)(self.pointer);self.pointer=None;self.clip=None;self.retired.clear()
 
 class NativeAudio:
     def __init__(self,muted=False):
         self.lock=threading.RLock();self.pointer=C.c_void_p();self.master=C.c_void_p();self.voices=[];self.warm=None
-        self.enabled=False;self.closed=False
+        self.enabled=False;self.closed=False;self.muted=muted;self.level=100
         self.com=C.WinDLL('ole32');self.owner=threading.get_ident()
         self.com.CoInitializeEx.argtypes=[C.c_void_p,C.c_uint32];self.com.CoInitializeEx.restype=C.c_int32
         result=self.com.CoInitializeEx(None,0);self.com_owned=result>=0
@@ -106,13 +111,27 @@ class NativeAudio:
                     voice.play(clip,volume/100);return True
             return False # Never truncate another voice's tail just to admit a new sound.
 
+    def set_volume(self,level):
+        with self.lock:
+            if self.closed:return
+            level=max(0,min(100,level))
+            if level==self.level:return
+            self.level=level
+            check(method(self.master,12,C.c_int32,C.c_float,C.c_uint32)(self.master,0. if self.muted else MASTER_GAIN*self.level/100,0))
+
+    def stop_clips(self,clips):
+        with self.lock:
+            if self.closed:return
+            for voice in self.voices:
+                if voice.clip in clips:voice.reset()
+
     def inspect(self):
         with self.lock:
             if self.closed:return {'available':False,'enabled':False}
             states=[v.state() for v in self.voices]
             data=(C.c_ubyte*256)();self.performance(self.pointer,C.byref(data))
             raw=bytes(data)
-            return {'available':True,'enabled':self.enabled,'state':'ActiveState' if self.enabled else 'StoppedState','error':'NoError',
+            return {'available':True,'enabled':self.enabled,'state':'ActiveState' if self.enabled else 'StoppedState','error':'NoError','volume':self.level,
                 'processed':round(self.warm.state().samples*1000000/44100),'voices':sum(s.queued>0 for s in states),
                 'samples':[s.samples for s in states],'underruns':int.from_bytes(raw[32:36],'little'),
                 'latency_samples':int.from_bytes(raw[28:32],'little'),'backend':'XAudio2 / native PCM buffers'}

@@ -679,6 +679,465 @@
           "short_echo": true
         }
       ]
+    },
+    {
+      "bank": "felt",
+      "kind": "move",
+      "files": [
+        "felt-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/rollover6.wav",
+          "sha256": "acea59ec6dfdfdf04701c646298b1d80e593f4e2ebb6702ba6dc9bb24db1b62d",
+          "speed": 0.65,
+          "maximum_seconds": 0.16,
+          "offset_seconds": 0,
+          "lowpass_hz": 1500,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "felt",
+      "kind": "confirm",
+      "files": [
+        "felt-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/click1.wav",
+          "sha256": "359c8c98ecd48368f45b84d3a9b9d7e68cf3ac2fefcdbf32367b8482da76c9c7",
+          "speed": 0.65,
+          "maximum_seconds": 0.28,
+          "offset_seconds": 0,
+          "lowpass_hz": 1500,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "felt",
+      "kind": "back",
+      "files": [
+        "felt-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_002.wav",
+          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
+          "speed": 0.65,
+          "maximum_seconds": 0.19,
+          "offset_seconds": 0,
+          "lowpass_hz": 1500,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "felt",
+      "kind": "open",
+      "files": [
+        "felt-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/rollover6.wav",
+          "sha256": "acea59ec6dfdfdf04701c646298b1d80e593f4e2ebb6702ba6dc9bb24db1b62d",
+          "speed": 0.5525,
+          "maximum_seconds": 0.23,
+          "offset_seconds": 0,
+          "lowpass_hz": 1500,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "felt",
+      "kind": "group",
+      "files": [
+        "felt-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "ui/click1.wav",
+          "sha256": "359c8c98ecd48368f45b84d3a9b9d7e68cf3ac2fefcdbf32367b8482da76c9c7",
+          "speed": 0.5850000000000001,
+          "maximum_seconds": 0.32,
+          "offset_seconds": 0,
+          "lowpass_hz": 1500,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "felt",
+      "kind": "switch",
+      "files": [
+        "felt-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_004.wav",
+          "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+          "speed": 0.65,
+          "maximum_seconds": 0.48,
+          "offset_seconds": 0,
+          "lowpass_hz": 1500,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "wood",
+      "kind": "move",
+      "files": [
+        "wood-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookPlace2.ogg",
+          "sha256": "831874e8fd142d4d0a03ff009f1f83966338a7878c0f6f38c613ae5b80dd731e",
+          "speed": 1.2,
+          "maximum_seconds": 0.16,
+          "offset_seconds": 0,
+          "lowpass_hz": 2600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "wood",
+      "kind": "confirm",
+      "files": [
+        "wood-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookClose.ogg",
+          "sha256": "81e976532565f4372abd14e83d2684195fa548d0a28d345de221e56052454f32",
+          "speed": 1.2,
+          "maximum_seconds": 0.28,
+          "offset_seconds": 0,
+          "lowpass_hz": 2600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "wood",
+      "kind": "back",
+      "files": [
+        "wood-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_002.wav",
+          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
+          "speed": 1.2,
+          "maximum_seconds": 0.19,
+          "offset_seconds": 0,
+          "lowpass_hz": 2600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "wood",
+      "kind": "open",
+      "files": [
+        "wood-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookPlace2.ogg",
+          "sha256": "831874e8fd142d4d0a03ff009f1f83966338a7878c0f6f38c613ae5b80dd731e",
+          "speed": 1.02,
+          "maximum_seconds": 0.23,
+          "offset_seconds": 0,
+          "lowpass_hz": 2600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "wood",
+      "kind": "group",
+      "files": [
+        "wood-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "rpg/bookClose.ogg",
+          "sha256": "81e976532565f4372abd14e83d2684195fa548d0a28d345de221e56052454f32",
+          "speed": 1.08,
+          "maximum_seconds": 0.32,
+          "offset_seconds": 0,
+          "lowpass_hz": 2600,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "wood",
+      "kind": "switch",
+      "files": [
+        "wood-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_004.wav",
+          "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+          "speed": 1.2,
+          "maximum_seconds": 0.48,
+          "offset_seconds": 0,
+          "lowpass_hz": 2600,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "water",
+      "kind": "move",
+      "files": [
+        "water-move-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_006.wav",
+          "sha256": "12d3de80a48f8dd1a96874b120efc8e7cf35278b303b6fb27a35fbce9f0b37ea",
+          "speed": 0.65,
+          "maximum_seconds": 0.16,
+          "offset_seconds": 0,
+          "lowpass_hz": 1900,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "water",
+      "kind": "confirm",
+      "files": [
+        "water-confirm-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_003.wav",
+          "sha256": "4d0e3e12541fd177b1acb56b1c26fc587f213fea41b15d505b81789fceaa53bc",
+          "speed": 0.65,
+          "maximum_seconds": 0.28,
+          "offset_seconds": 0,
+          "lowpass_hz": 1900,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "water",
+      "kind": "back",
+      "files": [
+        "water-back-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/back_002.wav",
+          "sha256": "45f1c9df0db7af4c55166bad72568dcbd6e729ee362ce470b88d9deee51a5e5c",
+          "speed": 0.65,
+          "maximum_seconds": 0.19,
+          "offset_seconds": 0,
+          "lowpass_hz": 1900,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "water",
+      "kind": "open",
+      "files": [
+        "water-open-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_006.wav",
+          "sha256": "12d3de80a48f8dd1a96874b120efc8e7cf35278b303b6fb27a35fbce9f0b37ea",
+          "speed": 0.5525,
+          "maximum_seconds": 0.23,
+          "offset_seconds": 0,
+          "lowpass_hz": 1900,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "water",
+      "kind": "group",
+      "files": [
+        "water-group-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_003.wav",
+          "sha256": "4d0e3e12541fd177b1acb56b1c26fc587f213fea41b15d505b81789fceaa53bc",
+          "speed": 0.5850000000000001,
+          "maximum_seconds": 0.32,
+          "offset_seconds": 0,
+          "lowpass_hz": 1900,
+          "short_echo": false
+        }
+      ]
+    },
+    {
+      "bank": "water",
+      "kind": "switch",
+      "files": [
+        "water-switch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_004.wav",
+          "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+          "speed": 0.65,
+          "maximum_seconds": 0.48,
+          "offset_seconds": 0,
+          "lowpass_hz": 1900,
+          "short_echo": true
+        }
+      ]
+    },
+    {
+      "bank": "launch-warm",
+      "kind": "launch",
+      "files": [
+        "launch-warm-launch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/confirmation_004.wav",
+          "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+          "speed": 0.65,
+          "offset_seconds": 0,
+          "delay_seconds": 0,
+          "gain": 1,
+          "layers": [
+            {
+              "source": "interface/confirmation_004.wav",
+              "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+              "speed": 0.65,
+              "offset_seconds": 0,
+              "delay_seconds": 0,
+              "gain": 1
+            },
+            {
+              "source": "interface/glass_001.wav",
+              "sha256": "39182b395a30b34e18cbcf842922552b23da5b010a52b7777557e02a405f083e",
+              "speed": 0.72,
+              "offset_seconds": 0,
+              "delay_seconds": 0.45,
+              "gain": 0.48
+            },
+            {
+              "source": "interface/glass_003.wav",
+              "sha256": "4d0e3e12541fd177b1acb56b1c26fc587f213fea41b15d505b81789fceaa53bc",
+              "speed": 0.82,
+              "offset_seconds": 0,
+              "delay_seconds": 1.15,
+              "gain": 0.25
+            }
+          ],
+          "maximum_seconds": 1.4,
+          "lowpass_hz": 1900
+        }
+      ]
+    },
+    {
+      "bank": "launch-projector",
+      "kind": "launch",
+      "files": [
+        "launch-projector-launch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "projector/projector.mp3",
+          "sha256": "3d6d62d03ead29399fcf603e8753ea5db098a9e40e06ca81099f7fbd999eae29",
+          "speed": 1,
+          "offset_seconds": 1,
+          "delay_seconds": 0,
+          "gain": 0.65,
+          "layers": [
+            {
+              "source": "projector/projector.mp3",
+              "sha256": "3d6d62d03ead29399fcf603e8753ea5db098a9e40e06ca81099f7fbd999eae29",
+              "speed": 1,
+              "offset_seconds": 1,
+              "delay_seconds": 0,
+              "gain": 0.65
+            },
+            {
+              "source": "interface/confirmation_001.wav",
+              "sha256": "f9d0ef5a5c740c2ac250ac3876db9e4340669044a5bf78ae09192918db3e2ebc",
+              "speed": 0.75,
+              "offset_seconds": 0,
+              "delay_seconds": 0.15,
+              "gain": 0.6
+            }
+          ],
+          "maximum_seconds": 1.7,
+          "lowpass_hz": 2600
+        }
+      ]
+    },
+    {
+      "bank": "launch-orbit",
+      "kind": "launch",
+      "files": [
+        "launch-orbit-launch-1.wav"
+      ],
+      "origins": [
+        {
+          "source": "interface/glass_001.wav",
+          "sha256": "39182b395a30b34e18cbcf842922552b23da5b010a52b7777557e02a405f083e",
+          "speed": 0.55,
+          "offset_seconds": 0,
+          "delay_seconds": 0,
+          "gain": 0.8,
+          "layers": [
+            {
+              "source": "interface/glass_001.wav",
+              "sha256": "39182b395a30b34e18cbcf842922552b23da5b010a52b7777557e02a405f083e",
+              "speed": 0.55,
+              "offset_seconds": 0,
+              "delay_seconds": 0,
+              "gain": 0.8
+            },
+            {
+              "source": "interface/glass_003.wav",
+              "sha256": "4d0e3e12541fd177b1acb56b1c26fc587f213fea41b15d505b81789fceaa53bc",
+              "speed": 0.68,
+              "offset_seconds": 0,
+              "delay_seconds": 0.32,
+              "gain": 0.55
+            },
+            {
+              "source": "interface/confirmation_004.wav",
+              "sha256": "b96886d049331b30203658b72278572cd9078d25ab9a88aedf872d0383a40d8c",
+              "speed": 0.62,
+              "offset_seconds": 0,
+              "delay_seconds": 0.62,
+              "gain": 0.65
+            },
+            {
+              "source": "interface/glass_001.wav",
+              "sha256": "39182b395a30b34e18cbcf842922552b23da5b010a52b7777557e02a405f083e",
+              "speed": 0.65,
+              "offset_seconds": 0,
+              "delay_seconds": 1.32,
+              "gain": 0.18
+            }
+          ],
+          "maximum_seconds": 1.8,
+          "lowpass_hz": 2300
+        }
+      ]
     }
   ]
 }

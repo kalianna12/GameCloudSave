@@ -14,9 +14,9 @@ def pcm(name):
 class AudioTests(unittest.TestCase):
     def test_all_layouts_have_complete_distinct_event_banks(self):
         banks={entry['bank'] for entry in MANIFEST['sounds']}
-        self.assertEqual(banks,{'classic-clear','classic-soft','classic-arcade','shelf','cinema','atlas'})
+        self.assertEqual(banks,{'classic-clear','classic-soft','classic-arcade','shelf','cinema','atlas','felt','wood','water','launch-warm','launch-projector','launch-orbit'})
         for bank in banks:
-            self.assertEqual({e['kind'] for e in MANIFEST['sounds'] if e['bank']==bank},{'move','confirm','back','open','group','switch'})
+            self.assertEqual({e['kind'] for e in MANIFEST['sounds'] if e['bank']==bank},{'launch'} if bank.startswith('launch-') else {'move','confirm','back','open','group','switch'})
         for kind in ('move','confirm','group','switch'):
             audio={pcm(e['files'][0]) for e in MANIFEST['sounds'] if e['kind']==kind and e['bank'] in ('classic-clear','shelf','cinema','atlas')}
             self.assertEqual(len(audio),4)
@@ -26,7 +26,8 @@ class AudioTests(unittest.TestCase):
             for name,origin in zip(entry['files'],entry['origins']):
                 with wave.open(str(FOLDER/name),'rb') as file:
                     self.assertEqual((file.getnchannels(),file.getsampwidth(),file.getframerate()),(1,2,44100))
-                    self.assertGreater(file.getnframes(),441);self.assertLessEqual(file.getnframes(),44100*.6)
+                    self.assertGreater(file.getnframes(),441);self.assertLessEqual(file.getnframes(),44100*(1.8 if entry['kind']=='launch' else .6))
+                    if entry['kind']=='launch':self.assertGreater(file.getnframes(),44100*1.2)
                 data=[v/32768 for v in array('h',pcm(name))]
                 self.assertEqual(data[0],0);self.assertEqual(data[-1],0)
                 self.assertLess(max(abs(v) for v in data),.281)
@@ -34,6 +35,8 @@ class AudioTests(unittest.TestCase):
                 self.assertLess(abs(sum(data)/len(data)),.005)
                 source=ROOT/'ui/sounds/sources'/origin['source']
                 self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),origin['sha256'])
+                for layer in origin.get('layers',[]):
+                    self.assertEqual(hashlib.sha256((ROOT/'ui/sounds/sources'/layer['source']).read_bytes()).hexdigest(),layer['sha256'])
 
     def test_real_book_and_projector_recordings_are_used(self):
         sources={e['bank']:{o['source'] for item in MANIFEST['sounds'] if item['bank']==e['bank'] for o in item['origins']} for e in MANIFEST['sounds']}
@@ -69,6 +72,22 @@ class AudioTests(unittest.TestCase):
             player.set_enabled(False);self.assertEqual(player.inspect()['voices'],0)
             self.assertFalse(player.inspect()['enabled'])
             player.set_enabled(True);self.assertTrue(player.play(Clip(pcm('shelf-open-1.wav')),80))
+        finally:player.close()
+
+    def test_cancel_launch_preserves_other_navigation_tails(self):
+        player=NativeAudio(muted=True)
+        try:
+            player.set_enabled(True)
+            navigation=Clip(pcm('atlas-switch-1.wav'));launch=Clip(pcm('launch-orbit-launch-1.wav'))
+            self.assertTrue(player.play(navigation,80));self.assertTrue(player.play(launch,80))
+            player.stop_clips({launch})
+            self.assertIs(player.voices[0].clip,navigation)
+            self.assertEqual(player.voices[0].state().queued,1)
+            self.assertIsNone(player.voices[1].clip)
+            deadline=time.monotonic()+.15
+            while player.voices[1].state().queued and time.monotonic()<deadline:time.sleep(.002)
+            self.assertEqual(player.voices[1].state().queued,0)
+            self.assertFalse(player.voices[1].retired)
         finally:player.close()
 
 if __name__=='__main__':unittest.main(verbosity=2)

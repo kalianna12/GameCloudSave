@@ -14,6 +14,7 @@ class InputFeedback(QObject):
         from navigation_audio import NavigationAudio
         self.audio=NavigationAudio(resources,self,muted=audio_muted)
         bridge.settingsChanged.connect(self.sync_audio)
+        bridge.audioSettingsChanged.connect(self.sync_audio)
         bridge.inputModeChanged.connect(self.sync_cursor)
         app.applicationStateChanged.connect(self.application_state)
         app.aboutToQuit.connect(self.release_cursor)
@@ -23,6 +24,8 @@ class InputFeedback(QObject):
 
     def sync_audio(self):
         settings=self.bridge.store.settings
+        if settings.get('launch_sound')=='off':self.audio.stop_launch()
+        self.audio.set_volume(settings.get('navigation_volume',80))
         self.audio.set_enabled(self.app.applicationState()==Qt.ApplicationActive and settings.get('navigation_sounds',True) and settings.get('navigation_volume',80)>0)
 
     def sync_cursor(self):
@@ -46,6 +49,11 @@ class InputFeedback(QObject):
         self.sync_audio()
 
     def eventFilter(self, watched, event):
+        if event.type() in (QEvent.ChildAdded,QEvent.ChildRemoved):
+            tree=getattr(self.bridge,'_popup_tree',None)
+            if tree and watched in tree[3]:
+                self.bridge._popup_generation=getattr(self.bridge,'_popup_generation',0)+1
+                self.bridge._popup_cache=None
         if not self.bridge.controllerMode:
             return False
         kind = event.type()
@@ -63,7 +71,15 @@ class InputFeedback(QObject):
             self.bridge.setControllerMode(False)
         return False
 
-    def play(self,kind='move',style=None,volume=None,design=None):
+    def play_launch(self):
+        settings=self.bridge.store.settings
+        selected=settings.get('launch_sound','auto')
+        self.audio.stop_launch()
+        if selected=='off' or not settings.get('navigation_sounds',True) or settings.get('navigation_volume',80)<=0:return
+        if selected=='auto':selected={'cinema':'projector','atlas':'orbit'}.get(settings.get('library_design'),'warm')
+        self.audio.play('launch','launch-'+selected,settings.get('navigation_volume',80))
+
+    def play(self,kind='move',style=None,volume=None,design=None,use_pack=True):
         if not self.bridge.store.settings.get('navigation_sounds', True):
             return
         now = time.monotonic()
@@ -71,11 +87,15 @@ class InputFeedback(QObject):
         if now - self.last_sound.get(kind,0) < (.055 if kind=='move' else .08 if kind in ('switch','group') else .025):
             return
         self.last_sound[kind] = now
+        explicit_style=style is not None
         style=style or self.bridge.store.settings.get('navigation_sound_style','clear')
         design=design or self.bridge.store.settings.get('library_design','classic')
         bank=design if design in ('shelf','cinema','atlas') else 'classic-'+style
+        pack=self.bridge.store.settings.get('navigation_sound_pack','auto')
+        if pack!='auto' and not explicit_style and use_pack:bank=pack
         level=self.bridge.store.settings.get('navigation_volume',80) if volume is None else volume
-        if level<=0:return
+        if level<=0:
+            self.audio.set_volume(0);return
         # A settings preview can be audible even while the saved volume is muted.
         if volume is not None and self.app.applicationState()==Qt.ApplicationActive:
             self.audio.set_enabled(True);QTimer.singleShot(300,self.sync_audio)

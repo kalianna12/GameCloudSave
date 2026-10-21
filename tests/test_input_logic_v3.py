@@ -73,7 +73,7 @@ class InputLogic(unittest.TestCase):
             for filename in entry['files']:
                 with wave.open(str(ROOT/'ui/sounds/library'/filename),'rb') as audio:
                     self.assertEqual(audio.getnchannels(),1);self.assertEqual(audio.getsampwidth(),2)
-                    self.assertLess(audio.getnframes()/audio.getframerate(),.61);frames.add(audio.readframes(audio.getnframes()))
+                    self.assertLess(audio.getnframes()/audio.getframerate(),1.81 if entry['kind']=='launch' else .61);frames.add(audio.readframes(audio.getnframes()))
         self.assertGreaterEqual(len(frames),36)
         with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
             store=Store(folder,'sound-validation')

@@ -35,6 +35,13 @@ FocusScope {
     function selectedGame() { var shelf=currentShelf();return shelf ? shelf.selectedGame() : null }
     function activateSelected() { var shelf=currentShelf();if(shelf) shelf.activateSelected() }
     function navigateFocus(direction) {
+        if(direction==="left" || direction==="right") {
+            var row=currentShelf()
+            if(currentFocus && currentFocus!==home) currentFocus.focus=false
+            home.forceActiveFocus()
+            if(row) row.moveSelection(direction==="left" ? -1 : 1)
+            return
+        }
         var previousSection=focusedSection
         var previousShelf=currentShelf(),sceneX=previousShelf ? previousShelf.selectionSceneX() : 0
         if(currentFocus && currentFocus!==home) currentFocus.focus=false

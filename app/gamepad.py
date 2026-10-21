@@ -18,6 +18,11 @@ def dispatch(app,root,bridge,command):
         bridge.input_feedback.play('back' if command=='back' else 'open' if command=='menu' else 'confirm')
     if popup is not None and popup.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
         if QMetaObject.invokeMethod(popup,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
+    target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
+    while target is not None and not target.inherits('QQuickWindow'):
+        if target.inherits('QQuickComboBox') and target.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
+            if QMetaObject.invokeMethod(target,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
+        target=target.parent()
     # Only explicit controller windows/popups, the library and combo lists are supported.
     # Never synthesize Tab/Space into native file pickers or mouse-only editors.
     if window!=root:
@@ -29,11 +34,6 @@ def dispatch(app,root,bridge,command):
                 window.close()
                 QMetaObject.invokeMethod(root,'returnFromTool')
         return
-    target=popup.parent() if popup is not None else window.activeFocusItem() if hasattr(window,'activeFocusItem') else None
-    while target is not None and not target.inherits('QQuickWindow'):
-        if target.inherits('QQuickComboBox') and target.metaObject().indexOfMethod('controllerInput(QVariant)')>=0:
-            if QMetaObject.invokeMethod(target,'controllerInput',Q_RETURN_ARG('QVariant'),Q_ARG('QVariant',command)):return
-        target=target.parent()
     if command=='back':
         if popup is not None:
             method='reject' if popup.metaObject().indexOfMethod('reject()')>=0 else 'close'
