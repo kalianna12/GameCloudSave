@@ -79,6 +79,8 @@ class Bridge(QObject):
         from graphics_enhancement import GraphicsEnhancement
         self._graphics=GraphicsEnhancement(store,self)
         self._graphics.failed.connect(self.graphicsFailed)
+        from achievements import Achievements
+        self._achievements=Achievements(store,self)
         from search_ime import SearchIme
         self._search_ime=SearchIme(self)
         self._dirs = []
@@ -164,6 +166,9 @@ class Bridge(QObject):
 
     @Property(QObject,constant=True)
     def graphics(self):return self._graphics
+
+    @Property(QObject,constant=True)
+    def achievements(self):return self._achievements
 
     @Property(QObject,constant=True)
     def searchIme(self):return self._search_ime
@@ -1211,11 +1216,13 @@ class Bridge(QObject):
     def launch(self, ident):
         if self._busy or self._launch_state['phase'] in ('starting','waiting','ready'):return
         if not any(g['id']==ident for g in self.store.games):return
+        achievement_baseline=self._achievements.begin(ident)
         import uuid
         self._launch_cancel.set();self._launch_cancel=threading.Event();self._launch_token=uuid.uuid4().hex
         self._launch_context={'ident':ident,'local':dict(self.store.local.get(ident,{})),'pid':None}
         self._launch_state={'phase':'starting','ident':ident,'message':'正在启动游戏'};self.launchChanged.emit()
         def launch():
+            if achievement_baseline is not None:achievement_baseline.result()
             pid=self.store.launch(ident);self._launched_recent[ident]=time.monotonic()
             return pid
         self.job('launch',launch)
@@ -1241,6 +1248,7 @@ class Bridge(QObject):
     def receiveLaunchReady(self,token,result):
         if token!=self._launch_token or self._launch_cancel.is_set():return
         self._launch_state.update(result)
+        if result['phase']=='ready':self._achievements.attach(self._launch_state['ident'],result.get('pid'),result.get('hwnd'))
         if result['phase']!='ready':self.releaseLaunchPresentation()
         if result['phase']=='launcher' and not self._launch_abandoned:
             from launch_ready import activate
@@ -1654,6 +1662,7 @@ class Bridge(QObject):
         self.flushAudioSettings()
         self._mapping.shutdown()
         self._graphics.shutdown()
+        self._achievements.shutdown()
         self._recommendations.shutdown()
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)

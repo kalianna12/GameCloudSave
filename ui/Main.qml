@@ -359,7 +359,7 @@ ApplicationWindow {
         onCancelled: search.forceActiveFocus()
         onReturned: win.restoreNavigationFocus()
     }
-    LibraryFilterDialog { id: facetDialog;anchors.centerIn: parent;games: win.scopedGames;onApplied: function(values) { win.setFacets(values) } }
+    LibraryFilterDialog { id: facetDialog;anchors.centerIn: parent;games: win.scopedGames;onCriteriaApplied: function(values) { win.setFacets(values) } }
     RandomGameDialog {
         id: randomDialog;anchors.centerIn: parent
         onRedrawRequested: win.randomGame()

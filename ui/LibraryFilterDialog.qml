@@ -19,13 +19,13 @@ Dialog {
     property var draftTags: []
     readonly property var draft: ({series:draftSeries,year:draftYear,tags:draftTags})
     readonly property int resultCount: games.filter(function(game) { return Filters.matches(game,dialog.draft) }).length
-    signal applied(var values)
+    signal criteriaApplied(var values)
     onDraftSeriesChanged: if(seriesChoice) seriesChoice.currentIndex=Math.max(0,seriesChoice.model.indexOf(draftSeries))
     onDraftYearChanged: if(yearChoice) yearChoice.currentIndex=draftYear==="unknown" ? 1 : Math.max(0,yearChoice.model.indexOf(draftYear))
     onCatalogChanged: Qt.callLater(function() { seriesChoice.currentIndex=Math.max(0,seriesChoice.model.indexOf(dialog.draftSeries));yearChoice.currentIndex=dialog.draftYear==="unknown" ? 1 : Math.max(0,yearChoice.model.indexOf(dialog.draftYear)) })
     function begin(values) { retained={series:values.series || "",year:values.year || "",tags:(values.tags || []).slice()};draftSeries=retained.series;draftYear=retained.year;draftTags=retained.tags.slice();open();Qt.callLater(function() { seriesChoice.forceActiveFocus() }) }
     function clearDraft() { draftSeries="";draftYear="";draftTags=[] }
-    function apply() { backend.navigationEvent("group",backend.settings.library_design || "classic");applied(draft);close() }
+    function apply() { backend.navigationEvent("group",backend.settings.library_design || "classic");criteriaApplied(draft);close() }
     function controls() { var list=[seriesChoice,yearChoice];for(var i=0;i<tagChoices.count;i++) list.push(tagChoices.itemAt(i));return Form.available(list.concat([clearButton,applyButton])) }
     function controllerInput(command) {
         if(command==="back") { close();return true }

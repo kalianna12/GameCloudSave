@@ -38,12 +38,13 @@ Dialog {
     }
     function loadFields() { loadLocalFields();loadMetadata(false);graphicsPane.loadFor(gameId) }
     function mark(field) { var next=Object.assign({},dirtyFields);next[field]=true;dirtyFields=next;dirty=true }
-    function openFor(ident,page) { gameId=ident;loadFields();tabs.currentIndex=page || 0;coverPicker.reset();saving="";open() }
+    function openFor(ident,page) { gameId=ident;loadFields();var target=page || 0,same=tabs.currentIndex===target;tabs.currentIndex=target;if(same && target===4) achievementsPane.loadFor(gameId);coverPicker.reset();saving="";open() }
     function controllerInput(command) {
         if(command==="back") { close();return true }
-        if(command==="previous" || command==="next") { tabs.currentIndex=Math.max(0,Math.min(3,tabs.currentIndex+(command==="previous" ? -1 : 1)));return true }
+        if(command==="previous" || command==="next") { tabs.currentIndex=Math.max(0,Math.min(4,tabs.currentIndex+(command==="previous" ? -1 : 1)));return true }
         if(command==="menu") { if(saveButton.visible && saveButton.enabled) saveButton.clicked();return true }
         if(tabs.currentIndex===3) return graphicsPane.controllerInput(command)
+        if(tabs.currentIndex===4) return achievementsPane.controllerInput(command)
         return Form.handle(tabs.currentIndex===0 ? [savePath,monitor,advanced,launchMode,exe,gameArguments,working,saveButton,closeButton] : tabs.currentIndex===2 ? [date,category,tags,series,saveButton,closeButton] : [closeButton],dialog.contentItem.Window.window.activeFocusItem,command,null)
     }
     Connections {
@@ -58,7 +59,8 @@ Dialog {
         spacing: 14
         TabBar {
             id: tabs; objectName: "gameSettingsTabs"; Layout.fillWidth: true
-            TabButton { text: "存档与云端" } TabButton { text: "封面与横幅" } TabButton { text: "游戏资料" } TabButton { text: "画质增强" }
+            onCurrentIndexChanged: if(currentIndex===4 && dialog.gameId) achievementsPane.loadFor(dialog.gameId)
+            TabButton { text: "存档与云端" } TabButton { text: "封面与横幅" } TabButton { text: "游戏资料" } TabButton { text: "画质增强" } TabButton { text: "成就" }
         }
         ScrollView {
             visible: tabs.currentIndex===0; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
@@ -116,7 +118,8 @@ Dialog {
             }
         }
         GraphicsSettingsPane { id: graphicsPane; visible: tabs.currentIndex===3; Layout.fillWidth: true; Layout.fillHeight: true }
-        RowLayout { visible: tabs.currentIndex!==3; AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 } }
+        AchievementsPane { id: achievementsPane; visible: tabs.currentIndex===4; Layout.fillWidth: true; Layout.fillHeight: true }
+        RowLayout { visible: tabs.currentIndex<3; AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 } }
     }
     footer: Item {
         implicitHeight: 60
@@ -125,10 +128,11 @@ Dialog {
             Item { Layout.fillWidth: true }
             Label { text: backend.controllerMode ? "LB / RB 切页 · Menu 保存 · B 返回" : "";color: Theme.secondary }
             AppButton { id: closeButton;text: "关闭"; onClicked: dialog.close() }
-            AppButton { id: saveButton;objectName: "gameSettingsSave"; visible: tabs.currentIndex!==1; highlighted: true; text: tabs.currentIndex===0 ? "保存存档设置" : tabs.currentIndex===3 ? "保存画质方案" : "保存游戏资料"; enabled: !backend.busy && !backend.graphics.state.busy
+            AppButton { id: saveButton;objectName: "gameSettingsSave"; visible: tabs.currentIndex!==1; highlighted: true; text: tabs.currentIndex===0 ? "保存存档设置" : tabs.currentIndex===3 ? "保存画质方案" : tabs.currentIndex===4 ? "保存成就方案" : "保存游戏资料"; enabled: !backend.busy && !backend.graphics.state.busy && (tabs.currentIndex!==4 || !backend.achievements.state.busy && achievementsPane.localGame)
                 onClicked: {
                     if(tabs.currentIndex===0) { dialog.saving="game-settings";backend.saveGame(dialog.gameId,{save_dir:savePath.text,exe:exe.text,monitor_exe:monitor.text,launch_mode:["direct","playnite","platform"][launchMode.currentIndex],arguments:gameArguments.text,working_dir:working.text}) }
                     else if(tabs.currentIndex===3) graphicsPane.save()
+                    else if(tabs.currentIndex===4) achievementsPane.save()
                     else { dialog.saving="library-edit";backend.updateLibrary([{id:dialog.gameId,category:category.currentText,tags:tags.text.split(/[,，]/).map(function(tag) { return tag.trim() }).filter(Boolean),series:series.text,release_date:date.text.trim()}]) }
                 }
             }
