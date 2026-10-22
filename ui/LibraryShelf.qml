@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "LibraryMetrics.js" as Metrics
 Item {
     id: shelf
     property var section: ({items:[],kind:"games"})
@@ -12,18 +13,19 @@ Item {
     property int cardGap: 14
     property bool recentPreview: true
     readonly property bool showPreview: section.kind==="recent" && recentPreview && width>=760
-    readonly property real tileWidth: section.kind==="store" ? Math.round(coverSize*1.65) : section.kind==="tiles" ? Math.round(coverSize*1.34) : section.kind==="recent" ? Math.round(coverSize*.9) : coverSize
+    readonly property real tileWidth: Metrics.tileWidth(section,coverSize)
     readonly property real scrollTarget: horizontal.running ? horizontal.to : list.contentX
     readonly property int selectionIndex: list.currentIndex
     property var selectedRecord: items.count ? items.get(Math.min(items.count-1,Math.max(0,list.currentIndex))).record : ({})
     signal selectionFocused()
+    signal selectionUpdated()
     signal browseRequested(string mode,string value)
     signal detailsRequested(var game)
     signal launchRequested(var game)
     signal cloudRequested(var game)
     signal saveSearchRequested(var ids)
     signal verticalScroll(real delta)
-    implicitHeight: section.kind==="store" ? (section.items.length ? 120+coverSize*.94 : 140) : section.kind==="tiles" ? 220*coverSize/176 : section.kind==="recent" ? 300*coverSize/176 : 320*coverSize/176
+    implicitHeight: Metrics.sectionHeight(section,coverSize)
     ListModel { id: items; objectName: "shelfRecords"; dynamicRoles: true }
     property var recordSignatures: ({})
     function sync() {
@@ -103,12 +105,15 @@ Item {
         anchors.leftMargin: shelf.showPreview ? Math.min(470*coverSize/176,shelf.width*.45)+cardGap : 0
         orientation: ListView.Horizontal; spacing: shelf.cardGap; clip: true; model: items
         reuseItems: true; cacheBuffer: 160; flickDeceleration: 2400; maximumFlickVelocity: 2800
-        onCurrentIndexChanged: if(!shelf.syncing && currentIndex>=0 && currentIndex<items.count) shelf.selectedId=items.get(currentIndex).record.id
+        onCurrentIndexChanged: if(!shelf.syncing && currentIndex>=0 && currentIndex<items.count) { shelf.selectedId=items.get(currentIndex).record.id;shelf.selectionUpdated() }
         delegate: Item {
             required property var record; required property int index
             width: shelf.tileWidth
             height: list.height
             Loader {
+                active: shelf.visible
+                asynchronous: !shelf.keyboardFocused || parent.index!==list.currentIndex
+                Rectangle { anchors.fill: parent;radius: 8;color: Theme.surface;visible: parent.status!==Loader.Ready }
                 anchors.fill: parent; sourceComponent: shelf.section.kind==="store" ? storeTile : shelf.section.kind==="tiles" ? browseTile : gameTile
                 Component { id: storeTile; StoreTile {
                     record: parent.parent.record; selected: shelf.keyboardFocused && parent.parent.index===list.currentIndex

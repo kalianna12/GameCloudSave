@@ -5,7 +5,7 @@ Item {
     id: pane
     objectName: "manualEnrichmentPane"
     property var record: ({})
-    readonly property var game: backend.games.find(function(g) { return g.id===pane.record.id }) || ({})
+    readonly property var game: { var revision=backend.libraryRevision;return backend.libraryGame(pane.record.id || "") }
     readonly property bool browser: (backend.coverProviders[provider.currentIndex] || {}).kind==="browser"
     readonly property string artKind: imageKind.currentIndex===1 ? "background" : "cover"
     property bool browserOpen: false

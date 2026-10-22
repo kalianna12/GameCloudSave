@@ -101,10 +101,12 @@ ApplicationWindow {
     function previewSidebar(index) {
         var modes=["home","all","recent","favorites","series","new"]
         if(index<0 || index>=modes.length) return
+        if(libraryMode===modes[index] && !searchQuery && !search.text && !groupFilter && !seriesFilter) return
+        resetGridSelection=true
         searchDelay.stop();search.text="";searchDelay.stop();searchQuery="";groupFilter="";seriesFilter=""
         libraryMode=modes[index];librarySort=libraryMode==="recent" ? "recent" : libraryMode==="new" ? "added" : "name"
         grid.currentIndex=grid.count ? 0 : -1;grid.contentY=0
-        home.resetSelection()
+        if(homeVisible && libraryDesign==="classic") home.resetSelection()
     }
     function focusControls(items,index) {
         var available=items.filter(function(item) { return item.visible && item.enabled })
@@ -189,7 +191,7 @@ ApplicationWindow {
         if(command==="next" || command==="previous") {
             if(!libraryFocus()) focusContent()
             var pageDirection=command==="next" ? 1 : -1
-            if(homeVisible && home.currentShelf()) home.currentShelf().pageSelection(pageDirection)
+            if(homeVisible) home.pageSelection(pageDirection)
             else if(grid.count) grid.navigateFocus(Math.max(0,Math.min(grid.count-1,grid.currentIndex+pageDirection*grid.effectiveColumns*Math.max(1,Math.floor(grid.height/grid.cellHeight)))))
             return true
         }
@@ -198,7 +200,7 @@ ApplicationWindow {
             focusContent()
         }
         if(!homeVisible) grid.adoptFocusedCard()
-        if(command==="left" && (homeVisible ? !home.currentShelf() || home.currentShelf().selectionIndex<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
+        if(command==="left" && (homeVisible ? home.selectionIndex()<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
         if(command==="up" && (homeVisible ? home.atTop : grid.currentIndex<grid.effectiveColumns)) { focusToolbarFromContent();return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
@@ -219,43 +221,55 @@ ApplicationWindow {
         return true
     }
     ListModel { id: libraryModel;objectName: "gameLibraryRecords"; dynamicRoles: true }
-    Timer { id: searchDelay; interval: 120; onTriggered: win.searchQuery=search.text.trim().toLowerCase() }
-    property var seriesNames: ((backend.librarySections.find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name })
+    QtObject {
+        id: searchDelay
+        function restart() { backend.scheduleLibrarySearch(search.text) }
+        function stop() { backend.cancelLibrarySearch() }
+    }
+    Connections { target: backend;function onLibrarySearchReady(value) { win.searchQuery=value } }
+    property var seriesNames: { var revision=backend.libraryRevision;return ((backend.libraryGroups().find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name }) }
     property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
     property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && (shownGames.length>0 || backend.settings.recommendations_enabled!==false)
-    property var localHomeRows: { var revision=backend.games;return backend.homeSections(installedOnly,platformFilter,importSourceFilter).filter(function(section) { return section.items.length>0 }) }
+    property var localHomeRows: { var revision=backend.libraryRevision;return backend.homeSections(installedOnly,platformFilter,importSourceFilter).filter(function(section) { return section.items.length>0 }) }
     property var homeRows: {
         var local=localHomeRows
         var recommendations=backend.settings.recommendations_enabled!==false ? backend.recommendations.sections : []
         var split=local.length>1 && local[1].id==="new" ? 2 : 1
         return local.slice(0,split).concat(recommendations,local.slice(split))
     }
-    property var shownGames: backend.games.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="new" || g.isNew) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
+    property var gameSnapshot: { var revision=backend.libraryRevision;return backend.libraryGames() }
+    property var shownGames: gameSnapshot.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="new" || g.isNew) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
         var ad=a.release_date || "",bd=b.release_date || ""
         if(!ad || !bd) return ad ? -1 : bd ? 1 : a.name.localeCompare(b.name)
         return (librarySort==="release_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad)) || a.name.localeCompare(b.name)
     }
     return librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
     function navigate(mode,value) {
+        resetGridSelection=true
         navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex,sort:librarySort}])
         search.text="";searchQuery="";groupFilter="";seriesFilter=""
         if(mode==="tag") { libraryMode="all";search.text="#"+value;searchQuery=search.text.toLowerCase() }
         else { libraryMode=mode;librarySort=mode==="recent" ? "recent" : mode==="new" ? "added" : "name";if(mode==="category") groupFilter=value;if(mode==="series") seriesFilter=value }
         Qt.callLater(function() { win.focusFirstContent() })
     }
-    onShownGamesChanged: if(libraryReady) syncLibrary()
+    onShownGamesChanged: if(libraryReady) Qt.callLater(win.syncLibrary)
     property var librarySignatures: ({})
+    property var libraryOrder: []
+    property bool resetGridSelection: false
     function syncLibrary() {
-        var signatures={},selectedId=grid.currentIndex>=0 && grid.currentIndex<libraryModel.count ? libraryModel.get(grid.currentIndex).record.id : ""
+        var signatures={},order=libraryOrder.slice(),selectedId=!resetGridSelection && grid.currentIndex>=0 && grid.currentIndex<libraryModel.count ? libraryModel.get(grid.currentIndex).record.id : ""
         for(var i=0;i<shownGames.length;i++) {
             var signature=JSON.stringify(shownGames[i]);signatures[shownGames[i].id]=signature
-            var position=-1
-            for(var j=i;j<libraryModel.count;j++) if(libraryModel.get(j).record.id===shownGames[i].id) { position=j;break }
-            if(position<0) libraryModel.insert(i,{record:shownGames[i]})
-            else { if(position!==i) libraryModel.move(position,i,1);if(librarySignatures[shownGames[i].id]!==signature) libraryModel.set(i,{record:shownGames[i]}) }
+            var position=order.indexOf(shownGames[i].id,i)
+            if(position<0) { libraryModel.insert(i,{record:shownGames[i]});order.splice(i,0,shownGames[i].id) }
+            else {
+                if(position!==i) { libraryModel.move(position,i,1);order.splice(i,0,order.splice(position,1)[0]) }
+                if(librarySignatures[shownGames[i].id]!==signature) libraryModel.setProperty(i,"record",shownGames[i])
+            }
         }
-        while(libraryModel.count>shownGames.length) libraryModel.remove(libraryModel.count-1)
-        librarySignatures=signatures
+        if(libraryModel.count>shownGames.length) libraryModel.remove(shownGames.length,libraryModel.count-shownGames.length)
+        libraryOrder=order.slice(0,shownGames.length);librarySignatures=signatures
+        if(resetGridSelection) { grid.currentIndex=libraryModel.count ? 0 : -1;resetGridSelection=false;return }
         var current=shownGames.findIndex(function(g) { return g.id===selectedId });if(current>=0) grid.currentIndex=current
     }
     onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();mappingWindow.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
@@ -312,7 +326,7 @@ ApplicationWindow {
     PersonalizationWindow { id: personalization; objectName: "personalization"; onReturnRequested: Qt.callLater(function() { win.returnFromTool();if(win.active) personalControl.forceActiveFocus() }) }
     InputMappingWindow { id: mappingWindow; onReturnRequested: Qt.callLater(function() { win.returnFromTool();if(win.visible && win.visibility!==Window.Minimized) win.focusContent() }) }
     MatchWindow { id: matchWindow; objectName: "matchWindow"; onBatchRequested: win.openBatch() }
-    Component.onCompleted: { backend.mapping.bindRuntimeWindow(win);libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
+    Component.onCompleted: { backend.prepareLibraryWindow(win);backend.mapping.bindRuntimeWindow(win);libraryReady=true;syncLibrary();if(fullScreenMode) applyFullScreen();if(!backend.settings.setup_completed) setupWizard.openWizard();else if(!backend.settings.guide_dismissed) guideDialog.open() }
 
 
     Rectangle {
@@ -430,6 +444,7 @@ ApplicationWindow {
         GridView {
             id: grid
             objectName: "gameGrid"
+            highlightFollowsCurrentItem: false
             activeFocusOnTab: true
             function adoptFocusedCard() {
                 var item=win.activeFocusItem
@@ -453,6 +468,7 @@ ApplicationWindow {
                 if(commands[event.key]) event.accepted=win.controllerInput(commands[event.key])
             }
             visible: !homeVisible && libraryDesign==="classic"
+            onVisibleChanged: if(!visible) gridScroll.stop()
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true
             property int layoutColumns: Math.max(1, Math.min(Math.max(1,Math.floor(width / (160 + gridGap))), columnCount > 0 ? columnCount : Math.round(width / (coverSize + gridGap))))
@@ -467,22 +483,29 @@ ApplicationWindow {
             maximumFlickVelocity: 3500
             ScrollBar.vertical: ScrollBar { }
             delegate: Item {
+                id: gridDelegate
                 required property var record
                 required property int index
                 property int libraryIndex: index
                 property var modelData: record
                 width: grid.cellWidth; height: grid.cellHeight
-                GameCard {
+                Loader {
+                    active: grid.visible
+                    asynchronous: !grid.activeFocus || gridDelegate.index!==grid.currentIndex
+                    Rectangle { anchors.fill: parent;radius: Theme.radius;color: Theme.surface;visible: parent.status!==Loader.Ready }
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: grid.cardWidth; height: grid.cellHeight-gridGap
-                    game: modelData; scrolling: grid.moving || gridScroll.running
-                    selected: grid.activeFocus && index===grid.currentIndex
-                    transferState: backend.transferStates[modelData.id] || "idle"
-                    onLaunchRequested: win.launchGame(modelData)
-                    onSettingsRequested: win.openGame(modelData)
-                    onCloudRequested: { selectGame(modelData); historyTabs.currentIndex=0; backend.history(activeId); historyDialog.open() }
-                    onRemoveRequested: { selectGame(modelData); deleteDialog.open() }
-                    onFavoriteRequested: backend.toggleFavorite(modelData.id)
+                    sourceComponent: Component { GameCard {
+                        width: grid.cardWidth; height: grid.cellHeight-gridGap
+                        game: gridDelegate.modelData; scrolling: grid.moving || gridScroll.running
+                        selected: grid.activeFocus && gridDelegate.index===grid.currentIndex
+                        transferState: backend.transferStates[gridDelegate.modelData.id] || "idle"
+                        onLaunchRequested: win.launchGame(gridDelegate.modelData)
+                        onSettingsRequested: win.openGame(gridDelegate.modelData)
+                        onCloudRequested: { selectGame(gridDelegate.modelData); historyTabs.currentIndex=0; backend.history(activeId); historyDialog.open() }
+                        onRemoveRequested: { selectGame(gridDelegate.modelData); deleteDialog.open() }
+                        onFavoriteRequested: backend.toggleFavorite(gridDelegate.modelData.id)
+                    } }
                 }
             }
             Column {

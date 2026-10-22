@@ -10,7 +10,7 @@ Item {
     property bool browserOpen: false
     property string browserToken: ""
     property url browserUrl
-    readonly property var record: backend.games.find(function(game) { return game.id===picker.gameId }) || ({})
+    readonly property var record: { var revision=backend.libraryRevision;return backend.libraryGame(picker.gameId) }
     function reset() {
         browserOpen=false;pictureTabs.currentIndex=0
         query.text=gameName

@@ -6,7 +6,7 @@ Dialog {
     id: dialog
     objectName: "gameDialog"
     property string gameId: ""
-    readonly property var record: backend.games.find(function(game) { return game.id===dialog.gameId }) || ({})
+    readonly property var record: { var revision=backend.libraryRevision;return backend.libraryGame(dialog.gameId) }
     property bool dirty: false
     property var dirtyFields: ({})
     property string saving: ""

@@ -22,6 +22,7 @@ class MappingController(QObject):
     keyboardPreviewChanged=Signal()
     modelChanged=Signal()
     dropHintChanged=Signal()
+    virtualIndexChanged=Signal()
 
     def __init__(self,store,parent=None,transport_factory=None,virtual_factory=None):
         super().__init__(parent)
@@ -162,6 +163,10 @@ class MappingController(QObject):
             if model=='ps':return {'A':'×','B':'○','X':'□','Y':'△','LB':'L1','RB':'R1','LT':'L2','RT':'R2'}.get(name,name)
             if model=='joycon':return {'A':'B','B':'A','X':'Y','Y':'X','LB':'L','RB':'R','LT':'ZL','RT':'ZR'}.get(name,name)
         return token_name(token)
+    def set_virtual_index(self,index):
+        if index!=self._virtual_index:
+            self._virtual_index=index;self.virtualIndexChanged.emit()
+
     @Slot()
     def setupChanged(self):self._virtual_ready=None;self.stateChanged.emit()
     @Slot()
@@ -603,7 +608,7 @@ class MappingController(QObject):
                     if current_revision!=revision:profile=copy.deepcopy(self._runtime_profile)
                 if current_revision!=revision:
                     output.release();forward.reset();reverse.reset();armed=False;foreground=None
-                    if virtual:virtual.close();virtual=None;self._virtual_index=-1
+                    if virtual:virtual.close();virtual=None;self.set_virtual_index(-1)
                     revision=current_revision;sample_at=0;known_slot=-1;previous_message='';wheel_until.clear()
                     configured_keys={t for route in profile['reverse']['routes'] for t in route['source']}|set(profile['reverse']['lightModifier'])
                 if not enabled and not self._editor:
@@ -639,7 +644,7 @@ class MappingController(QObject):
                 if enabled and not self._recording and all(transport.held(token) for token in ('K:17','K:18','K:123')):
                     with self._lock:self._enabled=False
                     enabled=False;output.release()
-                    if virtual:virtual.close();virtual=None;self._virtual_index=-1
+                    if virtual:virtual.close();virtual=None;self.set_virtual_index(-1)
                     self.runtimeMessage.emit('已用 Ctrl + Alt + F12 停止映射',True)
                 if not enabled or own or not current[0]:
                     output.release();forward.reset();reverse.reset();armed=False;foreground=None
@@ -661,7 +666,7 @@ class MappingController(QObject):
                         if not held and not any(mouse):armed=True
                         if enabled and armed:
                             if virtual is None:
-                                virtual=(self._virtual_factory or VirtualPad)();self._virtual_index=virtual.index
+                                virtual=(self._virtual_factory or VirtualPad)();self.set_virtual_index(virtual.index)
                             virtual.update(reverse.frame(profile,held,mouse,dt))
                         message='键鼠→手柄运行中' if armed else '松开绑定键后开始映射'
                 if message and message!=previous_message:self.runtimeMessage.emit(message,False);previous_message=message
@@ -671,7 +676,7 @@ class MappingController(QObject):
         finally:
             output.release()
             if virtual:virtual.close()
-            self._virtual_index=-1
+            self.set_virtual_index(-1)
             clock.close()
 
     def shutdown(self):

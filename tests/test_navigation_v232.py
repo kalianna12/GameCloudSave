@@ -25,7 +25,7 @@ def visual(item,name):
         found=visual(child,name)
         if found:return found
 with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
-    store=Store(directory,'navigation');store.settings.update(setup_completed=True,watch=False,guide_dismissed=True)
+    store=Store(directory,'navigation');store.settings.update(setup_completed=True,watch=False,guide_dismissed=True,recommendations_enabled=False)
     for i in range(30):
         store.games.append({'id':str(i),'name':f'Game {i:02}','cover':'','last_played':f'2026-10-{min(i+1,9):02}T00:00:00Z' if i<8 else '', 'tags':['恋爱'] if i<20 else [], 'category':'视觉小说' if i<20 else '其他'})
         store.local[str(i)]={'installed':True}
@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     assert not warning.property('visible') and manager.property('visible') and '0' not in variant(manager.property('selected')), (guarded,warning.property('visible'),manager.property('visible'),root.property('libraryMode'))
     invoke(manager,'choose',row,True);QMetaObject.invokeMethod(warning,'accept');spin(60);assert '0' in variant(manager.property('selected'))
     manager.hide();root.requestActivate();spin(60)
-    enabled=[True];driver=Gamepad(app,lambda:enabled[0]);buttons=[0];commands=[]
+    enabled=[True];driver=Gamepad(app,lambda:enabled[0],threaded=False);buttons=[0];commands=[]
     def query(index,state):state._obj.pad.buttons=buttons[0];return 0 if index==0 else 1167
     driver.query=query;driver.command.connect(commands.append);driver.poll()
     buttons[0]=0x1000;driver.poll();driver.poll();assert commands==['activate']

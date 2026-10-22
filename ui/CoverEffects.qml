@@ -11,6 +11,7 @@ Item {
     property real tiltLimit: 18
     property point cursorPoint: Qt.point(width/2,height/2)
     property bool pointerFresh: false
+    property int pointerOrigin: 0
     property real controllerCue: 0
     readonly property point stick: controllerFocused && backend.controllerMode && available && backend.controllerTiltEnabled ? backend.controllerTiltPoint : Qt.point(0,0)
     readonly property bool stickActive: Math.abs(stick.x)>.001 || Math.abs(stick.y)>.001
@@ -24,15 +25,16 @@ Item {
     readonly property real yaw: !hot ? 0 : pointerActive ? Math.max(-1,Math.min(1,cursorPoint.x/Math.max(1,width)*2-1))*tiltLimit : stickActive ? stickX*tiltLimit : -tiltLimit*.32*controllerCue
     readonly property real pitch: !hot ? 0 : pointerActive ? -Math.max(-1,Math.min(1,cursorPoint.y/Math.max(1,height)*2-1))*tiltLimit*.78 : stickActive ? stickY*tiltLimit*.78 : tiltLimit*.16*controllerCue
     property real sweep: -.8
-    function reset() { shine.stop();lift.stop();controllerCue=0;pointerFresh=false;sweep=-.8 }
+    function reset() { shine.stop();lift.stop();controllerCue=0;pointerFresh=false;pointerOrigin=backend.pointerRevision;sweep=-.8 }
+    function resumeControllerCue() { if(hot && backend.controllerMode) { shine.restart();lift.restart() } }
     function track(position) {
-        var moved=Math.abs(position.x-cursorPoint.x)+Math.abs(position.y-cursorPoint.y)>.5
+        var moved=backend.pointerRevision!==pointerOrigin
         cursorPoint=position
         if(moved) pointerFresh=true
     }
     onIdentityChanged: reset()
-    onAvailableChanged: if(!available) reset()
-    Connections { target: backend; function onInputModeChanged() { effect.reset() } }
+    onAvailableChanged: if(!available) reset();else { pointerOrigin=backend.pointerRevision;pointerFresh=false }
+    Connections { target: backend; function onInputModeChanged() { effect.reset();if(backend.controllerMode) Qt.callLater(effect.resumeControllerCue) } }
     // This input plane never rotates. Only the separate surface receives transforms.
     HoverHandler {
         id: pointer; enabled: effect.available && !backend.controllerMode

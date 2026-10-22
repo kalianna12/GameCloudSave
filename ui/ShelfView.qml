@@ -10,6 +10,7 @@ Item {
     property int coverSize: 176
     property int currentRow: 0
     property bool controllerFocused: false
+    onVisibleChanged: if(!visible) vertical.stop()
     property string pickedId: ""
     readonly property string species: backend.settings.shelf_wood || "walnut"
     readonly property var wood: Wood.material(species)
@@ -26,7 +27,11 @@ Item {
         if(currentRow>=groups.length || !groups[currentRow].items.some(function(g) { return g.id===selectedId })) {
             for(var i=0;i<groups.length;i++) if(groups[i].items.some(function(g) { return g.id===selectedId })) { currentRow=i;break }
         }
-        shelves.positionViewAtIndex(currentRow,ListView.Contain)
+        var start=currentRow*rowHeight,destination=vertical.running ? vertical.to : shelves.contentY
+        if(start<destination) destination=start
+        else if(start+rowHeight>destination+shelves.height) destination=start+rowHeight-shelves.height
+        destination=Math.max(0,Math.min(Math.max(0,groups.length*rowHeight-shelves.height),destination))
+        if(Math.abs(destination-(vertical.running ? vertical.to : shelves.contentY))>.5) { vertical.to=destination;vertical.restart() }
         var row=shelves.itemAtIndex(currentRow);if(row && typeof row.reveal==="function") row.reveal()
     }
     onSelectedIdChanged: { pickedId="";Qt.callLater(reveal) }
@@ -49,6 +54,7 @@ Item {
         selected(groups[currentRow].items[i].id);reveal()
     }
     Rectangle { anchors.fill: parent; radius: 8; color: cabinet.wood.back }
+    NumberAnimation { id: vertical;target: shelves;property: "contentY";duration: Theme.motion ? 100 : 0;easing.type: Easing.OutCubic }
     // Recessed vertical cabinet walls; each shelf renders its own grain and lip.
     Repeater { model: 2; WoodSurface { required property int index; species: cabinet.species; seed: 25+index; vertical: true; x: index===0 ? 0 : cabinet.width-12; width: 12; height: cabinet.height; Rectangle { width: 2; height: parent.height; color: cabinet.wood.edge; opacity: .35 } } }
     ListView {
@@ -88,14 +94,20 @@ Item {
                 x: 18; y: 44; width: parent.width-36; height: parent.height-44; z: 2
                 model: row.modelData.items; orientation: ListView.Horizontal; spacing: cabinet.spines ? 9 : 12
                 clip: true; cacheBuffer: 240; reuseItems: true
-                delegate: BookCover {
+                delegate: Loader {
+                    id: bookDelegate;active: cabinet.visible
+                    asynchronous: !cabinet.controllerFocused || cabinet.currentRow!==row.index || cabinet.selectedId!==modelData.id
                     required property var modelData; required property int index
-                    width: implicitWidth; height: books.height; game: modelData; coverWidth: cabinet.bookWidth; spines: cabinet.spines
-                    selected: cabinet.controllerFocused && cabinet.currentRow===row.index && cabinet.selectedId===modelData.id; picked: cabinet.pickedId===modelData.id
-                    suspended: books.moving || shelves.moving
-                    sunlight: cabinet.sunlight ? Math.max(0,1-Math.abs((index*books.spacing+index*width-books.contentX+width/2)/Math.max(1,books.width)-.65)*2)*.15 : 0
-                    onChosen: { cabinet.currentRow=row.index;cabinet.selected(modelData.id) }
-                    onOpened: cabinet.detailsRequested(modelData)
+                    width: cabinet.spines ? 66 : cabinet.bookWidth+14;height: books.height
+                    z: item && item.raised ? 10 : 0
+                    sourceComponent: Component { BookCover {
+                        width: bookDelegate.width;height: bookDelegate.height;game: bookDelegate.modelData;coverWidth: cabinet.bookWidth;spines: cabinet.spines
+                        selected: cabinet.controllerFocused && cabinet.currentRow===row.index && cabinet.selectedId===bookDelegate.modelData.id;picked: cabinet.pickedId===bookDelegate.modelData.id
+                        suspended: books.moving || shelves.moving || vertical.running
+                        sunlight: cabinet.sunlight ? Math.max(0,1-Math.abs((bookDelegate.index*books.spacing+bookDelegate.index*width-books.contentX+width/2)/Math.max(1,books.width)-.65)*2)*.15 : 0
+                        onChosen: { cabinet.currentRow=row.index;cabinet.selected(bookDelegate.modelData.id) }
+                        onOpened: cabinet.detailsRequested(bookDelegate.modelData)
+                    } }
                 }
                 WheelHandler { target: null; onWheel: function(event) { if(event.angleDelta.x || event.modifiers & Qt.ShiftModifier) books.contentX=Math.max(0,Math.min(books.contentWidth-books.width,books.contentX-(event.angleDelta.x || event.angleDelta.y)));else shelves.contentY=Math.max(0,Math.min(shelves.contentHeight-shelves.height,shelves.contentY-event.angleDelta.y));event.accepted=true } }
             }

@@ -1,6 +1,6 @@
 """Foreground-only Windows XInput navigation with bounded repeat and hot-plug polling."""
 import ctypes,time
-from PySide6.QtCore import QObject,QTimer,Qt,Signal,QMetaObject,Q_ARG,Q_RETURN_ARG
+from PySide6.QtCore import QObject,QTimer,Qt,Signal,Slot,QMetaObject,Q_ARG,Q_RETURN_ARG
 
 def dispatch(app,root,bridge,command):
     window=app.focusWindow()
@@ -82,29 +82,57 @@ class Gamepad(QObject):
     command=Signal(str)
     tilt=Signal(float,float)
     connectedChanged=Signal(bool)
-    def __init__(self,app,enabled=lambda:True,exclude=lambda:-1):
+    sampleReady=Signal()
+    def __init__(self,app,enabled=lambda:True,exclude=lambda:-1,*,threaded=True,query=None):
         super().__init__(app);self.app=app;self.enabled=enabled;self.exclude=exclude;self.slot=None;self.mapper=Mapper();self.query=None;self.primed=False
         self._tilt=(0.,0.)
+        self.query=query
         self.timer=QTimer(self);self.timer.setTimerType(Qt.PreciseTimer);self.timer.timeout.connect(self.poll)
         for library in ('xinput1_4.dll','xinput9_1_0.dll'):
+            if self.query:break
             try:
                 function=ctypes.WinDLL(library).XInputGetState
                 function.argtypes=[ctypes.c_uint32,ctypes.POINTER(State)];function.restype=ctypes.c_uint32
                 self.query=function;break
             except (OSError,AttributeError):pass
+        self.sampler=None;self._closed=False
+        if threaded and self.query:
+            from gamepad_sampling import GamepadSampler
+            self.sampleReady.connect(self.poll,Qt.QueuedConnection)
+            self.sampler=GamepadSampler(self.query,self.sampleReady.emit)
         app.applicationStateChanged.connect(self.sync)
+        app.aboutToQuit.connect(self.shutdown)
         if self.query:self.sync()
     def sync(self,*args):
         self.mapper.reset();self.primed=False
+        self._excluded=self.exclude()
         if self._tilt!=(0.,0.):self._tilt=(0.,0.);self.tilt.emit(0.,0.)
+        if self.sampler:
+            active=not self._closed and self.enabled() and self.app.applicationState()==Qt.ApplicationActive
+            self.sampler.configure(active,self._excluded)
+            if not self.enabled() and self.slot is not None:self.slot=None;self.connectedChanged.emit(False)
+            return
         if self.query and self.enabled() and self.app.applicationState()==Qt.ApplicationActive:
             self.timer.start(16 if self.slot is not None else 500)
         else:
             self.timer.stop()
             if not self.enabled() and self.slot is not None:self.slot=None;self.connectedChanged.emit(False)
+    @Slot()
     def poll(self):
+        if self._closed:return
         if not self.enabled() or self.app.applicationState()!=Qt.ApplicationActive:
             self.sync();return
+        if self.sampler:
+            slot,tilt,commands,ready=self.sampler.take()
+            if not ready:return
+            if slot is not None and slot==self.exclude():self.sync();return
+            if (slot is not None)!=(self.slot is not None):self.connectedChanged.emit(slot is not None)
+            self.slot=slot
+            if tilt!=self._tilt:self._tilt=tilt;self.tilt.emit(*tilt)
+            for command in commands:
+                if self._closed or not self.enabled() or self.app.applicationState()!=Qt.ApplicationActive:break
+                self.command.emit(command)
+            return
         indices=[self.slot] if self.slot is not None else range(4)
         for index in indices:
             if index==self.exclude():continue
@@ -122,3 +150,11 @@ class Gamepad(QObject):
         if self.slot is not None:self.connectedChanged.emit(False)
         self.slot=None;self.mapper.reset();self.timer.start(500)
         if self._tilt!=(0.,0.):self._tilt=(0.,0.);self.tilt.emit(0.,0.)
+
+    def shutdown(self):
+        self._closed=True;self.timer.stop()
+        if self.sampler:self.sampler.close()
+
+    @Slot()
+    def refreshExclusion(self):
+        if not self._closed and self.exclude()!=getattr(self,'_excluded',-1):self.sync()

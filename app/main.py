@@ -37,6 +37,8 @@ class Bridge(QObject):
     operationCompleted = Signal(str,bool)
     inputModeChanged = Signal()
     controllerTiltChanged=Signal()
+    pointerMotionChanged=Signal()
+    librarySearchReady=Signal(str)
     mediaReady = Signal(object)
     mediaChanged = Signal()
     enrichmentChanged = Signal()
@@ -56,6 +58,11 @@ class Bridge(QObject):
         self._gamepad_connected=False
         self._controller_mode=False
         self.input_feedback=None
+        self._pointer_revision=0;self._pointer_position=None;self._pointer_window=None
+        self._games_revision=0;self.gamesChanged.connect(self.advanceGamesRevision)
+        self._library_search=''
+        self.searchTimer=QTimer(self);self.searchTimer.setSingleShot(True);self.searchTimer.setTimerType(Qt.PreciseTimer)
+        self.searchTimer.timeout.connect(lambda:self.librarySearchReady.emit(self._library_search.strip().lower()))
         self.newGameTimer=QTimer(self);self.newGameTimer.setInterval(3600000)
         self.newGameTimer.timeout.connect(self.refreshNewGames);self.newGameTimer.start()
         self.settingsChanged.connect(self.audioSettingsChanged.emit)
@@ -161,6 +168,25 @@ class Bridge(QObject):
                      'saveSet': bool(self.store.local.get(game['id'], {}).get('save_dir'))} for game in map(prepare_game,self.store.games)]
         return self._games_cache
 
+    @Slot(result='QVariantList')
+    def libraryGames(self):
+        # An invokable returns a copy sequence. Filtering a QObject list
+        # property directly would re-fetch/marshal the whole list per element.
+        return self.games
+
+    @Slot()
+    def advanceGamesRevision(self):self._games_revision+=1
+
+    @Property(int,notify=gamesChanged)
+    def libraryRevision(self):return self._games_revision
+
+    @Slot(str,result='QVariantMap')
+    def libraryGame(self,ident):
+        games=self.games
+        if getattr(self,'_game_index_for',None) is not games:
+            self._game_index_for=games;self._game_index={game['id']:game for game in games}
+        return self._game_index.get(ident,{})
+
     def refreshNewGames(self):
         from library_catalog import recently_added
         if self._games_cache is not None and any(game.get('isNew',False)!=recently_added(game) for game in self._games_cache):
@@ -172,6 +198,9 @@ class Bridge(QObject):
             from library_catalog import sections
             self._library_sections=sections(self.games);self._sections_for=self._games_cache
         return self._library_sections
+
+    @Slot(result='QVariantList')
+    def libraryGroups(self):return self.librarySections
 
     @Slot(bool,str,str,result='QVariantList')
     def homeSections(self,installed_only,platform,origin):
@@ -413,9 +442,40 @@ class Bridge(QObject):
         values=(max(-1.,min(1.,float(x))),max(-1.,min(1.,float(y))))
         if values!=getattr(self,'_controller_tilt',(0.,0.)):
             self._controller_tilt=values;self.controllerTiltChanged.emit()
+    @Property(int,notify=pointerMotionChanged)
+    def pointerRevision(self):return self._pointer_revision
+
+    def eventFilter(self,watched,event):
+        from PySide6.QtCore import QEvent
+        if watched is self._pointer_window and event.type()==QEvent.MouseMove and event.source()==Qt.MouseEventNotSynthesized:
+            position=event.globalPosition().toPoint()
+            if position!=self._pointer_position:
+                self._pointer_position=position;self._pointer_revision+=1;self.pointerMotionChanged.emit()
+        return False
     @Slot()
     def navigationMoved(self):
         if self.input_feedback:self.input_feedback.play()
+
+    @Slot(QObject)
+    def prepareLibraryWindow(self,window):
+        # Embedded/test hosts do not always adopt the window's incubation
+        # controller. Async delegates need an engine-owned budget in every host.
+        from PySide6.QtQml import QQmlEngine
+        if self._pointer_window is not window:
+            from PySide6.QtGui import QCursor
+            self._pointer_window=window;self._pointer_position=QCursor.pos();window.installEventFilter(self)
+        context=QQmlEngine.contextForObject(window)
+        engine=context.engine() if context else None
+        if engine is not None:
+            from qml_bootstrap import install_incubator
+            if not hasattr(engine,'_idle_incubator'):install_incubator(engine)
+
+    @Slot(str)
+    def scheduleLibrarySearch(self,value):
+        self._library_search=value;self.searchTimer.start(120)
+
+    @Slot()
+    def cancelLibrarySearch(self):self.searchTimer.stop()
 
     @Slot(str,str)
     def navigationEvent(self,kind,design):
@@ -1648,6 +1708,7 @@ def main():
     from gamepad import Gamepad,dispatch
     controller=Gamepad(app,lambda:bridge.store.settings.get('gamepad_enabled',True),exclude=lambda:bridge.mapping._virtual_index)
     bridge.settingsChanged.connect(controller.sync)
+    bridge.mapping.virtualIndexChanged.connect(controller.refreshExclusion)
     def connected(value):
         bridge._gamepad_connected=value
         if not value:bridge.setControllerMode(False)
