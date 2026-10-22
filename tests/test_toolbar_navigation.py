@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     backend=Bridge(store);engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend);engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')))
     assert engine.rootObjects(),messages
     root=engine.rootObjects()[0];root.requestActivate();spin(200);backend.setControllerMode(True)
-    names=['libraryBack','search','watchControl','installedFilter','platformFilter','sourceFilter','seriesFilter','librarySort','homeMappingProfile','layoutControl','personalControl','fullscreenControl']
+    names=['libraryBack','search','watchControl','installedFilter','platformFilter','sourceFilter','libraryFilterControl','clearLibraryFilters','homeRandomGame','librarySort','homeMappingProfile','layoutControl','personalControl','fullscreenControl']
     controls={name:root.findChild(QObject,name) for name in names};assert all(controls.values())
     def focus_name():
         item=root.activeFocusItem()
@@ -41,11 +41,14 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         root.resize(1100,800);spin(80)
         invoke(root,'focusFirstContent');pad('up');expect('homeMappingProfile');pad('up');expect('installedFilter')
         pad('down');expect('homeMappingProfile');pad('down');content()
-        focus('homeMappingProfile');pad('up');expect('sourceFilter');pad('down');expect('homeMappingProfile')
+        focus('homeMappingProfile');pad('up');assert center(controls[focus_name()]).y()<center(controls['homeMappingProfile']).y()-15;pad('down');expect('homeMappingProfile')
         pad('down');content();pad('up');expect('homeMappingProfile')
         focus('platformFilter');pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
-        focus('sourceFilter')
-        for _ in range(6):pad('right');expect('sourceFilter')
+        focus('sourceFilter');pad('right');expect('libraryFilterControl');pad('right');expect('homeRandomGame')
+        for _ in range(6):pad('right');expect('homeRandomGame')
+        pad('left');expect('libraryFilterControl');pad('activate')
+        assert root.findChild(QObject,'libraryFilterDialog').property('visible')
+        pad('back');spin(60);expect('libraryFilterControl')
         focus('homeMappingProfile');pad('right');expect('layoutControl');pad('right');expect('personalControl');pad('right');expect('fullscreenControl')
         for _ in range(6):pad('right');expect('fullscreenControl')
         pad('left');expect('personalControl');pad('left');expect('layoutControl');pad('left');expect('homeMappingProfile')
@@ -54,7 +57,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         pad('back');spin(50);pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
         focus('homeMappingProfile');pad('activate');spin(70);pad('down')
         assert not root.property('fullScreenMode') and not backend.mapping.state['enabled']
-        pad('back');spin(70);expect('homeMappingProfile');pad('up');expect('sourceFilter')
+        pad('back');spin(70);expect('homeMappingProfile');pad('up');assert center(controls[focus_name()]).y()<center(controls['homeMappingProfile']).y()-15
         # At 900px the tools Flow wraps again: up/down reaches that third row too.
         invoke(root,'navigate','all','');root.resize(900,750);spin(120)
         assert center(controls['fullscreenControl']).y()>center(controls['librarySort']).y()+15

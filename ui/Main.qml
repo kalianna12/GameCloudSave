@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
+import "LibraryFilters.js" as Filters
 
 ApplicationWindow {
     id: win
@@ -35,6 +36,10 @@ ApplicationWindow {
     property string groupFilter: ""
     property string seriesFilter: ""
     property string librarySort: "name"
+    property var facets: ({series:"",tags:[],year:""})
+    readonly property int activeFacetCount: Filters.count(facets)
+    property var randomBag: []
+    property string randomPoolKey: ""
     property bool libraryReady: false
     property bool fullScreenMode: !!backend.settings.fullscreen
     property int restoreVisibility: Window.Windowed
@@ -81,7 +86,7 @@ ApplicationWindow {
     property real toolbarColumnX: 0
     property real toolbarViewportWidth: 0
     onActiveFocusItemChanged: if(!toolbarFocusMove) toolbarFocusItem=null
-    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,mappingProfileControl,layoutControl,recommendationsControl,personalControl,fullscreenControl]
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,facetControl,clearFacetsControl,randomControl,sortControl,mappingProfileControl,layoutControl,recommendationsControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
     property var toolbarReturn: null
@@ -206,6 +211,9 @@ ApplicationWindow {
                 if(filter>=0 && filters[filter]===fullscreenControl) win.toggleFullScreen()
                 if(filter>=0 && filters[filter]===personalControl) personalControl.clicked()
                 if(filter>=0 && filters[filter]===layoutControl) layoutControl.clicked()
+                if(filter>=0 && filters[filter]===facetControl) facetControl.clicked()
+                if(filter>=0 && filters[filter]===clearFacetsControl) clearFacetsControl.clicked()
+                if(filter>=0 && filters[filter]===randomControl) randomControl.clicked()
                 if(filter>=0 && filters[filter]===recommendationsControl) recommendationsControl.clicked()
             }
             return true
@@ -252,21 +260,38 @@ ApplicationWindow {
     Connections { target: backend;function onLibrarySearchReady(value) { win.searchQuery=value } }
     property var seriesNames: { var revision=backend.libraryRevision;return ((backend.libraryGroups().find(function(section) { return section.id==="series" }) || {}).items || []).map(function(item) { return item.name }) }
     property var searchTokens: searchQuery.split(/[,，\s]+/).map(function(token) { return token.replace(/^#/,'') }).filter(Boolean)
-    property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && (shownGames.length>0 || backend.settings.recommendations_enabled!==false)
-    property var localHomeRows: { var revision=backend.libraryRevision;return backend.homeSections(installedOnly,platformFilter,importSourceFilter).filter(function(section) { return section.items.length>0 }) }
+    property bool homeVisible: libraryMode==="home" && searchTokens.length===0 && (shownGames.length>0 || !activeFacetCount && backend.settings.recommendations_enabled!==false)
+    property var localHomeRows: { var revision=backend.libraryRevision;return backend.homeSections(installedOnly,platformFilter,importSourceFilter,facets).filter(function(section) { return section.items.length>0 }) }
     property var homeRows: {
         var local=localHomeRows
-        var recommendations=backend.settings.recommendations_enabled!==false ? backend.recommendations.sections : []
+        var recommendations=!activeFacetCount && backend.settings.recommendations_enabled!==false ? backend.recommendations.sections : []
         var split=local.length>1 && local[1].id==="new" ? 2 : 1
         return local.slice(0,split).concat(recommendations,local.slice(split))
     }
     property var gameSnapshot: { var revision=backend.libraryRevision;return backend.libraryGames() }
-    property var shownGames: gameSnapshot.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="new" || g.isNew) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
+    property var scopedGames: gameSnapshot.filter(function(g) { return (!installedOnly || g.installed) && (platformFilter==="all" || (g.platform || "local")===platformFilter || platformFilter==="local" && g.platform==="other") && (importSourceFilter==="all" || g.import_source===importSourceFilter) && searchTokens.every(function(token) { return (g.searchText || g.name.toLowerCase()).indexOf(token)>=0 }) && (libraryMode!=="new" || g.isNew) && (libraryMode!=="favorites" || g.favorite) && (libraryMode!=="recent" || g.last_played) && (libraryMode!=="group" || (g.groups || []).indexOf(groupFilter)>=0) && (libraryMode!=="category" || g.category===groupFilter) && (libraryMode!=="series" || seriesNames.indexOf(g.series)>=0 && (!seriesFilter || g.series===seriesFilter)) })
+    property var shownGames: scopedGames.filter(function(game) { return Filters.matches(game,facets) }).sort(function(a,b) { if(librarySort==="release_asc" || librarySort==="release_desc") {
         var ad=a.release_date || "",bd=b.release_date || ""
         if(!ad || !bd) return ad ? -1 : bd ? 1 : a.name.localeCompare(b.name)
         return (librarySort==="release_asc" ? ad.localeCompare(bd) : bd.localeCompare(ad)) || a.name.localeCompare(b.name)
     }
     return librarySort==="recent" ? (b.last_played || "").localeCompare(a.last_played || "") || a.name.localeCompare(b.name) : librarySort==="added" ? (b.added_at || "").localeCompare(a.added_at || "") || a.name.localeCompare(b.name) : a.name.localeCompare(b.name) })
+    function setFacets(values) {
+        resetGridSelection=true;facets={series:values.series || "",tags:(values.tags || []).slice(),year:values.year || ""};randomBag=[]
+        Qt.callLater(function() { win.focusFirstContent() })
+    }
+    function randomGame() {
+        if(!shownGames.length) return
+        var key=shownGames.map(function(game) { return game.id }).sort().join("\u0001")
+        if(key!==randomPoolKey) { randomPoolKey=key;randomBag=[] }
+        if(!randomBag.length) {
+            randomBag=shownGames.map(function(game) { return game.id })
+            for(var i=randomBag.length-1;i>0;i--) { var j=Math.floor(Math.random()*(i+1)),id=randomBag[i];randomBag[i]=randomBag[j];randomBag[j]=id }
+            if(randomBag.length>1 && randomBag[randomBag.length-1]===randomDialog.game.id) { var first=randomBag[0];randomBag[0]=randomBag[randomBag.length-1];randomBag[randomBag.length-1]=first }
+        }
+        var next=randomBag[randomBag.length-1];randomBag=randomBag.slice(0,-1);randomControl.animateRoll()
+        randomDialog.begin(shownGames.find(function(game) { return game.id===next }),shownGames.length)
+    }
     function navigate(mode,value) {
         resetGridSelection=true
         navigationHistory=navigationHistory.slice(-29).concat([{mode:libraryMode,category:groupFilter,series:seriesFilter,search:searchQuery,y:home.contentPosition(),gridY:grid.contentY,gridIndex:grid.currentIndex,sort:librarySort}])
@@ -328,10 +353,19 @@ ApplicationWindow {
     function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly,home_cover_size:homeCoverSize,home_gap:homeGap,home_recent_preview:homeRecentPreview}) }
     ControllerKeyboard {
         id: searchKeyboard; objectName: "controllerKeyboard"
-        width: Math.min(1250,win.width-64); anchors.centerIn: parent
+        width: Math.min(1600,win.width-48); anchors.centerIn: parent
+        backdropUrl: { var game=win.alternativeDesign && experienceLoader.item ? experienceLoader.item.selectedGame : win.homeVisible ? home.selectedGame() : grid.count ? libraryModel.get(Math.max(0,grid.currentIndex)).record : null;return game ? game.backgroundUrl || game.coverHighUrl || game.coverUrl || "" : "" }
         onSubmitted: function(value) { win.toolbarReturn=null;search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
         onCancelled: search.forceActiveFocus()
         onReturned: win.restoreNavigationFocus()
+    }
+    LibraryFilterDialog { id: facetDialog;anchors.centerIn: parent;games: win.scopedGames;onApplied: function(values) { win.setFacets(values) } }
+    RandomGameDialog {
+        id: randomDialog;anchors.centerIn: parent
+        onRedrawRequested: win.randomGame()
+        onLaunchRequested: function(game) { win.launchGame(game) }
+        onSettingsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,0) }
+        onClosed: Qt.callLater(function() { if(win.active && !backend.popupActive() && !launchTransition.running) randomControl.forceActiveFocus() })
     }
     ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: true; onLaunchRequested: function(game) { win.launchGame(game) } onSettingsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,0) } onGraphicsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,3) } }
     function launchGame(game) {
@@ -412,10 +446,13 @@ ApplicationWindow {
         GridLayout {
             Layout.fillWidth: true; columns: win.width<1480 ? 1 : 2
             rowSpacing: 2; columnSpacing: 16
-            RowLayout {
-                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop
+            Item {
+                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;implicitHeight: filtersFlow.height
+                Flow {
+                id: filtersFlow;width: parent.width;height: childrenRect.height;spacing: 8
                 CheckBox {
                     id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly
+                    height: 38
                     onToggled: { installedOnly=checked; saveLayout() }
                     Rectangle {
                         objectName: "installedFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10
@@ -423,10 +460,26 @@ ApplicationWindow {
                         visible: installedControl.activeFocus
                     }
                 }
-                AppComboBox { id: platformControl; objectName: "platformFilter"; quiet: true; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; Layout.preferredWidth: 130; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
-                AppComboBox { id: sourceControl; objectName: "sourceFilter"; quiet: true; model: ["全部来源","Playnite","游戏平台","本地扫描"]; Layout.preferredWidth: 120; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
-                AppComboBox { id: seriesControl; objectName: "seriesFilter"; soundEvent: "group"; quiet: true; visible: libraryMode==="series"; model: ["全部系列"].concat(seriesNames); Layout.preferredWidth: 130; currentIndex: Math.max(0,model.indexOf(seriesFilter)); onActivated: { backend.navigationEvent("group",win.libraryDesign);seriesFilter=currentIndex>0 ? currentText : "" } }
-                Item { Layout.fillWidth: true }
+                AppComboBox { id: platformControl; objectName: "platformFilter"; quiet: true; model: ["全部平台","Steam","Epic","Ubisoft","本地 / 其他"]; width: 130; onActivated: platformFilter=["all","steam","epic","ubisoft","local"][currentIndex] }
+                AppComboBox { id: sourceControl; objectName: "sourceFilter"; quiet: true; model: ["全部来源","Playnite","游戏平台","本地扫描"]; width: 120; onActivated: importSourceFilter=["all","playnite","platform","folder"][currentIndex] }
+                AppButton {
+                    id: facetControl;objectName: "libraryFilterControl";width: activeFacetCount ? 106 : 84;height: 38
+                    text: activeFacetCount ? "筛选 · "+activeFacetCount : "筛选";onClicked: facetDialog.begin(win.facets)
+                    ToolTip.visible: hovered && !backend.controllerMode;ToolTip.text: activeFacetCount ? Filters.describe(win.facets) : "按系列、标签和发行年份筛选"
+                    background: Rectangle { radius: Theme.controlRadius;color: facetControl.hovered ? Theme.hover : win.activeFacetCount ? Theme.selection : "transparent";border.width: facetControl.activeFocus ? 3 : win.activeFacetCount ? 1 : 0;border.color: Theme.accent }
+                    contentItem: RowLayout {
+                        spacing: 7
+                        Canvas {
+                            Layout.preferredWidth: 16;Layout.preferredHeight: 16
+                            property color ink: Theme.text;onInkChanged: requestPaint()
+                            onPaint: { var c=getContext("2d");c.reset();c.strokeStyle=ink;c.lineWidth=1.5;c.lineJoin="round";c.beginPath();c.moveTo(1,2);c.lineTo(15,2);c.lineTo(10,8);c.lineTo(10,13);c.lineTo(6,15);c.lineTo(6,8);c.closePath();c.stroke() }
+                        }
+                        Label { text: facetControl.text;color: Theme.text;font.pixelSize: 13 }
+                    }
+                }
+                AppButton { id: clearFacetsControl;objectName: "clearLibraryFilters";visible: activeFacetCount>0;width: 92;height: 38;text: "清除筛选";flat: true;onClicked: win.setFacets({}) }
+                DiceButton { id: randomControl;objectName: "homeRandomGame";visible: !win.alternativeDesign;enabled: win.shownGames.length>0 && !backend.busy && !launchTransition.running;onClicked: win.randomGame();ToolTip.visible: hovered && !backend.controllerMode;ToolTip.text: "从当前筛选范围随机挑选一款游戏" }
+                }
             }
             Item {
                 Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;implicitWidth: actionsFlow.naturalWidth;implicitHeight: actionsFlow.height

@@ -222,13 +222,16 @@ class Bridge(QObject):
     def libraryGroups(self):return self.librarySections
 
     @Slot(bool,str,str,result='QVariantList')
-    def homeSections(self,installed_only,platform,origin):
+    @Slot(bool,str,str,'QVariantMap',result='QVariantList')
+    def homeSections(self,installed_only,platform,origin,facets=None):
         games=self.games
         if not hasattr(self,'_home_cache_for') or self._home_cache_for is not games:self._home_cache_for=games;self._home_cache={}
-        key=(installed_only,platform,origin)
+        facets=facets or {};series=facets.get('series','');tags=tuple(sorted(facets.get('tags',[])));year=facets.get('year','')
+        key=(installed_only,platform,origin,series,tags,year)
         if key not in self._home_cache:
             from library_catalog import sections
-            self._home_cache[key]=sections([game for game in games if (not installed_only or game['installed']) and (platform=='all' or game.get('platform','local')==platform or platform=='local' and game.get('platform')=='other') and (origin=='all' or game.get('import_source')==origin)])
+            if len(self._home_cache)>=32:self._home_cache.clear()
+            self._home_cache[key]=sections([game for game in games if (not installed_only or game['installed']) and (platform=='all' or game.get('platform','local')==platform or platform=='local' and game.get('platform')=='other') and (origin=='all' or game.get('import_source')==origin) and (not series or game.get('series','')==series) and (not tags or any(tag in game.get('tags',[]) for tag in tags)) and (not year or (not game.get('release_date') if year=='unknown' else game.get('release_date','')[:4]==year))])
         return self._home_cache[key]
 
     @Property('QVariantList',constant=True)

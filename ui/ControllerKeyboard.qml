@@ -6,10 +6,14 @@ Dialog {
     title: ""
     modal: true;focus: true;closePolicy: Popup.NoAutoClose
     exit: Transition {}
-    Overlay.modal: Rectangle { color: "#c8000000" }
-    padding: 24
-    background: Rectangle { color: Theme.surface;radius: 2;border.width: 2;border.color: Theme.border }
-    readonly property real keyHeight: Math.max(32,Math.min((width-leftPadding-rightPadding-50)/11,(parent.height-210)/5,110))
+    padding: 0
+    background: Rectangle { color: "transparent";radius: 0 }
+    readonly property real keyHeight: Math.max(30,Math.min(width/11,(parent.height-48)/6.8))
+    property url backdropUrl: ""
+    Overlay.modal: Item {
+        Image { anchors.fill: parent;source: keyboard.backdropUrl;fillMode: Image.PreserveAspectCrop;asynchronous: true;sourceSize.width: 1600 }
+        Rectangle { anchors.fill: parent;color: "#a6000000" }
+    }
     property alias value: editor.text
     property bool upper: false
     property bool chinese: false
@@ -86,22 +90,27 @@ Dialog {
         return true
     }
     onClosed: { backend.searchIme.end();chinese=false;candidates=false }
-    contentItem: ColumnLayout {
-        spacing: 28
-        RowLayout {
-            Layout.fillWidth: true
-            AppTextField {
-                id: editor;objectName: "keyboardValue";Layout.fillWidth: true;implicitHeight: 64;font.pixelSize: 24;selectByMouse: true
-                placeholderText: "搜索名称 / 拼音 / 首字母 / 标签";inputMethodHints: Qt.ImhNone
+    contentItem: Item {
+        implicitHeight: keyboard.keyHeight*6.8
+        AppTextField {
+                id: editor;objectName: "keyboardValue";width: parent.width;height: keyboard.keyHeight*.85;font.pixelSize: keyboard.keyHeight*.3;selectByMouse: true
+                rightPadding: languageButton.width+16
+                Accessible.name: "搜索游戏";inputMethodHints: Qt.ImhNone
+                background: Rectangle { color: Theme.dark ? "#303233" : Theme.surface;border.color: Theme.border;border.width: 2;radius: 0 }
                 onTextEdited: { backend.searchIme.committed();if(keyboard.finishing) Qt.callLater(keyboard.complete) }
                 Keys.onReturnPressed: function(event) { if(!keyboard.composing) keyboard.finish();else event.accepted=false }
                 Keys.onEscapePressed: function(event) { if(!keyboard.composing) keyboard.cancel();else event.accepted=false }
-            }
-            AppButton { text: keyboard.chinese ? "中文" : "EN";implicitHeight: 64;onClicked: keyboard.toggleChinese() }
+                AppButton {
+                    id: languageButton;objectName: "keyboardLanguage";anchors.right: parent.right;anchors.verticalCenter: parent.verticalCenter;anchors.rightMargin: 12
+                    width: Math.max(76,keyboard.keyHeight);height: Math.min(40,parent.height-8);flat: true;focusPolicy: Qt.NoFocus
+                    onClicked: keyboard.toggleChinese()
+                    contentItem: RowLayout { spacing: 6;ControllerGlyph { button: "RB";Layout.preferredWidth: 26;Layout.preferredHeight: 23 } Label { text: keyboard.chinese ? "中文" : "EN";color: Theme.secondary;font.pixelSize: 14 } }
+                }
         }
-        Label { visible: !!keyboard.inputNotice;text: keyboard.inputNotice;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary }
+        Label { visible: !!keyboard.inputNotice;text: keyboard.inputNotice;anchors.left: parent.left;anchors.right: parent.right;anchors.top: editor.bottom;anchors.topMargin: 10;wrapMode: Text.Wrap;color: Theme.secondary;font.pixelSize: 12 }
         GridLayout {
-            Layout.fillWidth: true;columns: 11;rowSpacing: 5;columnSpacing: 5
+            objectName: "keyboardGrid";width: parent.width;height: keyboard.keyHeight*5;y: keyboard.keyHeight*1.8
+            columns: 11;rowSpacing: 0;columnSpacing: 0;uniformCellWidths: true;uniformCellHeights: true
             Repeater {
                 model: 46
                 AppButton {
@@ -114,20 +123,21 @@ Dialog {
                     Layout.rowSpan: index===41 || index===42 ? 2 : 1
                     Layout.columnSpan: index===43 || index===45 ? 2 : index===44 ? 6 : 1
                     Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumWidth: 0
-                    implicitHeight: keyboard.keyHeight;font.pixelSize: Math.max(16,Math.min(28,keyboard.width*.023))
-                    text: letter ? keyboard.letters[index] : ["⌫","完成","取消","大写","空格","清空"][index-40]
+                    implicitHeight: keyboard.keyHeight;font.pixelSize: Math.max(14,keyboard.keyHeight*.29);font.weight: Font.Light
+                    text: letter ? keyboard.letters[index] : ["","完 成","取 消","大写","空格","清除"][index-40]
+                    Accessible.name: letter ? text : ["删除","完成搜索","取消搜索","切换大小写","空格","清空输入"][index-40]
                     contentItem: Item {
                         GridLayout {
-                            anchors.centerIn: parent;columns: keyControl.index===41 || keyControl.index===42 ? 1 : 2;rowSpacing: 12;columnSpacing: 10
-                            Rectangle {
+                            anchors.centerIn: parent;columns: keyControl.index===41 || keyControl.index===42 ? 1 : 2;rowSpacing: keyboard.keyHeight*.14;columnSpacing: keyboard.keyHeight*.07
+                            ControllerGlyph {
                                 visible: !keyControl.letter
                                 Layout.alignment: Qt.AlignCenter
-                                implicitWidth: keyControl.index===45 ? 32 : 26;implicitHeight: 26
-                                radius: keyControl.index===43 || keyControl.index===45 ? 4 : 13
-                                color: "transparent";border.width: 1.5;border.color: Theme.text
-                                Label { anchors.centerIn: parent;text: ["X","☰","B","R↓","Y","LB"][keyControl.index-40] || "";color: Theme.text;font.pixelSize: 15;font.bold: true }
+                                Layout.preferredWidth: keyboard.keyHeight*.3;Layout.preferredHeight: keyboard.keyHeight*.3
+                                button: ["X","Menu","B","R3","Y","LB"][keyControl.index-40] || "A"
                             }
+                            ControllerGlyph { visible: keyControl.index===40;button: "delete";Layout.preferredWidth: keyboard.keyHeight*.34;Layout.preferredHeight: keyboard.keyHeight*.3 }
                             Label {
+                                visible: keyControl.index!==40
                                 Layout.alignment: Qt.AlignCenter
                                 text: keyControl.index===43 && keyboard.upper ? "小写" : keyControl.text
                                 color: Theme.text;font: keyControl.font
@@ -135,14 +145,13 @@ Dialog {
                         }
                     }
                     background: Rectangle {
-                        radius: 2;color: keyControl.hovered ? Theme.hover : Theme.surface
+                        radius: 0;color: keyControl.hovered ? Theme.hover : Theme.dark ? "#232527" : Theme.surface
                         border.width: keyboard.selectedKey===keyControl.index && !keyboard.candidates ? 3 : 1
-                        border.color: keyboard.selectedKey===keyControl.index && !keyboard.candidates ? Theme.accent : Theme.border
+                        border.color: keyboard.selectedKey===keyControl.index && !keyboard.candidates ? Qt.rgba(Theme.accent.r,Theme.accent.g,Theme.accent.b,.65) : Theme.border
                     }
                     onClicked: { keyboard.selectKey(index);keyboard.press(index) }
                 }
             }
         }
-        Label { text: "A 输入 / 选词 · X 删除 · Y 空格 · LB 清空 · RB 中英 · 按下右摇杆 大小写 · Menu 完成 · B 返回";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;font.pixelSize: 12 }
     }
 }

@@ -43,8 +43,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
     try:
         wait(lambda:feedback.audio.ready and root.isActive());backend.setControllerMode(True)
         root.setProperty('libraryMode','series');spin(160)
-        series=root.findChild(QObject,'seriesFilter');assert series.property('visible')
+        filters=root.findChild(QObject,'libraryFilterDialog');QMetaObject.invokeMethod(filters,'begin',Q_ARG('QVariant',{}));spin(120)
+        series=root.findChild(QObject,'facetSeriesChoice');assert series.property('visible')
         activate(series,1);assert ('group','classic-clear') in played
+        QMetaObject.invokeMethod(filters,'close');spin(150)
         for design in ('shelf','cinema','atlas','classic'):
             spin(110);before=len(played)
             backend.saveSettings({'library_design':design,'experience_group':'category'})
