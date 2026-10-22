@@ -30,6 +30,25 @@ def main():
         try:activate(target['hwnd'],target['pid'])
         finally:
             if attached:user.AttachThreadInput(current,other,False)
+    def capture_output():
+        # Native coordinates and QImage pixels are physical on this DPI-aware
+        # host. Crop to the scaler instead of capturing unrelated desktop apps.
+        from ctypes import wintypes as W
+        user=ctypes.windll.user32
+        user.FindWindowW.argtypes=[W.LPCWSTR,W.LPCWSTR];user.FindWindowW.restype=W.HWND
+        user.GetWindowRect.argtypes=[W.HWND,ctypes.POINTER(W.RECT)]
+        hwnd=user.FindWindowW(SCALING_CLASS,None);assert hwnd,'Scaling HWND missing'
+        rect=W.RECT();assert user.GetWindowRect(hwnd,ctypes.byref(rect))
+        return app.primaryScreen().grabWindow(0).toImage().copy(rect.left,rect.top,rect.right-rect.left,rect.bottom-rect.top)
+    def marker_center(image):
+        # A bright moving ball is painted by the source timer, not the scaler.
+        # Its displacement proves that captured frames continue to reach output.
+        row=round(image.height()*370/450);points=[]
+        for x in range(0,image.width(),3):
+            color=image.pixelColor(x,row)
+            if 70<color.red()<170 and color.green()>150 and color.blue()<100:points.append(x)
+        assert len(points)>5,'Rendered animation marker missing'
+        return sum(points)/len(points)
     with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='graphics-native-') as temp:
         root=Path(temp);engine=Engine(root);engine.install(threading.Event(),lambda _:None,archive)
         fixture=root/'fixture.py'
@@ -81,7 +100,10 @@ QTimer.singleShot(180000,app.quit);app.exec()
                     spin(.1)
                 spin(.25)
                 record={'preset':preset,'display':display,'phase':phase,'startup_s':round(time.monotonic()-begin,2),'foreground':foreground()};report.append(record)
-                app.primaryScreen().grabWindow(0).save(str(output/('native-'+preset+'-'+display+'.png')))
+                frame=capture_output();frame.save(str(output/('native-'+preset+'-'+display+'.png')))
+                first=marker_center(frame);spin(.3);second=marker_center(capture_output())
+                record['marker_motion_px']=round(abs(second-first),1)
+                assert record['marker_motion_px']>5,('Captured output stopped updating',record)
                 log=engine.directory/'logs/magpie.log'
                 if log.is_file():(output/'magpie-native.log').write_bytes(log.read_bytes())
                 assert phase=='active',record
