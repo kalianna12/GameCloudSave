@@ -33,7 +33,7 @@ Dialog {
         if(!dirtyFields.date) date.text=game.release_date || ""
         dirty=Object.keys(dirtyFields).length>0
     }
-    function loadFields() { loadLocalFields();loadMetadata(false) }
+    function loadFields() { loadLocalFields();loadMetadata(false);graphicsPane.loadFor(gameId) }
     function mark(field) { var next=Object.assign({},dirtyFields);next[field]=true;dirtyFields=next;dirty=true }
     function openFor(ident,page) { gameId=ident;loadFields();tabs.currentIndex=page || 0;coverPicker.reset();saving="";open() }
     Connections {
@@ -48,7 +48,7 @@ Dialog {
         spacing: 14
         TabBar {
             id: tabs; objectName: "gameSettingsTabs"; Layout.fillWidth: true
-            TabButton { text: "存档与云端" } TabButton { text: "封面与横幅" } TabButton { text: "游戏资料" }
+            TabButton { text: "存档与云端" } TabButton { text: "封面与横幅" } TabButton { text: "游戏资料" } TabButton { text: "画质增强" }
         }
         ScrollView {
             visible: tabs.currentIndex===0; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
@@ -105,7 +105,8 @@ Dialog {
                 AppTextField { id: series; Layout.fillWidth: true; onTextEdited: dialog.mark("series") }
             }
         }
-        RowLayout { AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 } }
+        GraphicsSettingsPane { id: graphicsPane; visible: tabs.currentIndex===3; Layout.fillWidth: true; Layout.fillHeight: true }
+        RowLayout { visible: tabs.currentIndex!==3; AppBusyIndicator { running: backend.busy; visible: running; implicitWidth: 24; implicitHeight: 24 } Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 } }
     }
     footer: Item {
         implicitHeight: 60
@@ -113,9 +114,10 @@ Dialog {
             anchors.fill: parent; anchors.margins: 10; spacing: 10
             Item { Layout.fillWidth: true }
             AppButton { text: "关闭"; onClicked: dialog.close() }
-            AppButton { visible: tabs.currentIndex!==1; highlighted: true; text: tabs.currentIndex===0 ? "保存存档设置" : "保存游戏资料"; enabled: !backend.busy
+            AppButton { objectName: "gameSettingsSave"; visible: tabs.currentIndex!==1; highlighted: true; text: tabs.currentIndex===0 ? "保存存档设置" : tabs.currentIndex===3 ? "保存画质方案" : "保存游戏资料"; enabled: !backend.busy && !backend.graphics.state.busy
                 onClicked: {
                     if(tabs.currentIndex===0) { dialog.saving="game-settings";backend.saveGame(dialog.gameId,{save_dir:savePath.text,exe:exe.text,monitor_exe:monitor.text,launch_mode:["direct","playnite","platform"][launchMode.currentIndex],arguments:gameArguments.text,working_dir:working.text}) }
+                    else if(tabs.currentIndex===3) graphicsPane.save()
                     else { dialog.saving="library-edit";backend.updateLibrary([{id:dialog.gameId,category:category.currentText,tags:tags.text.split(/[,，]/).map(function(tag) { return tag.trim() }).filter(Boolean),series:series.text,release_date:date.text.trim()}]) }
                 }
             }

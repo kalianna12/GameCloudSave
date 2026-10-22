@@ -106,7 +106,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     point=effect.mapToScene(QPointF(effect.width()/2,effect.height()/2))
     QTest.mouseClick(root,Qt.LeftButton,pos=QPoint(round(point.x()),round(point.y())));spin(250)
     assert clicked==['favorite','settings'] and root.findChild(QObject,'gameDialog').property('visible'),clicked
-    assert root.findChild(QObject,'gameSettingsTabs').property('count')==3
+    assert root.findChild(QObject,'gameSettingsTabs').property('count')==4
     report={'one_shot_shine':True,'continuous_mouse_angles':samples,'controller_settles_flat':True,'rapid_navigation_resets':True,'mode_switch_reset':True,'inactive_reset':True,'recycled_reset':True,'reduced_motion':True,'scroll_guard':True,'cover_settings_click':True,'favorite_click_isolated':True,'idle_frames_in_300ms':idle_frames}
     (output/'report.json').write_text(json.dumps(report),encoding='utf-8')
     assert not any(term in message for message in messages for term in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign')),messages

@@ -75,6 +75,9 @@ class Bridge(QObject):
         self._recommendations=Recommendations(store,self)
         from input_mapping import MappingController
         self._mapping=MappingController(store,self)
+        from graphics_enhancement import GraphicsEnhancement
+        self._graphics=GraphicsEnhancement(store,self)
+        self._graphics.failed.connect(self.graphicsFailed)
         self._dirs = []
         self._history = []
         self._cloud_history = []
@@ -152,6 +155,13 @@ class Bridge(QObject):
 
     @Property(QObject,constant=True)
     def mapping(self):return self._mapping
+
+    @Property(QObject,constant=True)
+    def graphics(self):return self._graphics
+
+    @Slot(str)
+    def graphicsFailed(self,message):
+        self._status='画质增强：'+message;self.changed.emit()
 
     def refreshWatchInfo(self):
         info=self.watchInfo
@@ -1237,7 +1247,9 @@ class Bridge(QObject):
     def finishLaunchPresentation(self):
         from launch_ready import activate
         self.releaseLaunchPresentation()
-        if self._launch_state['phase']=='ready' and not self._launch_abandoned:activate(self._launch_state.get('hwnd'),self._launch_state.get('pid'))
+        if self._launch_state['phase']=='ready' and not self._launch_abandoned:
+            activate(self._launch_state.get('hwnd'),self._launch_state.get('pid'))
+            self._graphics.startForGame(self._launch_state['ident'],self._launch_state.get('pid'),self._launch_state.get('hwnd'),automatic=True)
         self._launch_state.update(phase='idle');self.launchChanged.emit()
 
     @Slot()
@@ -1605,6 +1617,7 @@ class Bridge(QObject):
     def shutdownWatch(self):
         self.flushAudioSettings()
         self._mapping.shutdown()
+        self._graphics.shutdown()
         self._recommendations.shutdown()
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
