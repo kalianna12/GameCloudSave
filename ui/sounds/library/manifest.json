@@ -19,7 +19,7 @@
           "speed": 1,
           "maximum_seconds": 0.14,
           "offset_seconds": 0,
-          "lowpass_hz": 8000,
+          "lowpass_hz": null,
           "short_echo": false,
           "target_rms": 0.08
         }
@@ -39,7 +39,7 @@
           "speed": 1,
           "maximum_seconds": 0.13,
           "offset_seconds": 0,
-          "lowpass_hz": 8000,
+          "lowpass_hz": null,
           "short_echo": false,
           "target_rms": 0.095
         }
@@ -59,7 +59,7 @@
           "speed": 1,
           "maximum_seconds": 0.15,
           "offset_seconds": 0,
-          "lowpass_hz": 8000,
+          "lowpass_hz": null,
           "short_echo": false,
           "target_rms": 0.095
         }
@@ -79,7 +79,7 @@
           "speed": 1,
           "maximum_seconds": 0.11,
           "offset_seconds": 0,
-          "lowpass_hz": 8000,
+          "lowpass_hz": null,
           "short_echo": false,
           "target_rms": 0.095
         }
@@ -99,7 +99,7 @@
           "speed": 1,
           "maximum_seconds": 0.24,
           "offset_seconds": 0,
-          "lowpass_hz": 8000,
+          "lowpass_hz": null,
           "short_echo": false,
           "target_rms": 0.095
         }
@@ -119,7 +119,7 @@
           "speed": 1,
           "maximum_seconds": 0.58,
           "offset_seconds": 0,
-          "lowpass_hz": 8000,
+          "lowpass_hz": null,
           "short_echo": false,
           "target_rms": 0.095
         }

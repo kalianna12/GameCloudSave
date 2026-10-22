@@ -17,4 +17,4 @@
 | 分组 | SeSelectFocus.wav |
 | 布局切换 | SeDialogOpen_Accent.wav |
 
-运行时使用 `../../library/classic-clear-*.wav`：保持原速，转为单声道 44.1kHz PCM16，裁剪及首尾淡入淡出，轻度低通和响度提升。逐文件来源、SHA256 与参数见 `../../library/manifest.json`。保持既有 `classic-clear` 配置编号，默认跟随布局时原版首页使用本组，其他布局保留各自音效。
+运行时使用 `../../library/classic-clear-*.wav`：保持原速，转为单声道 44.1kHz PCM16，裁剪及首尾淡入淡出、响度调整。按用户要求，不使用低通滤波或回响，`lowpass_hz` 为 null。逐文件来源、SHA256 与参数见 `../../library/manifest.json`。保持既有 `classic-clear` 配置编号，默认跟随布局时原版首页使用本组，其他布局保留各自音效。

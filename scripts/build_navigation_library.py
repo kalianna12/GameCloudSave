@@ -25,8 +25,9 @@ def read(pack,name,speed=1,offset=0):
 def prepare(audio,duration,cutoff,target,echo=False):
     audio=audio[:round(duration*RATE)]
     audio=audio-np.mean(audio)
-    frequencies=np.fft.rfftfreq(len(audio),1/RATE)
-    audio=np.fft.irfft(np.fft.rfft(audio)/(1+(frequencies/cutoff)**8)**.5,n=len(audio))
+    if cutoff is not None:
+        frequencies=np.fft.rfftfreq(len(audio),1/RATE)
+        audio=np.fft.irfft(np.fft.rfft(audio)/(1+(frequencies/cutoff)**8)**.5,n=len(audio))
     if echo:
         dry=audio.copy()
         for delay,gain in ((.037,.18),(.071,.10)):
@@ -65,7 +66,7 @@ def build():
         ('open','SeDialogOpen.wav',.11),
         ('group','SeSelectFocus.wav',.24),
         ('switch','SeDialogOpen_Accent.wav',.58)):
-        cue('classic-clear',kind,'nintendo-switch',source,duration,cutoff=8000,
+        cue('classic-clear',kind,'nintendo-switch',source,duration,cutoff=None,
             target=.080 if kind=='move' else .095)
     for style,move,confirm,speed,cutoff in (
         ('soft','rollover6.wav','click1.wav',.9,2200),

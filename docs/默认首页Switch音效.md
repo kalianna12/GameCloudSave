@@ -6,14 +6,16 @@
 
 | 事件 | 来源 | 实际 RMS | 对比旧默认响度 |
 | --- | --- | --- | --- |
-| 移动 | SeGameIconFocus.wav | 0.0641 | +4.1dB |
-| 确认 | SeBtnDecide.wav | 0.0642 | +2.3dB |
-| 返回 | SeFooterDecideBack.wav | 0.0641 | +3.3dB |
-| 打开 | SeDialogOpen.wav | 0.0892 | +4.2dB |
-| 分组 | SeSelectFocus.wav | 0.0455 | +1.3dB |
-| 布局切换 | SeDialogOpen_Accent.wav | 0.0726 | +2.4dB |
+| 移动 | SeGameIconFocus.wav | 0.0642 | +4.1dB |
+| 确认 | SeBtnDecide.wav | 0.0643 | +2.3dB |
+| 返回 | SeFooterDecideBack.wav | 0.0642 | +3.3dB |
+| 打开 | SeDialogOpen.wav | 0.0872 | +4.0dB |
+| 分组 | SeSelectFocus.wav | 0.0454 | +1.3dB |
+| 布局切换 | SeDialogOpen_Accent.wav | 0.0691 | +2.0dB |
 
-保持原速，单声道 44.1kHz PCM16，首尾淡入淡出、8kHz 低通、目标 RMS 0.080/0.095，受峰值 0.28 上限约束。沿用八轨、主增益 0.44 的原生 XAudio2 混音及静音保活，最坏同相八轨叠加仍小于满幅。没有提高其他音效组的响度、改变用户音量或增加运行依赖。其他 54 个成品 WAV 与上一提交相同。
+保持原速，单声道 44.1kHz PCM16，首尾淡入淡出、目标 RMS 0.080/0.095，受峰值 0.28 上限约束。用户后续明确要求“不经过滤波器”，已撤销本组 8kHz 低通，`lowpass_hz` 为 null，直接绕过频域滤波，不加回响；裁剪、淡入淡出与音量调整仍保留。上表为撤销滤波后的实测值。沿用八轨、主增益 0.44 的原生 XAudio2 混音及静音保活，最坏同相八轨叠加仍小于满幅。没有提高其他音效组的响度、改变用户音量或增加运行依赖。其他 54 个成品 WAV 与上一提交相同。
+
+撤销滤波后重新生成源码素材及 `build/sound-audition/processed/` 的六个试听文件，试听页文字同步标注无低通和回响。8 项音频回归与真实静音设备输出回归通过；额外以 14kHz 正弦输入验证高频保留，并在禁止 FFT 调用时验证无滤波路径可正常生成。
 
 来源清单从全局 CC0 改为逐项许可：六个 Switch 声音标记 Nintendo-copyright，其余标记 CC0-1.0。Switch 素材版权归 Nintendo，上游说明用途为个人学习、研究及非商业参考；不把仓库公开下载视为 Nintendo 授权再发行。原文件 SHA256、处理参数和版权说明保存在源码目录。此轮没有构建或上传任何发行包。
 

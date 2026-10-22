@@ -57,6 +57,9 @@ class AudioTests(unittest.TestCase):
             if entry['bank']!='classic-clear':continue
             kind=entry['kind']
             self.assertEqual(entry['origins'][0]['source'],'nintendo-switch/'+expected[kind])
+            self.assertIsNone(entry['origins'][0]['lowpass_hz'])
+            self.assertEqual(entry['origins'][0]['speed'],1)
+            self.assertFalse(entry['origins'][0]['short_echo'])
             samples=[v/32768 for v in array('h',pcm(entry['files'][0]))]
             rms=(sum(v*v for v in samples)/len(samples))**.5
             self.assertGreater(rms,previous[kind]*1.12,(kind,rms))

@@ -73,7 +73,7 @@ textarea{display:block;width:100%;height:175px;resize:vertical;margin:12px 0}.st
 </style><main>
 <h1>Switch 音效试听与指定</h1>
 <p>来源：<a href="https://github.com/TOM-BadEN/Nintendo-Switch-Sounds-Effect">你指定的 GitHub 仓库</a>，固定提交 70614a3。仓库标注 Nintendo Switch，未核实为 Switch 2。版权归 Nintendo。<br>
-“原文件”是仓库原始 WAV；“当前效果”是程序目前使用的裁剪、淡入淡出、响度处理版。浏览器音量与程序不同，请主要比较音色。开头六项标出了当前用途。</p>
+“原文件”是仓库原始 WAV；“当前效果”是程序目前使用的裁剪、淡入淡出、响度处理版，不使用低通滤波或回响。浏览器音量与程序不同，请主要比较音色。开头六项标出了当前用途。</p>
 <header><input id="search" placeholder="搜索文件名，如 Focus / Back / Startup"><label><input id="only" type="checkbox" style="width:auto">仅当前六项</label>
 <div class="status" id="playing">点击原文件或当前效果试听；每次只播放一个声音。</div><audio id="audio" controls preload="none"></audio></header>
 <div id="list"></div><p id="count"></p>
