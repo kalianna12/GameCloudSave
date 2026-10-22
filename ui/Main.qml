@@ -81,9 +81,22 @@ ApplicationWindow {
     property real toolbarColumnX: 0
     property real toolbarViewportWidth: 0
     onActiveFocusItemChanged: if(!toolbarFocusMove) toolbarFocusItem=null
-    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,mappingProfileControl,recommendationsControl,personalControl,fullscreenControl]
+    readonly property var filterControls: [installedControl,platformControl,sourceControl,seriesControl,sortControl,mappingProfileControl,layoutControl,recommendationsControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
+    property var toolbarReturn: null
+    property string sidebarOrigin: ""
+    function focusSidebar(index) { sidebarOrigin=libraryMode;focusControls([navHome,navAll,navRecent,navFavorites,navSeries,navNew,navMapping],index) }
+    function rememberNavigationFocus() { return {content:libraryFocus(),item:activeFocusItem} }
+    function restoreNavigationFocus() {
+        var saved=toolbarReturn;toolbarReturn=null
+        if(saved && !saved.content && saved.item && saved.item.visible && saved.item.enabled) saved.item.forceActiveFocus()
+        else focusContent()
+    }
+    function toggleToolbar() {
+        if(toolbarReturn) { restoreNavigationFocus();return }
+        toolbarReturn=rememberNavigationFocus();focusToolbar(search,false)
+    }
     function goBack() {
         var previous=navigationHistory.length ? navigationHistory[navigationHistory.length-1] : {mode:"home",category:"",series:"",search:"",y:0,gridY:0,gridIndex:0}
         navigationHistory=navigationHistory.slice(0,-1)
@@ -96,17 +109,18 @@ ApplicationWindow {
         while(item) { if(item===home || item===grid || item===experienceLoader.item) return true;item=item.parent }
         return !activeFocusItem || activeFocusItem===contentItem
     }
-    function focusContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusContent();else if(homeVisible) home.forceActiveFocus();else grid.forceActiveFocus() }
+    function focusContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusContent();else if(homeVisible) home.resumeFocus();else { grid.forceActiveFocus();if(grid.count) grid.navigateFocus(Math.max(0,grid.currentIndex)) } }
     function focusFirstContent() { if(alternativeDesign && experienceLoader.item) experienceLoader.item.focusFirst();else if(homeVisible) home.focusFirst();else if(grid.count) grid.navigateFocus(0);else grid.forceActiveFocus() }
     function previewSidebar(index) {
         var modes=["home","all","recent","favorites","series","new"]
-        if(index<0 || index>=modes.length) return
-        if(libraryMode===modes[index] && !searchQuery && !search.text && !groupFilter && !seriesFilter) return
+        if(index<0 || index>=modes.length) return false
+        if(libraryMode===modes[index] && !searchQuery && !search.text && !groupFilter && !seriesFilter) return false
         resetGridSelection=true
         searchDelay.stop();search.text="";searchDelay.stop();searchQuery="";groupFilter="";seriesFilter=""
         libraryMode=modes[index];librarySort=libraryMode==="recent" ? "recent" : libraryMode==="new" ? "added" : "name"
         grid.currentIndex=grid.count ? 0 : -1;grid.contentY=0
         if(homeVisible && libraryDesign==="classic") home.resetSelection()
+        return true
     }
     function focusControls(items,index) {
         var available=items.filter(function(item) { return item.visible && item.enabled })
@@ -147,15 +161,23 @@ ApplicationWindow {
         if(!win.active || backend.popupActive()) return false
         if(launchTransition.running) return launchTransition.controllerInput(command)
         if(command==="zoom-in" || command==="zoom-out") { if(libraryDesign==="atlas" && libraryFocus() && experienceLoader.item) experienceLoader.item.controllerInput(command);return true }
-        if(command==="back") { if(alternativeDesign && experienceLoader.item && experienceLoader.item.controllerBack()) return true;if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack();else focusContent();return true }
+        if(command==="search") { toggleToolbar();return true }
+        if(command==="back") {
+            if(toolbarReturn) { restoreNavigationFocus();return true }
+            if(!libraryFocus()) { focusContent();return true }
+            if(alternativeDesign && experienceLoader.item && experienceLoader.item.controllerBack()) return true
+            if(libraryMode!=="home" || searchQuery || navigationHistory.length) goBack()
+            else navHome.forceActiveFocus()
+            return true
+        }
         var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries,navNew,navMapping]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
         var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
         var item=activeFocusItem,side=-1,filter=-1,header=-1
         while(item) { if(side<0) side=sidebar.indexOf(item);if(filter<0) filter=filters.indexOf(item);if(header<0) header=headers.indexOf(item);item=item.parent }
         if(side>=0) {
-            if(command==="right" || command==="activate") { if(sidebar[side]===navMapping && command==="activate") navMapping.clicked();else { previewSidebar(side);focusFirstContent() };return true }
-            if(command==="up" || command==="down") { var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);previewSidebar(nextSide);return true }
+            if(command==="right" || command==="activate") { if(command==="right" && sidebarOrigin===libraryMode) focusContent();else if(sidebar[side]===navMapping && command==="activate") navMapping.clicked();else { var changed=previewSidebar(side);if(changed) focusFirstContent();else focusContent() };sidebarOrigin="";return true }
+            if(command==="up" || command==="down") { sidebarOrigin="";var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);previewSidebar(nextSide);return true }
             return true
         }
         if(filter>=0 || header>=0) {
@@ -172,7 +194,7 @@ ApplicationWindow {
             }
             if(command==="left" || command==="previous" || command==="right" || command==="next") {
                 var step=(command==="left" || command==="previous") ? -1 : 1
-                if(columnIndex===0 && step<0) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex) }
+                if(columnIndex===0 && step<0) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusSidebar(sideIndex) }
                 else focusToolbar(rows[rowIndex].items[Math.max(0,Math.min(rows[rowIndex].items.length-1,columnIndex+step))].item,false)
                 return true
             }
@@ -183,6 +205,7 @@ ApplicationWindow {
                 if(header>=0 && headers[header]===backButton) goBack()
                 if(filter>=0 && filters[filter]===fullscreenControl) win.toggleFullScreen()
                 if(filter>=0 && filters[filter]===personalControl) personalControl.clicked()
+                if(filter>=0 && filters[filter]===layoutControl) layoutControl.clicked()
                 if(filter>=0 && filters[filter]===recommendationsControl) recommendationsControl.clicked()
             }
             return true
@@ -200,7 +223,7 @@ ApplicationWindow {
             focusContent()
         }
         if(!homeVisible) grid.adoptFocusedCard()
-        if(command==="left" && (homeVisible ? home.selectionIndex()<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusControls(sidebar,sideIndex);previewSidebar(sideIndex);return true }
+        if(command==="left" && (homeVisible ? home.selectionIndex()<=0 : grid.currentIndex<=0 || grid.currentIndex%grid.effectiveColumns===0)) { var sideIndex=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(libraryMode));focusSidebar(sideIndex);return true }
         if(command==="up" && (homeVisible ? home.atTop : grid.currentIndex<grid.effectiveColumns)) { focusToolbarFromContent();return true }
         if(["up","down","left","right"].indexOf(command)>=0) {
             if(homeVisible) home.navigateFocus(command)
@@ -305,12 +328,12 @@ ApplicationWindow {
     function saveLayout() { backend.saveLayout({cover_size:coverSize, columns:columnCount, gap:gridGap, installed_only:installedOnly,home_cover_size:homeCoverSize,home_gap:homeGap,home_recent_preview:homeRecentPreview}) }
     ControllerKeyboard {
         id: searchKeyboard; objectName: "controllerKeyboard"
-        width: Math.min(820,win.width-48); anchors.centerIn: parent
-        quickTerms: backend.searchTerms
-        onSubmitted: function(value) { search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
+        width: Math.min(1250,win.width-64); anchors.centerIn: parent
+        onSubmitted: function(value) { win.toolbarReturn=null;search.text=value;searchDelay.stop();win.searchQuery=value.trim().toLowerCase();Qt.callLater(win.focusContent) }
         onCancelled: search.forceActiveFocus()
+        onReturned: win.restoreNavigationFocus()
     }
-    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: true; onLaunchRequested: function(game) { win.launchGame(game) } onSettingsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,0) } }
+    ControllerGameMenu { id: controllerGameMenu; anchors.centerIn: parent; width: Math.min(600,win.width-48); useLaunchTransition: true; onLaunchRequested: function(game) { win.launchGame(game) } onSettingsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,0) } onGraphicsRequested: function(game) { win.selectGame(game);gameDialog.openFor(game.id,3) } }
     function launchGame(game) {
         if(!game || !game.id || backend.busy || launchTransition.running) return
         launchTransition.begin(game,libraryDesign)
@@ -371,7 +394,13 @@ ApplicationWindow {
                 Label { text: shownGames.length.toString(); color: Theme.secondary; font.pixelSize: 12; leftPadding: 9; rightPadding: 9; topPadding: 4; bottomPadding: 4; background: Rectangle { radius: 8; color: Theme.surface } }
             }
             Item { Layout.fillWidth: true }
-            AppTextField { id: search; objectName: "search"; clip: true; Keys.onEscapePressed: text=""; onTextChanged: searchDelay.restart(); placeholderText: "搜索游戏、标签…"; Layout.preferredWidth: win.width<1100 ? 130 : 220; selectByMouse: true }
+            AppTextField {
+                id: search;objectName: "search";clip: true;selectByMouse: true
+                Keys.onEscapePressed: { if(!inputMethodComposing) { if(text) text="";else win.restoreNavigationFocus() } }
+                onTextChanged: if(!inputMethodComposing) searchDelay.restart()
+                onInputMethodComposingChanged: if(!inputMethodComposing) searchDelay.restart()
+                placeholderText: "名称、拼音、首字母、标签";Layout.preferredWidth: win.width<1100 ? 165 : 260
+            }
             Switch {
                 id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
                 onToggled: backend.saveSettings({watch:checked})
@@ -424,7 +453,7 @@ ApplicationWindow {
             Layout.fillWidth: true; Layout.fillHeight: true
             sourceComponent: LibraryExperience {
                 objectName: "libraryExperience"; design: win.libraryDesign; games: win.shownGames; coverSize: homeCoverSize; launching: launchTransition.running
-                onBoundaryRequested: function(direction) { if(direction==="up") win.focusToolbarFromContent();else { var index=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(win.libraryMode));win.focusControls([navHome,navAll,navRecent,navFavorites,navSeries,navNew],index) } }
+        onBoundaryRequested: function(direction) { if(direction==="up") win.focusToolbarFromContent();else { var index=Math.max(0,["home","all","recent","favorites","series","new"].indexOf(win.libraryMode));win.focusSidebar(index) } }
                 onDetailsRequested: function(game) { win.openGame(game) }
                 onLaunchRequested: function(game) { win.launchGame(game) }
                 onCloudRequested: function(game) { selectGame(game);historyTabs.currentIndex=0;backend.history(activeId);historyDialog.open() }
@@ -525,7 +554,7 @@ ApplicationWindow {
             Label { text: backend.status; color: Theme.secondary; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && statusHover.hovered; ToolTip.text: text; HoverHandler { id: statusHover } }
             Label { objectName: "watchStatus"; visible: backend.settings.watch; text: backend.watchInfo.message; color: backend.watchInfo.failed ? Theme.accent : Theme.secondary; font.pixelSize: 11; Layout.minimumWidth: 0; Layout.maximumWidth: win.width<1100 ? 130 : 300; elide: Text.ElideRight; ToolTip.visible: !backend.controllerMode && watchStatusHover.hovered; ToolTip.text: text+"\n点击调整自动备份、上传和保留份数"; HoverHandler { id: watchStatusHover; cursorShape: Qt.PointingHandCursor } TapHandler { onTapped: win.openSettingsPage(1) } }
             AppButton { visible: backend.watchInfo.failed>0; text: "重试自动备份/上传"; enabled: backend.settings.watch && !backend.watchInfo.working; onClicked: backend.retryAutoBackups() }
-            Label { visible: backend.gamepadConnected; text: (win.libraryDesign==="atlas" ? "右摇杆 缩放  " : backend.settings.controller_tilt!==false ? "右摇杆 倾斜  " : "")+"A 启动  B 返回  X 收藏  Y 存档  Menu 游戏设置"; color: Theme.secondary; font.pixelSize: 11 }
+            Label { visible: backend.gamepadConnected; text: (win.libraryDesign==="atlas" ? "右摇杆 缩放  " : backend.settings.controller_tilt!==false ? "右摇杆 倾斜  " : "")+"A 启动  B 返回  X 收藏  Y 存档  View 搜索／返回  Menu 游戏选项"; color: Theme.secondary; font.pixelSize: 11;Layout.maximumWidth: Math.max(180,win.width*.47);elide: Text.ElideRight;ToolTip.visible: !backend.controllerMode && hintHover.hovered;ToolTip.text: text;HoverHandler { id: hintHover } }
         }
     }
 
@@ -668,6 +697,7 @@ ApplicationWindow {
 
     GameSettingsDialog {
         id: gameDialog; anchors.centerIn: parent
+        onClosed: Qt.callLater(function() { if(!backend.popupActive()) win.focusContent() })
         onCloudRequested: cloudWindow.openConnectionSettings()
         onMatchRequested: function(ident) { win.openMatch(ident) }
         onHistoryRequested: function(ident) { win.activeId=ident;historyTabs.currentIndex=0;backend.history(ident);historyDialog.open() }
@@ -682,6 +712,36 @@ ApplicationWindow {
     }
     Dialog {
         id: historyDialog; objectName: "historyDialog"; title: activeName + " · 存档记录"; anchors.centerIn: parent; width: Math.min(900,win.width-60); height: Math.min(650,win.height-60); modal: true
+        property string controllerZone: "actions"
+        property int controllerAction: 0
+        property bool loadPending: false
+        readonly property var actionControls: [historyLocal,historyUpload,historyRetry,historyRefresh]
+        function loadTab() { loadPending=backend.busy;if(!loadPending) { if(historyTabs.currentIndex===0) backend.history(activeId);else backend.refreshCloudHistory(activeId) } }
+        function changeTab(value) { historyTabs.currentIndex=Math.max(0,Math.min(1,value));historyList.currentIndex=0;controllerZone="tabs";loadTab() }
+        Connections { target: backend;function onChanged() { if(historyDialog.visible && historyDialog.loadPending && !backend.busy) historyDialog.loadTab() } }
+        function restoreSelected() { if(backend.busy || !historyList.count) return;var row=historyList.model[historyList.currentIndex];if(row) restoreDialog.begin(activeId,row.id || 0,historyTabs.currentIndex===1 ? row : ({})) }
+        function controllerInput(command) {
+            if(command==="back") { close();return true }
+            if(command==="previous" || command==="next") { changeTab(historyTabs.currentIndex+(command==="previous" ? -1 : 1));return true }
+            if(command==="favorite") { if(historyRefresh.enabled) historyRefresh.clicked();return true }
+            if(command==="activate") {
+                if(controllerZone==="actions") { var action=actionControls[controllerAction];if(action.enabled) action.clicked() }
+                else if(controllerZone==="tabs") { if(historyList.count) { controllerZone="records";historyList.currentIndex=Math.max(0,historyList.currentIndex) } }
+                else restoreSelected()
+                return true
+            }
+            if(command==="left" || command==="right") {
+                if(controllerZone==="actions") controllerAction=Math.max(0,Math.min(3,controllerAction+(command==="left" ? -1 : 1)))
+                else if(controllerZone==="tabs") changeTab(historyTabs.currentIndex+(command==="left" ? -1 : 1))
+            } else if(command==="up" || command==="down") {
+                if(controllerZone==="actions" && command==="down") controllerZone="tabs"
+                else if(controllerZone==="tabs") { if(command==="up") controllerZone="actions";else if(historyList.count) { controllerZone="records";historyList.currentIndex=Math.max(0,historyList.currentIndex) } }
+                else if(controllerZone==="records") { if(command==="up" && historyList.currentIndex<=0) controllerZone="tabs";else { historyList.currentIndex=Math.max(0,Math.min(historyList.count-1,historyList.currentIndex+(command==="up" ? -1 : 1)));historyList.positionViewAtIndex(historyList.currentIndex,ListView.Contain) } }
+            }
+            return true
+        }
+        onAboutToShow: { controllerZone="actions";controllerAction=0;historyList.currentIndex=historyList.count ? 0 : -1 }
+        onClosed: { loadPending=false;Qt.callLater(function() { if(!backend.popupActive()) win.focusContent() }) }
         exit: Transition {}
         Overlay.modal: Rectangle { color: "#bb000000" }
         contentItem: ColumnLayout {
@@ -691,17 +751,22 @@ ApplicationWindow {
             }
             RowLayout {
                 enabled: !backend.busy
-                AppButton { text: "保存本地 + 上传"; onClicked: backend.cloudSave(activeId) }
-                AppButton { text: "仅本地备份"; onClicked: backend.localSave(activeId) }
-                AppButton { text: "重试上传"; onClicked: backend.retry(activeId) }
-                AppButton { text: "刷新记录"; onClicked: { if(historyTabs.currentIndex===0) backend.history(activeId); else backend.refreshCloudHistory(activeId) } }
+                AppButton { id: historyLocal;objectName: "historyLocalBackup";text: "本地备份";highlighted: backend.controllerMode && historyDialog.controllerZone==="actions" && historyDialog.controllerAction===0;enabled: !!backend.libraryGame(activeId).saveSet;onClicked: backend.localSave(activeId) }
+                AppButton { id: historyUpload;objectName: "historyUploadBackup";text: "备份并上传";highlighted: backend.controllerMode && historyDialog.controllerZone==="actions" && historyDialog.controllerAction===1;enabled: !!backend.libraryGame(activeId).saveSet && !!backend.settings.cloud_folder;onClicked: backend.cloudSave(activeId) }
+                AppButton { id: historyRetry;text: "重试上传";highlighted: backend.controllerMode && historyDialog.controllerZone==="actions" && historyDialog.controllerAction===2;enabled: !!backend.settings.cloud_folder;onClicked: backend.retry(activeId) }
+                AppButton { id: historyRefresh;text: "刷新记录";highlighted: backend.controllerMode && historyDialog.controllerZone==="actions" && historyDialog.controllerAction===3;onClicked: { if(historyTabs.currentIndex===0) backend.history(activeId); else backend.refreshCloudHistory(activeId) } }
             }
             TabBar { id: historyTabs; objectName: "historyTabs"; Layout.fillWidth: true; TabButton { text: "本机版本" } TabButton { text: "云端 / 其他设备" } }
             Label { text: historyTabs.currentIndex===0 ? "按时间从新到旧排列，恢复前先备份当前存档。" : "点击刷新读取云端版本；选择恢复时下载并校验，不自动覆盖本机。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
             ListView {
+                id: historyList;objectName: "historyList";currentIndex: -1;highlightFollowsCurrentItem: false
                 Layout.fillWidth: true; Layout.fillHeight: true; model: historyTabs.currentIndex===0 ? backend.snapshots : backend.cloudSnapshots; clip: true
                 delegate: ItemDelegate {
                     required property var modelData
+                    required property int index
+                    highlighted: backend.controllerMode && historyDialog.controllerZone==="records" && historyList.currentIndex===index
+                    background: Rectangle { color: parent.highlighted ? Theme.selection : "transparent";radius: Theme.radius;border.color: parent.highlighted ? Theme.accent : "transparent";border.width: 2 }
+                    onClicked: { historyList.currentIndex=index;historyDialog.controllerZone="records" }
                     width: ListView.view.width; height: 84
                     contentItem: RowLayout {
                         ColumnLayout {
@@ -717,6 +782,7 @@ ApplicationWindow {
                 Label { visible: parent.count===0; anchors.centerIn: parent; text: historyTabs.currentIndex===0 ? "暂无本机记录，先创建一份备份。" : "点击刷新记录，查看云端版本。"; color: Theme.secondary }
             }
             Label { text: backend.status; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
+            Label { text: "上 / 下 切换操作与备份 · A 确认 / 预览恢复 · LB / RB 本地 / 云端 · B 返回";visible: backend.controllerMode;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary }
         }
         standardButtons: Dialog.Close
     }

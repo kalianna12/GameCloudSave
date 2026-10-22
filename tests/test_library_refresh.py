@@ -41,10 +41,11 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     play=next(item for item in walk(hero) if item.property('iconName')=='play')
     point=play.mapToScene(play.boundingRect().center())
     with patch.object(store,'launch') as launch:
-        QTest.mouseClick(root,Qt.LeftButton,pos=QPoint(round(point.x()),round(point.y())));spin(100)
+        QTest.mouseClick(root,Qt.LeftButton,pos=QPoint(round(point.x()),round(point.y())));spin(250)
         while backend.busy:spin(25)
         assert launch.call_count==1,'The hero launch action must only launch once'
         assert not root.findChild(QObject,'gameDialog').property('visible'),'The launch click also opened game settings'
+        invoke(root.findChild(QObject,'launchTransition'),'cancel')
     QTest.mouseMove(root,QPoint(220,15));spin(100)
     invoke(root,'navigate','all','');spin(350)
     grid=root.findChild(QObject,'gameGrid')

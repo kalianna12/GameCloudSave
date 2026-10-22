@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
+import "ControllerForm.js" as Form
 
 ScrollView {
     id: pane
@@ -13,14 +15,16 @@ ScrollView {
     contentWidth: availableWidth
     function loadFor(ident) {
         gameId=ident
-        var p=backend.graphics.profile(ident)
+        loadValues(backend.graphics.profile(ident));dirty=false;saving=false
+    }
+    function loadValues(p) {
         enabledToggle.checked=p.enabled;automatic.checked=p.auto_start
         algorithm.currentIndex=Math.max(0,backend.graphics.presets.map(function(v) { return v.id }).indexOf(p.preset))
         sharpness.value=p.sharpness;display.currentIndex=p.display==="windowed" ? 1 : 0
         fit.currentIndex=p.fit==="stretch" ? 1 : 0;windowScale.value=Math.round(p.window_scale*100)
         capture.currentIndex=p.capture===3 ? 1 : 0;fps.value=p.fps;mode3d.checked=p.game_3d
-        dirty=false;saving=false
     }
+    function controllerInput(command) { return Form.handle([quickChoice,applyQuick,enabledToggle,algorithm,sharpness,display,fit,windowScale,fps,automatic,mode3d,capture,installButton,importButton,downloadButton,applyButton,stopButton,logsButton],Window.window.activeFocusItem,command,pane) }
     function values() {
         return {enabled:enabledToggle.checked,auto_start:automatic.checked,
             preset:backend.graphics.presets[algorithm.currentIndex].id,sharpness:Math.round(sharpness.value),
@@ -36,6 +40,11 @@ ScrollView {
     ColumnLayout {
         width: pane.availableWidth
         spacing: 16
+        RowLayout {
+            Layout.fillWidth: true
+            AppComboBox { id: quickChoice;objectName: "graphicsQuickProfile";Layout.fillWidth: true;model: backend.graphics.quickProfiles;textRole: "name" }
+            AppButton { id: applyQuick;objectName: "graphicsUseQuick";text: "使用预设";enabled: !pane.core.busy;onClicked: { pane.loadValues(backend.graphics.quickProfile(quickChoice.currentIndex));pane.dirty=true } }
+        }
         RowLayout {
             Layout.fillWidth: true
             ColumnLayout {
@@ -54,15 +63,21 @@ ScrollView {
                 wrapMode: Text.Wrap; color: Theme.text
             }
         }
+        Label {
+            objectName: "graphicsOutputResolution";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.accent
+            readonly property int pixelsWide: Math.round(Screen.width*Screen.devicePixelRatio)
+            readonly property int pixelsHigh: Math.round(Screen.height*Screen.devicePixelRatio)
+            text: display.currentIndex===0 ? "全屏目标：游戏所在显示器的物理分辨率（当前屏幕 "+pixelsWide+" × "+pixelsHigh+"）。"+(fit.currentIndex===0 ? " 保持比例时可能留黑边。" : " 拉伸铺满整个屏幕。") : "窗口目标：原始游戏画面宽、高各 × "+(windowScale.value/100).toFixed(2)+"，例如 1280 × 720 → "+Math.round(1280*windowScale.value/100)+" × "+Math.round(720*windowScale.value/100)+"；以屏幕可容纳范围为限。"
+        }
         RowLayout {
             Layout.fillWidth: true
             Label { text: "Magpie "+pane.core.version+" · "+(pane.core.installed ? "内核已安装" : "首次使用需安装内核"); color: pane.core.installed ? Theme.accent : Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         }
         Flow {
             visible: !pane.core.installed; Layout.fillWidth: true; spacing: 8
-            AppButton { objectName: "graphicsInstall"; text: "下载并安装内核"; highlighted: true; enabled: !pane.core.busy && pane.core.supported; onClicked: backend.graphics.install() }
-            AppButton { text: "导入官方 ZIP"; enabled: !pane.core.busy && pane.core.supported; onClicked: backend.graphics.importArchive() }
-            AppButton { text: "官方下载页"; onClicked: backend.graphics.openDownload() }
+            AppButton { id: installButton;objectName: "graphicsInstall"; text: "下载并安装内核"; highlighted: true; enabled: !pane.core.busy && pane.core.supported; onClicked: backend.graphics.install() }
+            AppButton { id: importButton;text: "导入官方 ZIP"; enabled: !pane.core.busy && pane.core.supported; onClicked: backend.graphics.importArchive() }
+            AppButton { id: downloadButton;text: "官方下载页"; onClicked: backend.graphics.openDownload() }
         }
         Label { visible: !pane.core.supported; text: "需要 Windows 10 1903 或更新系统，以及支持 DirectX 11 的显卡。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
         RowLayout {
@@ -79,7 +94,7 @@ ScrollView {
             Label { text: backend.graphics.presets[algorithm.currentIndex].description; color: Theme.secondary; wrapMode: Text.Wrap; Layout.fillWidth: true }
             RowLayout {
                 Layout.fillWidth: true; visible: algorithm.currentIndex!==4
-                Label { text: "锐化强度"; Layout.preferredWidth: 90 }
+                Label { text: "锐化（非分辨率）"; Layout.preferredWidth: 130 }
                 Slider { id: sharpness; objectName: "graphicsSharpness"; Layout.fillWidth: true; from: 0; to: 100; stepSize: 1; onMoved: pane.dirty=true; Accessible.name: "锐化强度" }
                 Label { text: Math.round(sharpness.value)+"%"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
             }
@@ -114,9 +129,9 @@ ScrollView {
         }
         Flow {
             Layout.fillWidth: true; spacing: 8
-            AppButton { objectName: "graphicsApply"; text: "应用到已运行游戏"; visible: pane.core.installed; enabled: enabledToggle.checked && !pane.dirty && !pane.core.busy; onClicked: backend.graphics.apply(pane.gameId) }
-            AppButton { text: "停止增强"; visible: pane.core.installed; enabled: !pane.core.busy && ["active","ready"].indexOf(pane.core.phase)>=0; onClicked: backend.graphics.stop() }
-            AppButton { text: "查看内核日志"; visible: pane.core.installed; onClicked: backend.graphics.openLogs() }
+            AppButton { id: applyButton;objectName: "graphicsApply"; text: "应用到已运行游戏"; visible: pane.core.installed; enabled: enabledToggle.checked && !pane.dirty && !pane.core.busy; onClicked: backend.graphics.apply(pane.gameId) }
+            AppButton { id: stopButton;text: "停止增强"; visible: pane.core.installed; enabled: !pane.core.busy && ["active","ready"].indexOf(pane.core.phase)>=0; onClicked: backend.graphics.stop() }
+            AppButton { id: logsButton;text: "查看内核日志"; visible: pane.core.installed; onClicked: backend.graphics.openLogs() }
             AppButton { text: "取消"; visible: pane.core.busy && ["installing","starting"].indexOf(pane.core.phase)>=0; onClicked: backend.graphics.cancel() }
         }
         RowLayout {

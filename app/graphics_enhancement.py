@@ -41,6 +41,14 @@ PRESETS = [
 DEFAULT = {'enabled': False, 'auto_start': True, 'preset': 'anime-fast',
            'sharpness': 20, 'display': 'fullscreen', 'fit': 'fit',
            'window_scale': 2.0, 'capture': 0, 'fps': 60, 'game_3d': False}
+QUICK_PROFILES = [
+    {'name':'Galgame 全屏','values':{'enabled':True,'preset':'anime-fast','sharpness':15}},
+    {'name':'动漫精细','values':{'enabled':True,'preset':'anime-quality','sharpness':10}},
+    {'name':'3D 游戏全屏','values':{'enabled':True,'preset':'fsr','sharpness':45,'game_3d':True}},
+    {'name':'通用清晰','values':{'enabled':True,'preset':'lanczos','sharpness':25}},
+    {'name':'像素 2 倍窗口','values':{'enabled':True,'preset':'nearest','sharpness':0,'display':'windowed','window_scale':2.0}},
+    {'name':'关闭增强','values':{'enabled':False}},
+]
 REQUIRED = ('Magpie.exe', 'Microsoft.UI.Xaml.dll', 'resources.pri',
             'effects/Lanczos.hlsl', 'effects/Nearest.hlsl', 'effects/CAS/CAS.hlsl',
             'effects/FSR/FSR_EASU.hlsl', 'effects/FSR/FSR_RCAS.hlsl',
@@ -310,6 +318,12 @@ class GraphicsEnhancement(QObject):
 
     @Property('QVariantList', constant=True)
     def presets(self): return PRESETS
+
+    @Property('QVariantList', constant=True)
+    def quickProfiles(self): return QUICK_PROFILES
+
+    @Slot(int,result='QVariantMap')
+    def quickProfile(self,index):return normalize(QUICK_PROFILES[index]['values']) if 0<=index<len(QUICK_PROFILES) else dict(DEFAULT)
 
     @Property('QVariantMap', notify=changed)
     def state(self): return {**self._state, 'busy': self._busy, 'supported': supported(), 'version': VERSION}

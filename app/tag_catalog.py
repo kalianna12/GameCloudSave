@@ -1,5 +1,6 @@
 """Stable tag vocabulary: reuse library terms and reject invented model tags."""
 import re,unicodedata
+from functools import lru_cache
 
 ALIASES={
  '视觉小说':['gal','galgame','visual novel','visual novels','vn'],
@@ -34,18 +35,22 @@ MAX_TAGS=6
 def normalized(value):
     return re.sub(r'[\s_-]+',' ',unicodedata.normalize('NFKC',value).casefold()).strip()
 
+_ALIAS_KEYS={normalized(value):normalized(name) for name,aliases in ALIASES.items() for value in [name,*aliases]}
+
+@lru_cache(maxsize=8192)
 def key(value):
     text=normalized(value)
-    for name,aliases in ALIASES.items():
-        if text in {normalized(name),*(normalized(alias) for alias in aliases)}:return normalized(name)
-    return text
+    return _ALIAS_KEYS.get(text,text)
+
+@lru_cache(maxsize=128)
+def allowed_keys(values):return {key(value):value for value in values}
 
 def vocabulary(games):
     # Imported descriptions and old AI output cannot expand the model vocabulary.
     return list(ALIASES)
 
 def normalize_tags(values,allowed):
-    known={key(value):value for value in allowed}
+    known=allowed_keys(tuple(allowed))
     output=[]
     for value in values:
         if not isinstance(value,str):continue

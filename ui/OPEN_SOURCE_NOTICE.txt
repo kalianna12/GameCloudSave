@@ -10,4 +10,6 @@ Playnite 游戏库只读，不修改原库；本地扫描不运行候选文件�
 
 Qt / PySide6 / Shiboken6 遵循其 LGPL/GPL 等许可，使用可替换的独立运行库，未修改这些库。Python、rclone、psutil、Pillow 及其依赖遵循各自许可。完整第三方文本随安装目录 licenses 提供。
 
+拼音与首字母搜索使用 pypinyin 0.55.0（MIT，mozillazg，https://github.com/mozillazg/python-pinyin）。中文录入调用 Windows 上已安装的输入法。
+
 卸载保留个人数据和存档备份。项目代码在安装目录 source.zip 中提供，包含构建脚本；不包含用户数据、凭据、封面下载缓存或游戏文件。

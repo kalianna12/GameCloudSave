@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     def rings():
         return [item for item in walk(root.contentItem()) if item.objectName() == 'tileFocusRing' and item.isVisible() and item.property('focusWidth') > 2.5]
 
-    with patch('winsound.PlaySound') as audio:
+    with patch.object(feedback.audio,'play') as audio:
         dispatch(app, root, backend, 'right'); spin()
         assert backend.controllerMode and feedback.hidden and app.overrideCursor().shape() == Qt.BlankCursor
         assert len(rings()) == 1, len(rings())

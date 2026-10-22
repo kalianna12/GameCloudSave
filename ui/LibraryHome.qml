@@ -9,7 +9,7 @@ FocusScope {
     property int coverSize: 176
     property int cardGap: 14
     property bool recentPreview: true
-    readonly property bool atTop: focusedSection===0
+    readonly property bool atTop: !sections.slice(0,focusedSection).some(function(section) { return section.items.length>0 })
     property int focusedSection: 0
     property var rowSelections: ({})
     property int pendingSection: -1
@@ -23,10 +23,32 @@ FocusScope {
         if(directions[event.key]) { navigateFocus(directions[event.key]);event.accepted=true }
         else if(event.key===Qt.Key_Return || event.key===Qt.Key_Enter) { activateSelected();event.accepted=true }
     }
-    function contentPosition() { return list.contentY }
+    readonly property real scrollMinimum: list.originY
+    readonly property real scrollMaximum: list.originY+Math.max(0,sectionLayout.total-list.height)
+    function contentPosition() { return list.contentY-list.originY }
     function restorePosition(value) {
-        vertical.stop();home.forceActiveFocus();list.forceLayout();list.contentY=value
-        Qt.callLater(function() { list.forceLayout();list.contentY=Math.max(list.originY,Math.min(value,Math.max(list.originY,list.contentHeight-list.height))) })
+        vertical.stop();home.forceActiveFocus();list.forceLayout();list.contentY=list.originY+value
+        Qt.callLater(function() { list.forceLayout();list.contentY=Math.max(home.scrollMinimum,Math.min(list.originY+value,home.scrollMaximum));home.ensureSelectionVisible() })
+    }
+    function resumeFocus() {
+        if(currentFocus && currentFocus!==home) currentFocus.focus=false
+        home.forceActiveFocus();applyPendingSelection();var shelf=currentShelf();if(shelf) shelf.moveSelection(0);ensureSelectionVisible()
+    }
+    function ensureSelectionVisible() {
+        if(!sections[focusedSection]) return
+        var start=list.originY+sectionLayout.offsets[focusedSection],end=start+sectionLayout.heights[focusedSection]
+        var destination=vertical.running ? vertical.to : list.contentY
+        if(start<destination) destination=start
+        else if(end>destination+list.height) destination=end-list.height
+        destination=Math.max(scrollMinimum,Math.min(scrollMaximum,destination))
+        if(Math.abs(destination-(vertical.running ? vertical.to : list.contentY))>.5) { vertical.duration=Theme.motion ? 100 : 0;vertical.to=destination;vertical.restart() }
+    }
+    function restoreShelf(index) {
+        var shelf=list.itemAtIndex(index),section=sections[index]
+        if(!shelf || !section || shelf.section.id!==section.id || shelf.pooled) return
+        var saved=rowSelections[section.id]
+        if(saved) shelf.restoreSelection(saved.index,saved.x)
+        if(index===focusedSection) applyPendingSelection()
     }
     function currentShelf() { var shelf=list.itemAtIndex(focusedSection);return shelf && sections[focusedSection] && shelf.section.id===sections[focusedSection].id ? shelf : null }
     function selectionIndex() {
@@ -35,9 +57,9 @@ FocusScope {
         return pendingSection!==focusedSection && shelf ? shelf.selectionIndex : saved ? saved.index : 0
     }
     function rememberSelection(index) {
-        if(index!==focusedSection || pendingSection===index) return
-        var shelf=currentShelf(),section=sections[index]
-        if(shelf && section) rowSelections[section.id]={index:shelf.selectionIndex,x:shelf.scrollTarget,id:(section.items[shelf.selectionIndex] || {}).id}
+        if(pendingSection===index) return
+        var shelf=list.itemAtIndex(index),section=sections[index]
+        if(shelf && section && shelf.section.id===section.id && !shelf.syncing) rowSelections[section.id]={index:shelf.selectionIndex,x:shelf.scrollTarget,id:(section.items[shelf.selectionIndex] || {}).id}
     }
     function applyPendingSelection() {
         if(pendingSection<0 || pendingSection!==focusedSection) return
@@ -89,8 +111,9 @@ FocusScope {
             return
         }
         var previousSection=focusedSection
-        var nextSection=Math.max(0,Math.min(sections.length-1,focusedSection+(direction==="up" ? -1 : 1)))
-        if(nextSection===previousSection) return
+        var delta=direction==="up" ? -1 : 1,nextSection=focusedSection+delta
+        while(nextSection>=0 && nextSection<sections.length && !sections[nextSection].items.length) nextSection+=delta
+        if(nextSection<0 || nextSection>=sections.length) return
         var previousShelf=currentShelf(),previous=sections[previousSection]
         var previousState=previous ? rowSelections[previous.id] || {index:0,x:0} : {index:0,x:0}
         var previousWidth=previous ? Metrics.tileWidth(previous,coverSize) : coverSize
@@ -105,12 +128,7 @@ FocusScope {
         var localX=home.mapFromItem(null,sceneX,0).x-rowLeft(section)+saved.x
         var nextIndex=Math.max(0,Math.min(section.items.length-1,Math.round((localX-tileWidth/2)/(tileWidth+cardGap))))
         rowSelections[section.id]={index:nextIndex,x:saved.x,id:(section.items[nextIndex] || {}).id};pendingSection=focusedSection
-        var start=sectionLayout.offsets[focusedSection],end=start+sectionLayout.heights[focusedSection]
-        var destination=vertical.running ? vertical.to : list.contentY
-        if(start<destination) destination=start
-        else if(end>destination+list.height) destination=end-list.height
-        destination=Math.max(0,Math.min(Math.max(0,sectionLayout.total-list.height),destination))
-        if(Math.abs(destination-(vertical.running ? vertical.to : list.contentY))>.5) { vertical.duration=Theme.motion ? 100 : 0;vertical.to=destination;vertical.restart() }
+        ensureSelectionVisible()
         if(previousSection!==focusedSection) backend.navigationMoved()
         applyPendingSelection()
     }
@@ -153,39 +171,62 @@ FocusScope {
         })
         var previousIndex=sections.findIndex(function(section) { return section.id===previousId })
         focusedSection=previousIndex>=0 ? previousIndex : Math.max(0,Math.min(focusedSection,rows.count-1))
+        if(sections[focusedSection] && !sections[focusedSection].items.length) {
+            var nearest=-1
+            sections.forEach(function(section,index) { if(section.items.length && (nearest<0 || Math.abs(index-focusedSection)<Math.abs(nearest-focusedSection))) nearest=index })
+            if(nearest>=0) focusedSection=nearest
+        }
         pendingSection=pendingId && sections[focusedSection] && sections[focusedSection].id===pendingId ? focusedSection : -1
-        Qt.callLater(home.applyPendingSelection)
+        Qt.callLater(function() { for(var i=0;i<sections.length;i++) home.restoreShelf(i);if(home.cardFocus) home.ensureSelectionVisible() })
     }
     onSectionsChanged: { sectionsDirty=true;if(visible) Qt.callLater(home.sync) }
     onVisibleChanged: { if(visible && sectionsDirty) Qt.callLater(home.sync);else if(!visible) vertical.stop() }
     Component.onCompleted: sync()
     function scrollBy(delta) {
         vertical.duration=Theme.motion ? 110 : 0
-        vertical.to=Math.max(0,Math.min(Math.max(0,list.contentHeight-list.height), (vertical.running ? vertical.to : list.contentY)+delta));vertical.restart()
+        vertical.to=Math.max(scrollMinimum,Math.min(scrollMaximum, (vertical.running ? vertical.to : list.contentY)+delta));vertical.restart()
     }
     NumberAnimation { id: vertical; target: list; property: "contentY"; duration: Theme.motion ? 190 : 0; easing.type: Easing.OutCubic }
-    ListView {
-        id: list; objectName: home.listObjectName; anchors.fill: parent; model: rows
+    Flickable {
+        id: list; objectName: home.listObjectName; anchors.fill: parent
+        readonly property int count: rows.count
+        property int currentIndex: 0
+        property real spacing: 14
+        function itemAtIndex(index) { var loader=sectionLoaders.itemAt(index);return loader && loader.status===Loader.Ready ? loader.item : null }
+        function forceLayout() { }
+        function positionViewAtBeginning() { contentY=0 }
+        function positionViewAtIndex(index,mode) { contentY=Math.max(0,Math.min(home.sectionLayout.total-height,home.sectionLayout.offsets[index] || 0)) }
         contentHeight: home.sectionLayout.total
-        highlightFollowsCurrentItem: false
+        contentWidth: width;flickableDirection: Flickable.VerticalFlick
         onContentYChanged: home.applyPendingSelection()
-        clip: true; reuseItems: true; cacheBuffer: 240; spacing: 14; flickDeceleration: 2300; maximumFlickVelocity: 3500
-        delegate: LibraryShelf {
-            required property var record
-            required property int index
-            width: ListView.view.width; height: implicitHeight; section: record; outerMoving: list.moving || vertical.running
-            coverSize: home.coverSize; cardGap: home.cardGap; recentPreview: home.recentPreview
-            keyboardFocused: home.cardFocus && home.focusedSection===index
-            Component.onCompleted: Qt.callLater(home.applyPendingSelection)
-            ListView.onReused: Qt.callLater(home.applyPendingSelection)
-            onSelectionUpdated: home.rememberSelection(index)
-            onSelectionFocused: { home.focusedSection=index;home.pendingSection=-1;home.rememberSelection(index);home.forceActiveFocus() }
-            onBrowseRequested: function(mode,value) { home.browseRequested(mode,value) }
-            onDetailsRequested: function(game) { home.detailsRequested(game) }
-            onLaunchRequested: function(game) { home.launchRequested(game) }
-            onCloudRequested: function(game) { home.cloudRequested(game) }
-            onSaveSearchRequested: function(ids) { home.saveSearchRequested(ids) }
-            onVerticalScroll: function(delta) { home.scrollBy(delta) }
+        clip: true;boundsBehavior: Flickable.StopAtBounds;flickDeceleration: 2300;maximumFlickVelocity: 3500
+        Repeater {
+            id: sectionLoaders;model: rows
+            delegate: Loader {
+                id: sectionLoader
+                objectName: "section-loader-"+index
+                required property var record
+                required property int index
+                width: list.width;height: home.sectionLayout.heights[index] || 0;y: home.sectionLayout.offsets[index] || 0
+                active: home.visible && y+height>=list.contentY-240 && y<=list.contentY+list.height+240
+                // Create only the light shelf skeleton here. Its card loaders
+                // stay asynchronous; nesting async incubation can starve rows.
+                asynchronous: false
+                onLoaded: home.restoreShelf(index)
+                sourceComponent: LibraryShelf {
+                    section: sectionLoader.record;outerMoving: list.moving || vertical.running
+                    coverSize: home.coverSize;cardGap: home.cardGap;recentPreview: home.recentPreview
+                    keyboardFocused: home.cardFocus && home.focusedSection===sectionLoader.index
+                    onSelectionUpdated: home.rememberSelection(sectionLoader.index)
+                    onSelectionFocused: { home.focusedSection=sectionLoader.index;home.pendingSection=-1;home.rememberSelection(sectionLoader.index);home.forceActiveFocus() }
+                    onBrowseRequested: function(mode,value) { home.browseRequested(mode,value) }
+                    onDetailsRequested: function(game) { home.detailsRequested(game) }
+                    onLaunchRequested: function(game) { home.launchRequested(game) }
+                    onCloudRequested: function(game) { home.cloudRequested(game) }
+                    onSaveSearchRequested: function(ids) { home.saveSearchRequested(ids) }
+                    onVerticalScroll: function(delta) { home.scrollBy(delta) }
+                }
+            }
         }
         ScrollBar.vertical: ScrollBar {}
     }

@@ -73,7 +73,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as folder:
         effect=effects[0];assert effect.property('yaw')>10 and effect.property('pitch')<0
         backend.setControllerMode(False);spin(40);assert effect.property('yaw')==0 and backend.controllerTilt==[0.,0.]
         backend.setControllerMode(True);backend.setControllerTilt(.7,.6);store.settings['controller_tilt']=False;backend.settingsChanged.emit();spin(400)
-        assert effect.property('yaw')==0
+        # Data refresh may legitimately destroy/recreate the lazy shelf. Check
+        # live focused covers rather than a cached, deleted Qt object.
+        effects=[item for item in walk(root.contentItem()) if item.objectName()=='coverEffects' and item.isVisible() and item.property('controllerFocused')]
+        assert all(item.property('yaw')==0 for item in effects)
         store.settings['controller_tilt']=True;backend.settingsChanged.emit();backend.setControllerTilt(0.,0.)
         output=ROOT/'test-data/home-input-review';output.mkdir(exist_ok=True);root.grabWindow().save(str(output/'home-aligned-light.png'))
         # Every game layout uses A to launch and Menu to open the options dialog.

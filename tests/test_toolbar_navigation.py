@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     backend=Bridge(store);engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend);engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')))
     assert engine.rootObjects(),messages
     root=engine.rootObjects()[0];root.requestActivate();spin(200);backend.setControllerMode(True)
-    names=['libraryBack','search','watchControl','installedFilter','platformFilter','sourceFilter','seriesFilter','librarySort','homeMappingProfile','personalControl','fullscreenControl']
+    names=['libraryBack','search','watchControl','installedFilter','platformFilter','sourceFilter','seriesFilter','librarySort','homeMappingProfile','layoutControl','personalControl','fullscreenControl']
     controls={name:root.findChild(QObject,name) for name in names};assert all(controls.values())
     def focus_name():
         item=root.activeFocusItem()
@@ -46,9 +46,9 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         focus('platformFilter');pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
         focus('sourceFilter')
         for _ in range(6):pad('right');expect('sourceFilter')
-        focus('homeMappingProfile');pad('right');expect('personalControl');pad('right');expect('fullscreenControl')
+        focus('homeMappingProfile');pad('right');expect('layoutControl');pad('right');expect('personalControl');pad('right');expect('fullscreenControl')
         for _ in range(6):pad('right');expect('fullscreenControl')
-        pad('left');expect('personalControl');pad('left');expect('homeMappingProfile')
+        pad('left');expect('personalControl');pad('left');expect('layoutControl');pad('left');expect('homeMappingProfile')
         # A mouse-picked control uses its current column, rather than an old list index.
         p=center(controls['platformFilter']);QTest.mouseClick(root,Qt.LeftButton,pos=QPoint(round(p.x()),round(p.y())));spin(50)
         pad('back');spin(50);pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')

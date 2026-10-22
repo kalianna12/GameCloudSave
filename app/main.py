@@ -48,6 +48,7 @@ class Bridge(QObject):
     launchChanged=Signal()
     launchReady=Signal(str,object)
     artworkReady=Signal(str,object,bool,str)
+    favoriteStored=Signal(object,str)
 
     def __init__(self, store):
         super().__init__()
@@ -78,6 +79,8 @@ class Bridge(QObject):
         from graphics_enhancement import GraphicsEnhancement
         self._graphics=GraphicsEnhancement(store,self)
         self._graphics.failed.connect(self.graphicsFailed)
+        from search_ime import SearchIme
+        self._search_ime=SearchIme(self)
         self._dirs = []
         self._history = []
         self._cloud_history = []
@@ -108,6 +111,9 @@ class Bridge(QObject):
         self._watch_closed=False
         self._watch_message='等待游戏启动';self._watch_ready_count=0;self._watch_last_info={}
         self._games_cache = None
+        self._favorite_pending={};self._favorite_overrides={}
+        self.favoriteTimer=QTimer(self);self.favoriteTimer.setSingleShot(True);self.favoriteTimer.setInterval(80)
+        self.favoriteTimer.timeout.connect(self.flushFavorites);self.favoriteStored.connect(self.receiveFavorites)
         self._library_media={};self._media_pending=False;self._media_loaded=False;self._media_source=None
         self.mediaReady.connect(self.receiveMedia)
         self._cloud_path = ''
@@ -159,6 +165,9 @@ class Bridge(QObject):
     @Property(QObject,constant=True)
     def graphics(self):return self._graphics
 
+    @Property(QObject,constant=True)
+    def searchIme(self):return self._search_ime
+
     @Slot(str)
     def graphicsFailed(self,message):
         self._status='画质增强：'+message;self.changed.emit()
@@ -171,7 +180,7 @@ class Bridge(QObject):
     def games(self):
         if self._games_cache is None:
             from library_catalog import prepare_game
-            self._games_cache = [{**game, 'installed':self.store.local.get(game['id'], {}).get('installed', False),
+            self._games_cache = [{**game, 'favorite':self._favorite_overrides.get(game['id'],game.get('favorite',False)), 'installed':self.store.local.get(game['id'], {}).get('installed', False),
                      'backgroundUrl':QUrl.fromLocalFile(game['background']).toString() if game.get('background') else '',
                      'coverUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.thumbnails[game['id']])).toString() if game['id'] in self.store.thumbnails else QUrl.fromLocalFile(str(self.store.root / 'covers' / Path(game['cover']).name)).toString() if game['cover'] else '',
                      'coverHighUrl': QUrl.fromLocalFile(str(self.store.root / 'thumbnails' / self.store.high_thumbnails[game['id']])).toString() if game['id'] in self.store.high_thumbnails else '',
@@ -983,8 +992,27 @@ class Bridge(QObject):
     def updateLibrary(self,updates):self.job('library-edit',lambda:(self.store.update_library(updates),'游戏资料已更新')[1])
     @Slot(str)
     def toggleFavorite(self,ident):
-        game=next(game for game in self.store.games if game['id']==ident)
-        self.updateLibrary([{'id':ident,'favorite':not game.get('favorite',False)}])
+        game=self.libraryGame(ident)
+        if not game:return
+        value=not game.get('favorite',False)
+        self._favorite_pending[ident]=value;self._favorite_overrides[ident]=value
+        self._games_cache=[{**row,'favorite':value} if row['id']==ident else row for row in self.games]
+        self.gamesChanged.emit();self._status='已收藏' if value else '已取消收藏';self.changed.emit();self.favoriteTimer.start()
+
+    def flushFavorites(self):
+        if not self._favorite_pending:return
+        values=self._favorite_pending;self._favorite_pending={}
+        def work():
+            try:self.store.update_library([{'id':ident,'favorite':value} for ident,value in values.items()]);error=''
+            except Exception:error='收藏保存失败，请重试'
+            self.favoriteStored.emit(values,error)
+        self.pool.submit(work)
+
+    @Slot(object,str)
+    def receiveFavorites(self,values,error):
+        for ident,value in values.items():
+            if self._favorite_overrides.get(ident)==value:self._favorite_overrides.pop(ident,None)
+        if error:self._games_cache=None;self.gamesChanged.emit();self._status=error;self.changed.emit()
     @Slot(str,str)
     def editGroup(self,old,new):self.job('group-edit',lambda:(self.store.edit_group(old,new),'分类已更新')[1])
     @Slot(bool)
@@ -1201,7 +1229,7 @@ class Bridge(QObject):
                 probe=Probe(context['local'],context['pid']);context['probe']=probe
                 if token==self._launch_token and not cancel.is_set():self._launch_probe=probe
                 from game_watcher import background_work
-                with background_work():result=wait(probe,cancel)
+                with background_work():result=wait(probe,cancel,on_launcher=lambda row:self.launchReady.emit(token,row))
             except Exception:result={'phase':'timeout','message':'未能确认游戏窗口，可继续等待或返回游戏库'}
             self.launchReady.emit(token,result)
         self._launch_pool.submit(work)
@@ -1211,6 +1239,9 @@ class Bridge(QObject):
         if token!=self._launch_token or self._launch_cancel.is_set():return
         self._launch_state.update(result)
         if result['phase']!='ready':self.releaseLaunchPresentation()
+        if result['phase']=='launcher' and not self._launch_abandoned:
+            from launch_ready import activate
+            activate(result['hwnd'],result['pid'])
         self.launchChanged.emit()
 
     @Slot()
@@ -1237,7 +1268,7 @@ class Bridge(QObject):
     def launchFocusChanged(self):
         from launch_ready import foreground
         _,pid=foreground();probe=getattr(self,'_launch_probe',None)
-        if pid and pid!=os.getpid() and not (probe and probe.matches(pid)):
+        if pid and pid!=os.getpid() and not (probe and probe.matches(pid,allow_launcher=True)):
             import psutil
             try:platform=psutil.Process(pid).name().casefold() in ('steam.exe','playnite.desktopapp.exe','playnite.fullscreenapp.exe','epicgameslauncher.exe')
             except psutil.Error:platform=False
@@ -1615,6 +1646,8 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self.searchIme.end()
+        self.favoriteTimer.stop();self.flushFavorites()
         self.flushAudioSettings()
         self._mapping.shutdown()
         self._graphics.shutdown()

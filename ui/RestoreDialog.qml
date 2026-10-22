@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
+import "ControllerForm.js" as Form
 Dialog {
     id: dialog
     objectName: "restoreDialog"
@@ -14,10 +16,26 @@ Dialog {
     }
     width: Math.min(660,parent ? parent.width-60 : 660)
     modal: true
+    exit: Transition {}
     title: "恢复存档"
+    onOpened: cancelRestore.forceActiveFocus()
     function begin(gameId,snapshot,record) {
         ident=gameId;mappingId="";slotChoice.currentIndex=0;sourceAccount.currentIndex=0;targetAccount.currentIndex=0
         backend.previewRestore(gameId,snapshot,record);open()
+    }
+    function controllerInput(command) {
+        if(command==="back") { close();return true }
+        if(command==="activate") {
+            var focus=dialog.contentItem.Window.window.activeFocusItem
+            if(focus===confirmRestore) { acceptRestore();return true }
+            if(focus===cancelRestore) { close();return true }
+        }
+        return Form.handle([slotChoice,mapAccount,sourceAccount,targetAccount,cancelRestore,confirmRestore],dialog.contentItem.Window.window.activeFocusItem,command,null)
+    }
+    function acceptRestore() {
+        if(!confirmRestore.enabled) return
+        backend.restoreWithOptions(dialog.ident,dialog.preview.snapshot,{slot:slotChoice.currentIndex>0 ? slotChoice.currentText : "",source_account:mapAccount.checked ? sourceAccount.currentText : "",target_account:mapAccount.checked ? targetAccount.currentText : ""})
+        close()
     }
     Overlay.modal: Rectangle { color: "#bb000000" }
     contentItem: ColumnLayout {
@@ -36,15 +54,12 @@ Dialog {
         Label { text: "恢复前会备份当前目录。"; visible: slotChoice.currentIndex===0 && !mapAccount.checked; color: Theme.secondary }
     }
     footer: DialogButtonBox {
-        AppButton { text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+        AppButton { id: cancelRestore;objectName: "cancelRestore";text: "取消"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
         AppButton {
-            objectName: "confirmRestore"; text: "恢复所选存档"; highlighted: true; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            id: confirmRestore;objectName: "confirmRestore"; text: "恢复所选存档"; highlighted: true; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
             enabled: !backend.busy && !!dialog.preview.snapshot && (!mapAccount.checked || sourceAccount.currentIndex>0 && targetAccount.currentIndex>0)
         }
         onRejected: dialog.close()
-        onAccepted: {
-            backend.restoreWithOptions(dialog.ident,dialog.preview.snapshot,{slot:slotChoice.currentIndex>0 ? slotChoice.currentText : "",source_account:mapAccount.checked ? sourceAccount.currentText : "",target_account:mapAccount.checked ? targetAccount.currentText : ""})
-            dialog.close()
-        }
+        onAccepted: dialog.acceptRestore()
     }
 }

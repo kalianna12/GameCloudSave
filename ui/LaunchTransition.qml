@@ -13,12 +13,13 @@ Item {
     property bool sent: false
     property bool animationDone: false
     property bool ready: false
+    property bool launcherHandedOff: false
     readonly property var launchStatus: backend.launchState
-    visible: running
+    visible: running && !launcherHandedOff
     signal committed(var game)
     function begin(record,style) {
         if(running) return
-        game=record;design=style;sent=false;ready=false;animationDone=false;progress=0;fade=1;running=true
+        game=record;design=style;sent=false;ready=false;animationDone=false;launcherHandedOff=false;progress=0;fade=1;running=true
         backend.beginLaunchPresentation(launch.Window.window)
         backend.playLaunchSound()
         intro.restart();sendTimer.interval=Theme.motion ? 120 : 0;sendTimer.restart()
@@ -34,6 +35,7 @@ Item {
     function controllerInput(command) { if(command==="back") cancel();else if(command==="activate" && launchStatus.phase==="timeout") backend.continueLaunchWait();return true }
     onLaunchStatusChanged: {
         if(!running || !sent || launchStatus.ident!==game.id) return
+        if(launchStatus.phase==="launcher") launcherHandedOff=true
         ready=launchStatus.phase==="ready";maybeFinish()
     }
     opacity: fade

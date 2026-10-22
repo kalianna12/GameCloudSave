@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         if source.is_file():shutil.copy2(source,store.root/'covers'/source.name)
     for i in range(32):
         tags=['视觉小说','恋爱'] if i<16 else ['射击','合作']
-        store.games.append({'id':str(i),'name':f'Game {i:02}','cover':covers[i%len(covers)],'platform':'steam' if i%2==0 else 'local','import_source':'playnite' if i<25 else 'folder','tags':tags,'series':'Pair' if i<2 else 'Singleton' if i==2 else '', 'last_played':'2026-10-09T00:00:00Z' if i<3 else ''})
+        store.games.append({'id':str(i),'name':f'Game {i:02}','cover':covers[i%len(covers)],'platform':'steam' if i%2==0 else 'local','import_source':'playnite' if i<25 else 'folder','tags':tags,'series':'Pair' if i<2 else 'Singleton' if i==2 else '', 'last_played':'2026-10-09T00:00:00Z' if i<8 else ''})
         store.local[str(i)]={'installed':True}
     backend=Bridge(store);engine=QQmlApplicationEngine();engine.rootContext().setContextProperty('backend',backend);engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')));assert engine.rootObjects(),messages
     root=engine.rootObjects()[0];QTest.qWait(450);home=root.findChild(QObject,'libraryHome');view=root.findChild(QObject,'libraryHomeList');grid=root.findChild(QObject,'gameGrid');search=root.findChild(QObject,'search')
@@ -37,7 +37,11 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         QTest.qWait(25)
         if not backend.busy:break
     assert abs(view.property('contentY')-before)<2
-    assert abs(shelf.property('contentX')-160)<2
+    # Offscreen rows are intentionally unloaded. Returning to that row must
+    # restore the saved horizontal position on its newly realized shelf.
+    view.setProperty('contentY',0);QTest.qWait(140)
+    shelf=visual(root.contentItem(),'shelf-recent');assert shelf is not None
+    assert abs(shelf.property('contentX')-shelf.property('originX')-160)<2
     series=root.property('seriesNames').toVariant();assert series==['Pair'],series
     search.setProperty('text','#恋爱');QTest.qWait(180);assert grid.property('visible') and grid.property('count')==16
     root.setProperty('platformFilter','steam');QTest.qWait(80);assert grid.property('count')==8

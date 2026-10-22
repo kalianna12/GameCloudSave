@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
+import "ControllerForm.js" as Form
 
 Dialog {
     id: dialog
@@ -16,6 +18,7 @@ Dialog {
     signal enrichmentRequested(string ident)
     title: (record.name || "游戏")+" · 游戏设置"
     modal: true; focus: true
+    exit: Transition {}
     width: Math.min(900,parent.width-48); height: Math.min(820,parent.height-48)
     Overlay.modal: Rectangle { color: "#bb000000" }
     function loadLocalFields() {
@@ -36,6 +39,13 @@ Dialog {
     function loadFields() { loadLocalFields();loadMetadata(false);graphicsPane.loadFor(gameId) }
     function mark(field) { var next=Object.assign({},dirtyFields);next[field]=true;dirtyFields=next;dirty=true }
     function openFor(ident,page) { gameId=ident;loadFields();tabs.currentIndex=page || 0;coverPicker.reset();saving="";open() }
+    function controllerInput(command) {
+        if(command==="back") { close();return true }
+        if(command==="previous" || command==="next") { tabs.currentIndex=Math.max(0,Math.min(3,tabs.currentIndex+(command==="previous" ? -1 : 1)));return true }
+        if(command==="menu") { if(saveButton.visible && saveButton.enabled) saveButton.clicked();return true }
+        if(tabs.currentIndex===3) return graphicsPane.controllerInput(command)
+        return Form.handle(tabs.currentIndex===0 ? [savePath,monitor,advanced,launchMode,exe,gameArguments,working,saveButton,closeButton] : tabs.currentIndex===2 ? [date,category,tags,series,saveButton,closeButton] : [closeButton],dialog.contentItem.Window.window.activeFocusItem,command,null)
+    }
     Connections {
         target: backend
         function onOperationCompleted(action,success) {
@@ -113,8 +123,9 @@ Dialog {
         RowLayout {
             anchors.fill: parent; anchors.margins: 10; spacing: 10
             Item { Layout.fillWidth: true }
-            AppButton { text: "关闭"; onClicked: dialog.close() }
-            AppButton { objectName: "gameSettingsSave"; visible: tabs.currentIndex!==1; highlighted: true; text: tabs.currentIndex===0 ? "保存存档设置" : tabs.currentIndex===3 ? "保存画质方案" : "保存游戏资料"; enabled: !backend.busy && !backend.graphics.state.busy
+            Label { text: backend.controllerMode ? "LB / RB 切页 · Menu 保存 · B 返回" : "";color: Theme.secondary }
+            AppButton { id: closeButton;text: "关闭"; onClicked: dialog.close() }
+            AppButton { id: saveButton;objectName: "gameSettingsSave"; visible: tabs.currentIndex!==1; highlighted: true; text: tabs.currentIndex===0 ? "保存存档设置" : tabs.currentIndex===3 ? "保存画质方案" : "保存游戏资料"; enabled: !backend.busy && !backend.graphics.state.busy
                 onClicked: {
                     if(tabs.currentIndex===0) { dialog.saving="game-settings";backend.saveGame(dialog.gameId,{save_dir:savePath.text,exe:exe.text,monitor_exe:monitor.text,launch_mode:["direct","playnite","platform"][launchMode.currentIndex],arguments:gameArguments.text,working_dir:working.text}) }
                     else if(tabs.currentIndex===3) graphicsPane.save()

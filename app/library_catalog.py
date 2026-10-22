@@ -48,6 +48,7 @@ def valid_series(games):
         if name:members[name].append(game)
     return {name:rows for name,rows in members.items() if len({row['id'] for row in rows})>=2}
 def prepare_game(game):
+    from library_search import search_keys
     from library_sources import release_date
     game={**game,'release_date':release_date(game.get('release_date'))}
     from tag_catalog import effective_tags
@@ -55,7 +56,7 @@ def prepare_game(game):
     category=game.get('category') or primary(tags)
     name=canonical_series(game.get('series',''))
     return {**game,'category':category,'tags':tags,'series':name,'isNew':recently_added(game),
-            'searchText':normalized(' '.join([game['name'],category,name,*tags]))}
+            'searchText':normalized(' '.join([game['name'],category,name,*tags]))+' '+search_keys({**game,'tags':tags,'series':name})}
 def recommend(games,limit=12):
     recent=sorted([game for game in games if game.get('last_played')],key=lambda game:game['last_played'],reverse=True)[:5]
     excluded={game['id'] for game in recent};weights=Counter();categories=Counter()

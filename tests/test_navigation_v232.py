@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     backend.toggleFavorite('25')
     while backend.busy:spin(20)
     assert variant(hero.property('game'))['id']==selected
-    view.setProperty('contentY',400);spin(100);saved=view.property('contentY')
+    invoke(home,'navigateFocus','down');spin(180);saved=view.property('contentY')
     invoke(root,'navigate','category','视觉小说');spin(150)
     assert root.findChild(QObject,'libraryBack').property('visible') and root.property('libraryMode')=='category'
     combo=root.findChild(QObject,'platformFilter');combo.forceActiveFocus();dispatch(app,root,backend,'activate');spin(180)
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     combo.setProperty('currentIndex',0);root.setProperty('platformFilter','all');spin(80)
     root.findChild(QObject,'libraryBack').forceActiveFocus();dispatch(app,root,backend,'activate');spin(150)
     assert root.property('libraryMode')=='home' and abs(view.property('contentY')-saved)<2, (root.property('libraryMode'),view.property('contentY'),saved)
-    view.setProperty('contentY',0);invoke(home,'navigateFocus','down');spin(100)
+    invoke(home,'focusFirst');invoke(home,'navigateFocus','down');spin(100)
     assert home.property('focusedSection')==1
     invoke(home,'activateSelected');spin(100);assert root.property('libraryMode')=='category'
     invoke(root,'goBack');spin(100)

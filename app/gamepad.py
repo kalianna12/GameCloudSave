@@ -48,7 +48,7 @@ class State(ctypes.Structure):
     _fields_=[('packet',ctypes.c_uint32),('pad',Pad)]
 
 class Mapper:
-    BUTTONS={0x1000:'activate',0x2000:'back',0x4000:'favorite',0x8000:'history',0x100:'previous',0x200:'next',0x10:'menu'}
+    BUTTONS={0x1000:'activate',0x2000:'back',0x4000:'favorite',0x8000:'history',0x100:'previous',0x200:'next',0x10:'menu',0x20:'search',0x80:'case'}
     def __init__(self):self.reset()
     def reset(self):self.buttons=0;self.direction='';self.repeat_at=0;self.zoom_direction='';self.zoom_repeat_at=0
     def read(self,pad,now):

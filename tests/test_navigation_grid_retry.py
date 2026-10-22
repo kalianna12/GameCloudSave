@@ -55,12 +55,12 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         assert root.activeFocusItem().objectName()==name and root.property('libraryMode')==mode
     dispatch(app,root,backend,'right');spin()
     assert grid.property('currentIndex')==0 and root.activeFocusItem().objectName()=='gameGrid'
-    # Re-enter after a moved cursor: right always enters the first game.
+    # Re-enter the same scope at its remembered selection.
     invoke(grid,'navigateFocus',12);spin();grid.setProperty('currentIndex',0);grid.forceActiveFocus()
     dispatch(app,root,backend,'left');spin();grid.setProperty('currentIndex',12)
-    dispatch(app,root,backend,'right');spin();assert grid.property('currentIndex')==0
+    dispatch(app,root,backend,'right');spin();assert grid.property('currentIndex')==12
     # Home also starts at its first shelf and first tile.
-    dispatch(app,root,backend,'left');spin()
+    invoke(grid,'navigateFocus',0);dispatch(app,root,backend,'left');spin()
     for _ in range(4):dispatch(app,root,backend,'up');spin(50)
     assert root.property('libraryMode')=='home' and root.activeFocusItem().objectName()=='navHome'
     dispatch(app,root,backend,'right');spin();assert home.property('focusedSection')==0

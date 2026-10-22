@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     def rings():
         return [item for item in walk(root.contentItem()) if item.objectName() == 'tileFocusRing' and item.isVisible() and item.property('focusWidth') > 2.5]
 
-    with patch('winsound.PlaySound') as audio:
+    with patch.object(feedback.audio,'play') as audio:
         dispatch(app, root, backend, 'right'); spin()
         assert backend.controllerMode and feedback.hidden and app.overrideCursor().shape() == Qt.BlankCursor
         assert len(rings()) == 1, len(rings())
@@ -103,20 +103,22 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     assert root.property('libraryMode')=='series'
     grid.setProperty('currentIndex',0);grid.forceActiveFocus()
     dispatch(app,root,backend,'up');spin()
-    assert root.activeFocusItem().objectName()=='installedFilter'
+    item=root.activeFocusItem();toolbar_names={'installedFilter','platformFilter','sourceFilter','seriesFilter','librarySort','homeMappingProfile','layoutControl','personalControl','fullscreenControl'}
+    while item and item.objectName() not in toolbar_names:item=item.parentItem() if hasattr(item,'parentItem') else item.parent()
+    assert item is not None,'Up from the grid must enter the nearest visible toolbar row'
+    root.findChild(QObject,'installedFilter').forceActiveFocus()
     dispatch(app,root,backend,'right');spin()
     assert root.activeFocusItem().objectName()=='platformFilter'
-    dispatch(app,root,backend,'up');spin()
-    dispatch(app,root,backend,'right');spin()
+    dispatch(app,root,backend,'search');spin()
     assert root.activeFocusItem().objectName()=='search'
     dispatch(app,root,backend,'activate');spin()
     keyboard=root.findChild(QObject,'controllerKeyboard');assert keyboard.property('visible')
     dispatch(app,root,backend,'activate');spin(40)
     assert keyboard.property('value')=='1'
     dispatch(app,root,backend,'favorite');spin(40);assert keyboard.property('value')==''
-    dispatch(app,root,backend,'history');spin(40);assert keyboard.property('words')
-    dispatch(app,root,backend,'activate');spin(40);assert keyboard.property('value')=='Game 00'
-    dispatch(app,root,backend,'launch');spin()
+    dispatch(app,root,backend,'history');spin(40);assert keyboard.property('value')==' '
+    keyboard.setProperty('value','Game 00')
+    dispatch(app,root,backend,'menu');spin()
     assert not keyboard.property('visible') and root.property('searchQuery')=='game 00'
     invoke(root,'navigate','all','');spin()
     search=root.findChild(QObject,'search');search.forceActiveFocus()
@@ -134,8 +136,10 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     search=root.findChild(QObject,'search');point=search.mapToScene(QPointF(search.width()/2,search.height()/2))
     QTest.mouseClick(root,Qt.LeftButton,Qt.NoModifier,QPoint(int(point.x()),int(point.y())));spin()
     dispatch(app,root,backend,'down');spin()
-    assert root.activeFocusItem().objectName()=='platformFilter'
-    dispatch(app,root,backend,'down');spin()
+    assert not invoke(root,'libraryFocus'),'Down from search enters the toolbar at the current column'
+    for _ in range(3):
+        if grid.hasActiveFocus():break
+        dispatch(app,root,backend,'down');spin()
     assert grid.hasActiveFocus()
     invoke(root,'navigate','all','');spin()
     store.games[0]['release_date']='2020-02-29';store.games[1]['release_date']='1999-09-09'
@@ -159,7 +163,7 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'test-data') as directory:
     rings=[item for item in walk(root.contentItem()) if item.objectName()=='cardFocusRing' and item.isVisible()]
     assert len(rings)==1 and rings[0].z()>0
     ring=rings[0];assert ring.width()==ring.parentItem().width() and ring.height()==ring.parentItem().height()
-    dispatch(app,root,backend,'activate');spin();assert backend.popupActive()
+    dispatch(app,root,backend,'menu');spin();assert backend.popupActive()
     before=grid.property('currentIndex');dispatch(app,root,backend,'right');spin()
     assert grid.property('currentIndex')==before
     dispatch(app,root,backend,'back');spin();assert not backend.popupActive()

@@ -88,6 +88,46 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
             if child.poll() is None:child.terminate()
             child.wait(timeout=5)
     root.requestActivate();spin(150)
+    # A genuine native Start button identifies an intermediate launcher even
+    # when its title contains only a game name. The library releases topmost,
+    # keeps observing, and enhances only the later actual game window.
+    helper.write_text('''import ctypes as C
+from ctypes import wintypes as W
+from PySide6.QtWidgets import QApplication,QWidget,QLabel
+from PySide6.QtCore import QTimer
+app=QApplication([])
+launcher=QWidget();launcher.setWindowTitle("Visual novel fixture");launcher.resize(420,240);launcher.show()
+user=C.windll.user32;user.CreateWindowExW.argtypes=[W.DWORD,W.LPCWSTR,W.LPCWSTR,W.DWORD,C.c_int,C.c_int,C.c_int,C.c_int,W.HWND,W.HMENU,W.HINSTANCE,W.LPVOID];user.CreateWindowExW.restype=W.HWND
+button=user.CreateWindowExW(0,"Button","Start",0x50000000,20,25,140,36,int(launcher.winId()),1001,None,None)
+game=QWidget();game.setWindowTitle("Rendered game fixture");game.resize(800,540);QLabel("Actual rendered game window",game).move(40,40)
+def begin():
+    launcher.close();game.show()
+QTimer.singleShot(2900,begin)
+QTimer.singleShot(8500,app.quit)
+app.exec()
+''',encoding='utf-8')
+    children=[];phases.clear()
+    from launch_ready import activate as native_activate
+    with patch('services.subprocess.Popen',side_effect=capture),patch('launch_ready.activate',wraps=native_activate) as activations,patch.object(backend.graphics,'startForGame') as enhance:
+        try:
+            invoke(root,'launchGame',game);spin(1400)
+            assert backend.launchState['phase']=='launcher',(phases,backend.launchState)
+            assert transition.property('running') and not transition.property('visible') and transition.property('launcherHandedOff')
+            assert not enhance.called
+            import ctypes as C
+            from ctypes import wintypes as W
+            user=C.windll.user32;user.GetWindowLongW.argtypes=[W.HWND,C.c_int]
+            assert not user.GetWindowLongW(int(root.winId()),-20)&8,'Launcher remains under topmost library'
+            launcher_hwnd=backend.launchState['hwnd'];assert any(call.args[0]==launcher_hwnd for call in activations.call_args_list)
+            deadline=time.monotonic()+8
+            while transition.property('running') and time.monotonic()<deadline:spin(30)
+            assert not transition.property('running') and 'ready' in phases,(phases,backend.launchState)
+            enhance.assert_called_once();assert enhance.call_args.args[2]!=launcher_hwnd
+        finally:
+            for child in children:
+                if child.poll() is None:child.terminate()
+                child.wait(timeout=5)
+    root.requestActivate();spin(150)
     # Timeout/resume never sends a second launch. Stale callbacks after return
     # cannot reactivate a game or restart its overlay.
     with patch.object(store,'launch',return_value=None) as launch,patch('launch_ready.wait',return_value={'phase':'timeout','message':'Fixture timeout'}):
@@ -98,14 +138,14 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     with patch.object(store,'launch',side_effect=ValueError('Fixture missing executable')):
         invoke(root,'launchGame',game);spin(1200);assert backend.launchState['phase']=='error' and transition.property('running')
         invoke(transition,'cancel')
-    def until_cancelled(probe,cancel):
+    def until_cancelled(probe,cancel,**kwargs):
         cancel.wait(3);return {'phase':'cancelled'}
     with patch.object(store,'launch',return_value=None),patch('launch_ready.wait',side_effect=until_cancelled):
         invoke(root,'launchGame',game);spin(250);root.hide();spin(100)
         assert not transition.property('running') and backend._launch_cancel.is_set()
         root.show();root.requestActivate();spin(200)
     backend.saveSettings({'animations':False});idle()
-    def delayed_ready(*args):time.sleep(.35);return {'phase':'ready','hwnd':0,'message':'Fixture ready'}
+    def delayed_ready(*args,**kwargs):time.sleep(.35);return {'phase':'ready','hwnd':0,'message':'Fixture ready'}
     with patch.object(store,'launch',return_value=None),patch('launch_ready.wait',side_effect=delayed_ready):
         invoke(root,'launchGame',game);spin(80)
         assert transition.property('animationDone') and transition.property('running')

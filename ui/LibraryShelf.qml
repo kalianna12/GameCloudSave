@@ -9,12 +9,15 @@ Item {
     property bool keyboardFocused: false
     property string selectedId: ""
     property bool syncing: false
+    property bool pooled: false
+    property string modelSectionId: ""
     property int coverSize: 176
     property int cardGap: 14
     property bool recentPreview: true
     readonly property bool showPreview: section.kind==="recent" && recentPreview && width>=760
     readonly property real tileWidth: Metrics.tileWidth(section,coverSize)
-    readonly property real scrollTarget: horizontal.running ? horizontal.to : list.contentX
+    readonly property real scrollTarget: (horizontal.running ? horizontal.to : list.contentX)-list.originX
+    onScrollTargetChanged: if(!syncing && !list.moving && !horizontal.running) selectionUpdated()
     readonly property int selectionIndex: list.currentIndex
     property var selectedRecord: items.count ? items.get(Math.min(items.count-1,Math.max(0,list.currentIndex))).record : ({})
     signal selectionFocused()
@@ -29,7 +32,8 @@ Item {
     ListModel { id: items; objectName: "shelfRecords"; dynamicRoles: true }
     property var recordSignatures: ({})
     function sync() {
-        var savedId=selectedId;syncing=true
+        var sameSection=modelSectionId===section.id
+        var savedId=sameSection ? selectedId : "",savedX=sameSection ? scrollTarget : 0;syncing=true;horizontal.stop()
         var rows=section.items || [],nextSignatures=Object.create(null)
         for(var i=0;i<rows.length;i++) {
             var signature=JSON.stringify(rows[i])
@@ -47,6 +51,8 @@ Item {
         var previous=rows.findIndex(function(row) { return row.id===savedId })
         list.currentIndex=Math.max(0,previous)
         selectedId=rows.length ? rows[list.currentIndex].id : ""
+        modelSectionId=section.id
+        list.contentX=list.originX+Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),savedX))
         syncing=false
     }
     onSectionChanged: sync()
@@ -65,12 +71,19 @@ Item {
     }
     // Section subtitles repeat browsing instructions; keep the cover shelf quiet.
     function selectedGame() { return section.kind==="tiles" || section.kind==="store" ? null : selectedRecord }
+    function restoreSelection(index,x) {
+        if(!items.count) return
+        syncing=true;horizontal.stop()
+        list.currentIndex=Math.max(0,Math.min(items.count-1,index));selectedId=items.get(list.currentIndex).record.id
+        list.contentX=list.originX+Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),x || 0))
+        syncing=false
+    }
     function selectFirst() { horizontal.stop();list.currentIndex=items.count ? 0 : -1;list.positionViewAtBeginning() }
     function activateSelected() { if(!items.count) return;if(section.kind==="store") backend.recommendations.open(selectedRecord.id);else if(section.kind==="tiles") browseRequested(selectedRecord.target,selectedRecord.value);else launchRequested(selectedRecord) }
-    function selectionSceneX() { return list.mapToItem(null,list.currentIndex*(tileWidth+cardGap)-list.contentX+tileWidth/2,0).x }
+    function selectionSceneX() { return list.mapToItem(null,list.currentIndex*(tileWidth+cardGap)-scrollTarget+tileWidth/2,0).x }
     function selectAtSceneX(sceneX) {
         if(!items.count) return
-        var x=list.mapFromItem(null,sceneX,0).x+list.contentX
+        var x=list.mapFromItem(null,sceneX,0).x+scrollTarget
         var next=Math.max(0,Math.min(items.count-1,Math.round((x-tileWidth/2)/(tileWidth+cardGap))))
         moveSelection(next-list.currentIndex)
     }
@@ -83,11 +96,12 @@ Item {
         if(start<destination) destination=start
         else if(start+tileWidth>destination+list.width) destination=start+tileWidth-list.width
         destination=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),destination))
-        if(Math.abs(destination-scrollTarget)>.5) { horizontal.to=destination;horizontal.restart() }
+        if(Math.abs(destination-scrollTarget)>.5) { horizontal.to=list.originX+destination;horizontal.restart() }
+        selectionUpdated()
     }
     function move(direction) {
         var step=Math.max(tileWidth+cardGap,Math.floor((list.width+cardGap)/(tileWidth+cardGap))*(tileWidth+cardGap))
-        horizontal.to=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),scrollTarget+direction*step));horizontal.restart()
+        horizontal.to=list.originX+Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),scrollTarget+direction*step));horizontal.restart()
     }
     function pageSelection(direction) { moveSelection(direction*Math.max(1,Math.floor(list.width/(tileWidth+cardGap)))) }
     GameTile {
@@ -98,20 +112,23 @@ Item {
         onLaunchRequested: function(game) { shelf.launchRequested(game) }
         onCloudRequested: function(game) { shelf.cloudRequested(game) }
     }
-    NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 75 : 0; easing.type: Easing.OutCubic }
+    NumberAnimation { id: horizontal; target: list; property: "contentX"; duration: Theme.motion ? 75 : 0; easing.type: Easing.OutCubic;onStopped: if(!shelf.syncing) shelf.selectionUpdated() }
     ListView {
         id: list; objectName: "shelf-"+shelf.section.id
         anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 48; bottom: parent.bottom; bottomMargin: 18 }
         anchors.leftMargin: shelf.showPreview ? Math.min(470*coverSize/176,shelf.width*.45)+cardGap : 0
         orientation: ListView.Horizontal; spacing: shelf.cardGap; clip: true; model: items
+        highlightFollowsCurrentItem: false
+        contentWidth: Math.max(0,items.count*(shelf.tileWidth+shelf.cardGap)-shelf.cardGap)
         reuseItems: true; cacheBuffer: 160; flickDeceleration: 2400; maximumFlickVelocity: 2800
         onCurrentIndexChanged: if(!shelf.syncing && currentIndex>=0 && currentIndex<items.count) { shelf.selectedId=items.get(currentIndex).record.id;shelf.selectionUpdated() }
+        onMovementEnded: shelf.selectionUpdated()
         delegate: Item {
             required property var record; required property int index
             width: shelf.tileWidth
             height: list.height
             Loader {
-                active: shelf.visible
+                active: shelf.visible && !shelf.pooled
                 asynchronous: !shelf.keyboardFocused || parent.index!==list.currentIndex
                 Rectangle { anchors.fill: parent;radius: 8;color: Theme.surface;visible: parent.status!==Loader.Ready }
                 anchors.fill: parent; sourceComponent: shelf.section.kind==="store" ? storeTile : shelf.section.kind==="tiles" ? browseTile : gameTile
@@ -137,7 +154,7 @@ Item {
             target: null
             onWheel: function(event) {
                 if(event.modifiers & Qt.ShiftModifier || event.angleDelta.x) {
-                    horizontal.stop();list.contentX=Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),list.contentX-(event.angleDelta.x || event.angleDelta.y)))
+                    horizontal.stop();list.contentX=list.originX+Math.max(0,Math.min(Math.max(0,list.contentWidth-list.width),shelf.scrollTarget-(event.angleDelta.x || event.angleDelta.y)))
                     event.accepted=true
                 }
                 else { shelf.verticalScroll(event.pixelDelta.y ? -event.pixelDelta.y : -event.angleDelta.y/120*88);event.accepted=true }

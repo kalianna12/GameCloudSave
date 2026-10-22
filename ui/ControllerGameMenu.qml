@@ -14,7 +14,8 @@ Dialog {
     property bool useLaunchTransition: false
     signal launchRequested(var game)
     signal settingsRequested(var game)
-    readonly property var actions: ["启动游戏",game.favorite ? "取消收藏" : "收藏","本地备份","本地备份并上传","游戏设置","关闭"]
+    signal graphicsRequested(var game)
+    readonly property var actions: ["启动游戏",game.favorite ? "取消收藏" : "收藏","本地备份","本地备份并上传","游戏设置","画质增强","关闭"]
     title: game.name || "游戏"
     function showGame(record) { game=record;selectedAction=0;open() }
     function choose(index) {
@@ -23,7 +24,8 @@ Dialog {
         else if(index===2) backend.localSave(game.id)
         else if(index===3) backend.cloudSave(game.id)
         else if(index===4) { close();settingsRequested(game) }
-        if(index===0 || index===5) close()
+        else if(index===5) { close();graphicsRequested(game) }
+        if(index===0 || index===6) close()
     }
     function usable(index) { return index>=4 || !backend.busy && (index<2 || !!game.saveSet && (index!==3 || !!backend.settings.cloud_folder)) }
     function controllerInput(command) {
