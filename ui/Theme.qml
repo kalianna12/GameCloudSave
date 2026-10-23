@@ -13,6 +13,7 @@ QtObject {
     readonly property color onAccent: palette.onAccent || "#10200a"
     readonly property bool dark: palette.dark !== false
     readonly property bool motion: palette.motion !== false
+    readonly property string achievementBadgeMode: backend.settings.achievement_badges || "hover"
     readonly property color outline: Qt.rgba(border.r,border.g,border.b,palette.outlineOpacity || .48)
     readonly property int radius: palette.radius || 10
     readonly property int controlRadius: Math.max(3,radius-1)

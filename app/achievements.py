@@ -71,6 +71,7 @@ class Repository:
         for key in dict.fromkeys([*schema, *states, *unlocks]):
             row = dict(schema.get(key) or {'id': key, 'name': key, 'description': '尚未匹配成就说明', 'icon': '', 'hidden': False, 'max': 0})
             row.update(unlocked=key in unlocks, unlocked_at=time.strftime('%Y-%m-%d %H:%M', time.localtime(unlocks[key])) if unlocks.get(key,0)>0 else '时间未知' if key in unlocks else '', progress=states.get(key, {}).get('progress', 0))
+            if not row.get('max'):row['max']=states.get(key,{}).get('max',0)
             row.update(secret_name=row['name'],secret_description=row['description'],unlocked_time=unlocks.get(key,0))
             if row['hidden'] and not row['unlocked']: row.update(name='隐藏成就', description='解锁后显示详情')
             icon = self.icon_path(row)
@@ -85,7 +86,15 @@ class Repository:
             elif not Path(config['source']).is_file(): message = '记录文件尚未生成；游玩时会等待它出现'
             else: message = '本地记录已同步；启动游戏后监听新解锁' if config.get('schema') else '已读取进度；请匹配成就定义以显示名称与图标'
         valid=set(schema) or {row['id'] for row in rows}
+        matched=len(set(states)&set(schema))
+        if not config.get('source'):record_status='待选择记录' if len(config.get('sources',[]))>1 else '尚未找到记录'
+        elif not Path(config['source']).is_file():record_status='等待记录生成'
+        elif not schema:record_status='已读取记录 · 待匹配定义'
+        elif not states:record_status='记录中暂无可读条目'
+        elif not matched:record_status='记录与成就 ID 不匹配 · 请检查游戏版本'
+        else:record_status=f'已读取 {len(states)} 项 · 对应定义 {matched} 项'
         return {**{k: v for k, v in config.items() if k != 'schema'}, 'ident': ident, 'rows': rows,
+                'record_status':record_status,'record_entries':len(states),'record_matched':matched,
                 'total': len(valid), 'has_schema': bool(schema), 'unlocked': len(valid&set(unlocks)), 'message': message, 'busy': False,
                 'icons_done':sum(bool(self.icon_path(row)) for row in schema.values()),'icons_total':sum(bool(row.get('icon')) for row in schema.values())}
 
@@ -93,6 +102,7 @@ class Repository:
         config=self.config(ident);record=self.record(ident,config);schema=config.get('schema',[])
         keys={row['id'] for row in schema} or set(record.get('progress',{}))|set(record.get('unlocks',{}))
         return {'total':len(keys),'unlocked':len(keys&set(record.get('unlocks',{}))),
+                'record_ready':bool(keys&set(record.get('progress',{}))),
                 'has_schema':bool(schema),'has_record':bool(config.get('source')) and Path(config['source']).is_file(),
                 'source':config.get('source',''),'appid':config.get('appid',''),'provider':config.get('schema_source',''),
                 'enabled':config.get('enabled',True),'ambiguous':len(config.get('sources',[]))>1 and not config.get('source'),
@@ -191,7 +201,7 @@ class Achievements(QObject):
             if value['total']:summaries[ident]=value
             rows.append(dict(value,id=ident,name=game['name'],platform=game.get('platform') or 'local',
                              supported=game.get('platform') in ('local','steam','',None),
-                             error=config.get('last_error',''),status='已就绪' if value['has_schema'] and value['has_record'] else '待选择记录' if value['ambiguous'] else '已匹配 · 尚无记录' if value['has_schema'] else '匹配失败' if config.get('last_error') else '待匹配'))
+                             error=config.get('last_error',''),status='已就绪' if value['has_schema'] and value['has_record'] and value['record_ready'] else '待选择记录' if value['ambiguous'] else '记录待验证' if value['has_schema'] and value['has_record'] else '已匹配 · 尚无记录' if value['has_schema'] else '匹配失败' if config.get('last_error') else '待匹配'))
         if not self.closed:self.catalogReady.emit({'summaries':summaries,'rows':rows,'recent':sorted(recent,key=lambda r:-r['stamp'])[:200]})
 
     @Slot()
@@ -430,7 +440,7 @@ class Achievements(QObject):
                 config['provider']=values['provider']
             source = str(values.get('source', config.get('source', ''))).strip()
             if source:
-                if Path(source).suffix.casefold() not in ('.json', '.ini','.bin'): raise ValueError('请选择 JSON、INI 或 Steam BIN 成就记录')
+                if Path(source).suffix.casefold() not in ('.json', '.ini','.bin','.cfg','.dat'): raise ValueError('请选择 JSON、INI、兼容的 CFG / DAT 或 Steam BIN 成就记录')
                 if Path(source).is_file():
                     parsed = parse_state(source)
                     if not parsed and Path(source).suffix.casefold() == '.json' and normalize_schema(json.loads(read_text(source))):
@@ -443,7 +453,7 @@ class Achievements(QObject):
 
     @Slot(str)
     def pickSource(self, ident):
-        path, _ = QFileDialog.getOpenFileName(None, '选择游戏生成的成就记录', '', '成就记录 (*.json *.ini *.bin)')
+        path, _ = QFileDialog.getOpenFileName(None, '选择游戏生成的成就记录', '', '成就记录 (*.json *.ini *.bin *.cfg *.dat)')
         if path: self.save(ident, {'source': path})
 
     @Slot(str)

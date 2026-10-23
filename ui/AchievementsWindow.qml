@@ -128,7 +128,7 @@ ApplicationWindow {
                     }
                 }
                 Label { text: "本机进度来源";font.pixelSize: 20;font.bold: true }
-                Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "Steam：从安装位置定位账号对应的 UserGameStats BIN，配对 Schema 解析位掩码。多个账号不会自动合并；Steam 游戏统计成就，但不显示本程序的解锁弹窗。\n\n本地游戏：检查游戏目录、已配置的存档目录、对应 App ID 的常见记录目录及手动添加的目录，读取 JSON / INI。没有记录的游戏不会凭列表伪造解锁。\n\n游戏页的“匹配与记录设置 → 检测详情”可查看已检查目录、未识别文件及原因。";color: Theme.secondary }
+                Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "Steam：从安装位置定位账号对应的 UserGameStats BIN，配对 Schema 解析位掩码。多个账号不会自动合并；Steam 游戏统计成就，但不显示本程序的解锁弹窗。\n\n本地游戏：检查游戏目录、已配置的存档目录、对应 App ID 的常见记录目录及手动添加的目录，读取 JSON / INI 和内容为 INI 的 Achievements.Bin、achieve.dat、CreamAPI.Achievements.cfg。支持解锁标记、时间及 CurProgress / MaxProgress；数值达到上限不直接推断解锁。\n\nGoldberg / GSE 的 JSON、兼容的 CODEX / RUNE 等 INI 可读取已有记录；来源名称相同也可能有不同格式。SmartSteamEmu 的 stats.bin 二进制、GOG Galaxy 数据库、模拟器奖杯及游戏私有存档仍需独立适配，不能当成 Steam BIN 读取。没有可读记录的游戏无法仅靠成就列表自动判定解锁。\n\n游戏页会分别显示定义缓存与记录识别状态。“匹配与记录设置 → 检测详情”可查看已检查目录、未识别文件及原因；新增记录可在游戏运行时自动检测。";color: Theme.secondary }
                 Label { text: "开源参考：PlayniteAchievements · Justin Delano · MIT";color: Theme.secondary }
                 AppButton { text: "查看上游项目";onClicked: Qt.openUrlExternally("https://github.com/justin-delano/PlayniteAchievements") }
             }

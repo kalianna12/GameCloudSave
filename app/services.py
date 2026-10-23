@@ -82,7 +82,7 @@ class Store:
                     'recommendations_enabled':True,'recommendations_steam':True,'recommendations_xbox':True,
                     'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True,'navigation_sound_style':'clear','navigation_volume':80,'controller_tilt':True,'fullscreen':False})
-        defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',shelf_wood='walnut',shelf_sunlight=True,atlas_order='release_asc')
+        defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',shelf_wood='walnut',shelf_sunlight=True,atlas_order='release_asc',achievement_badges='hover')
         from audio_settings import DEFAULTS
         defaults.update(DEFAULTS)
         self.settings = {**defaults, **read_json(self.profile / 'settings.json', {})}
@@ -105,6 +105,7 @@ class Store:
         from audio_settings import DEFAULTS,validate
         values.update(validate({key:value for key,value in values.items() if key in DEFAULTS}))
         if 'controller_tilt' in values and type(values['controller_tilt'])!=bool:raise ValueError('摇杆倾斜设置无效')
+        if 'achievement_badges' in values and values['achievement_badges'] not in ('hover','always','hidden'):raise ValueError('成就徽标显示方式无效')
         for key in ('recommendations_enabled','recommendations_steam','recommendations_xbox'):
             if key in values and type(values[key])!=bool:raise ValueError('推荐设置无效')
         if 'fullscreen' in values and type(values['fullscreen'])!=bool:raise ValueError('全屏设置无效')

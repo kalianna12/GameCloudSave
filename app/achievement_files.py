@@ -12,9 +12,10 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 LIMIT = 8 * 1024 * 1024
-FILENAMES = ('achievements.json', 'achievements.ini', 'user_stats.ini')
-FLAGS = ('earned', 'achieved', 'unlocked', 'achievedstate', 'haveachieved', 'bachieved')
-TIMES = ('earned_time', 'unlocktime', 'unlock_time', 'timestamp', 'time')
+FILENAMES = ('achievements.json', 'achievements.ini', 'user_stats.ini', 'achiev.ini', 'stats.ini', 'creamapi.achievements.cfg', 'achievements.bin', 'achieve.dat')
+FLAGS = ('earned', 'achieved', 'unlocked', 'achievedstate', 'haveachieved', 'bachieved', 'state')
+TIMES = ('earned_time', 'unlocktime', 'unlock_time', 'timestamp', 'time', 'haveachievedtime', 'havehaveachievedtime')
+PROGRESS = ('progress', 'cur_progress', 'curprogress', 'current')
 
 
 def read_text(path):
@@ -43,15 +44,16 @@ def state_entry(value):
     fields = {str(k).casefold(): v for k, v in value.items()}
     flag = next((fields[k] for k in FLAGS if k in fields), None)
     stamp = max((number(fields.get(k)) for k in TIMES), default=0)
-    if flag is None and not stamp and not any(k in fields for k in ('progress', 'cur_progress', 'current')): return None
+    if flag is None and not stamp and not any(k in fields for k in PROGRESS): return None
     return {'unlocked': truth(flag) if flag is not None else stamp > 0,
             'time': max(0, min(stamp, 32503680000)),
-            'progress': max(0, number(fields.get('progress', fields.get('cur_progress', fields.get('current', 0)))))}
+            'progress': max(0, number(next((fields[k] for k in PROGRESS if k in fields), 0))),
+            'max': max(0, number(fields.get('maxprogress', fields.get('max_progress', 0))))}
 
 
 def parse_state(path):
     """JSON schema lists are not progress. Numeric stats alone never unlock achievements."""
-    if Path(path).suffix.casefold()=='.bin':
+    if Path(path).suffix.casefold()=='.bin' and Path(path).name.casefold()!='achievements.bin':
         from achievement_steam import progress_file
         return progress_file(path)
     text = read_text(path)
@@ -60,7 +62,7 @@ def parse_state(path):
         data = json.loads(text)
         if isinstance(data, dict): data = data.get('achievements', data)
         if isinstance(data, list):
-            pairs = ((row.get('name') or row.get('apiName') or row.get('id'), row) for row in data if isinstance(row, dict))
+            pairs = ((row.get('name') or row.get('apiName') or row.get('apiname') or row.get('id'), row) for row in data if isinstance(row, dict))
         elif isinstance(data, dict): pairs = data.items()
         else: raise ValueError('不支持的成就 JSON 结构')
         for index,(key, value) in enumerate(pairs):
@@ -71,12 +73,15 @@ def parse_state(path):
         parser = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(';', '#'))
         parser.optionxform = str
         parser.read_string(text)
+        times_section=next((s for s in parser.sections() if s.casefold()=='achievementsunlocktimes'),None)
         for section in parser.sections()[:5000]:
             fields = dict(parser.items(section))
-            if section.casefold() in ('achievements', 'achievement', 'userstats'):
+            if section.casefold() in ('achievements', 'achievement', 'userstats', 'achieve_data'):
                 for key, value in fields.items():
                     if re.fullmatch(r'(?:true|false|[01])', value.strip(), re.I):
-                        entries[key] = {'unlocked': truth(value), 'time': 0, 'progress': 0}
+                        # Some INI writers keep the unlock times in a second section.
+                        stamp=number(parser.get(times_section,key,fallback='0')) if times_section else 0
+                        entries[key] = {'unlocked': truth(value), 'time': max(0,min(stamp,32503680000)), 'progress': 0}
                     elif value.startswith('{'):
                         try: row = state_entry(json.loads(value))
                         except ValueError: row = None
@@ -87,7 +92,7 @@ def parse_state(path):
             # Flat achievement suffix fields, e.g. ACH_FIRST.earned=1.
             grouped={}
             for key,value in fields.items():
-                match=re.fullmatch(r'(.+)[._](earned|achieved|unlocked|earned_time|unlocktime|progress)',key,re.I)
+                match=re.fullmatch(r'(.+)[._](earned|achieved|unlocked|earned_time|unlocktime|progress|curprogress|maxprogress|haveachievedtime)',key,re.I)
                 if match:grouped.setdefault(match[1],{})[match[2]]=value
             for key,fields in grouped.items():
                 row=state_entry(fields)
@@ -179,20 +184,32 @@ def walk_files(root, depth=6, budget=700):
     return found
 
 
+def documents_dir():
+    """Respect redirected/OneDrive Documents; never enumerate the whole user profile."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders') as key:
+            return Path(os.path.expandvars(winreg.QueryValueEx(key,'Personal')[0]))
+    except (ImportError,OSError):return Path.home()/'Documents'
+
+
 def discover(game, local, appid):
     roots = []
     for value in (local.get('install_dir'), str(Path(local['exe']).parent) if local.get('exe') else '', local.get('save_dir')):
         if value and Path(value).is_dir() and len(Path(value).resolve().parts) >= 3: roots.append(Path(value))
-    if appid:
-        for env, names in [('APPDATA', ('GSE Saves', 'Goldberg SteamEmu Saves', 'SmartSteamEmu')), ('LOCALAPPDATA', ('GSE Saves', 'Goldberg SteamEmu Saves', 'SKIDROW', 'EMPRESS', 'Steam/CODEX')), ('PUBLIC', ('Documents/Steam/CODEX', 'Documents/Steam/RUNE', 'Documents/Steam', 'Documents/OnlineFix'))]:
+    if re.fullmatch(r'[1-9]\d{0,11}',str(appid)):
+        for env, names in [('APPDATA', ('GSE Saves', 'Goldberg SteamEmu Saves', 'SmartSteamEmu', 'EMPRESS', 'Steam/CODEX', 'CreamAPI')), ('LOCALAPPDATA', ('GSE Saves', 'Goldberg SteamEmu Saves', 'SKIDROW', 'EMPRESS', 'Steam/CODEX')), ('PUBLIC', ('Documents/Steam/CODEX', 'Documents/Steam/RUNE', 'Documents/Steam', 'Documents/OnlineFix', 'EMPRESS', 'Documents/EMPRESS'))]:
             if os.environ.get(env): roots.extend(Path(os.environ[env]) / name / appid for name in names)
         # Account-first and portable Steam-compatible layouts, still scoped to AppID.
-        for env,name in [('APPDATA','SmartSteamEmu'),('LOCALAPPDATA','Steam'),('PUBLIC','Documents/Steam')]:
+        roots.extend(documents_dir()/name/appid for name in ('SKIDROW','OnlineFix'))
+        # ProgramData uses vendor/account/AppID as well as Steam/AppID.
+        if os.environ.get('PROGRAMDATA'):roots.append(Path(os.environ['PROGRAMDATA'])/'Steam'/appid)
+        for env,name in [('APPDATA','SmartSteamEmu'),('LOCALAPPDATA','Steam'),('PUBLIC','Documents/Steam'),('PROGRAMDATA','Steam')]:
             base=Path(os.environ[env])/name if os.environ.get(env) else None
             if base and base.is_dir():
                 try:
                     for parent in list(base.iterdir())[:80]:
-                        if parent.is_dir() and not parent.is_symlink():roots.append(parent/appid)
+                        if parent.is_dir() and not parent.is_symlink() and not getattr(parent.stat(),'st_file_attributes',0)&0x400:roots.append(parent/appid)
                 except OSError:pass
     roots.extend(Path(value) for value in local.get('achievement_roots',[])[:10] if value)
     sources = []; schemas = []; seen = set();rejected=[]
@@ -202,7 +219,7 @@ def discover(game, local, appid):
             if key in seen: continue
             seen.add(key)
             try:
-                if path.suffix.casefold()=='.bin':
+                if path.suffix.casefold()=='.bin' and path.name.casefold()!='achievements.bin':
                     if not appid or not re.search(r'_'+re.escape(str(appid))+r'\.bin$',path.name,re.I):continue
                     if 'schema_' in path.name.casefold():
                         from achievement_steam import schema_file
@@ -216,6 +233,8 @@ def discover(game, local, appid):
                 # Empty state files outside steam_settings are valid pre-first-unlock records.
                 if states or path.suffix.casefold() == '.json' and json.loads(read_text(path)) == {} and 'steam_settings' not in path.parts:
                     sources.append(str(path))
+                elif not (path.suffix.casefold()=='.json' and schema):
+                    rejected.append({'path':str(path),'reason':'未识别到解锁标记；可能是普通统计／配置，或尚不支持的记录格式'})
             except (OSError, ValueError, configparser.Error) as exc:rejected.append({'path':str(path),'reason':str(exc)[:150]})
     if appid:
         from achievement_steam import cache_paths,schema_file,steam_roots

@@ -14,6 +14,7 @@ Item {
     property real opening: spines ? (raised ? -8 : -88) : 0
     signal chosen()
     signal opened()
+    HoverHandler { id: bookHover;enabled: !backend.controllerMode }
     implicitWidth: spines ? 66 : coverWidth+14
     implicitHeight: coverWidth*1.42+88
     z: raised ? 10 : 0
@@ -52,8 +53,8 @@ Item {
             Rectangle { anchors.fill: parent; color: "transparent"; radius: 3; border.color: "#40ffffff"; border.width: 1 }
             Rectangle { anchors.fill: parent; visible: book.sunlight>0; gradient: Gradient { GradientStop { position: 0; color: Qt.rgba(1,.88,.65,book.sunlight*1.5) } GradientStop { position: .65; color: "transparent" } GradientStop { position: 1; color: "#08000000" } } }
             SelectionFrame { objectName: "bookFocusRing"; selected: book.selected; radius: 3 }
-            AchievementBadge { id: achievements;gameId: book.game.id || "";x: 6;y: 6;width: 42 }
-            NewGameBadge { visible: !!book.game.isNew;x: 6;y: achievements.visible ? achievements.height+11 : 6 }
+            AchievementBadge { id: achievements;gameId: book.game.id || "";revealed: !book.suspended && (bookHover.hovered || book.selected);x: 6;y: book.game.isNew ? 32 : 6;width: 42 }
+            NewGameBadge { visible: !!book.game.isNew;x: 6;y: 6 }
             Label { visible: !!book.game.favorite; text: "★"; color: "#ffe0a0"; font.pixelSize: 21; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; style: Text.Outline; styleColor: "#773b23" }
         }
     }

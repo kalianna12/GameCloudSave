@@ -131,6 +131,20 @@ ApplicationWindow {
                 }
                 ColumnLayout {
                     Layout.fillWidth: true; spacing: 4
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: "封面成就徽标";color: Theme.secondary }
+                        AppComboBox {
+                            objectName: "achievementBadgeMode";property bool controllerSelectable: true;Layout.fillWidth: true
+                            property var ids: ["hover","always","hidden"]
+                            model: ["悬停或选中时显示","始终显示","隐藏"]
+                            currentIndex: Math.max(0,ids.indexOf(Theme.achievementBadgeMode))
+                            enabled: !backend.busy
+                            onActivated: backend.saveSettings({achievement_badges:ids[currentIndex]})
+                            SelectionFrame { selected: parent.activeFocus;radius: 6 }
+                        }
+                    }
+                    Label { text: "隐藏徽标仍会统计成就。进度圈由灰蓝渐变至青绿，全部完成为金色。";color: Theme.secondary;wrapMode: Text.Wrap;Layout.fillWidth: true;font.pixelSize: 12 }
                     PadCheckBox { text: "界面动效"; checked: backend.settings.animations; enabled: !backend.busy; onToggled: backend.saveSettings({animations:checked}) }
                     PadCheckBox { text: "手柄导航"; checked: backend.settings.gamepad_enabled; enabled: !backend.busy; onToggled: backend.saveSettings({gamepad_enabled:checked}) }
                     PadCheckBox { objectName: "navigationSounds";text: "界面与游戏启动音效"; checked: backend.audioSettings.navigation_sounds; onToggled: backend.saveAudioSettings({navigation_sounds:checked}) }

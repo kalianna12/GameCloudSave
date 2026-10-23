@@ -34,7 +34,7 @@ def walk(item):
 
 with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-library-') as temp:
     root=Path(temp);store=Store(root/'data','isolated');output=ROOT/'build/achievement-library-review';output.mkdir(exist_ok=True)
-    store.settings.update(setup_completed=True,guide_dismissed=True,watch=False,recommendations_enabled=False,navigation_volume=0)
+    store.settings.update(setup_completed=True,guide_dismissed=True,watch=False,recommendations_enabled=False,navigation_volume=0,achievement_badges='always')
     schema=[{'name':f'ACH_{i}','displayName':f'冒险纪念 {i:02}','description':'探索并记录新的旅程','hidden':i==94} for i in range(96)]
     for folder in ('game/steam_settings','game/profile','ambiguous/steam_settings','ambiguous/one','ambiguous/two'):(root/folder).mkdir(parents=True)
     (root/'game/steam_settings/achievements.json').write_text(json.dumps(schema),encoding='utf-8')
@@ -78,7 +78,16 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
                 for badge in badges:
                     if badge.property('gameId')=='local':
                         new=next((s for s in badge.parentItem().childItems() if s.objectName()=='newGameBadge' and s.isVisible()),None)
-                        if new:assert new.y()>=badge.y()+badge.height(),(design,new.y(),badge.y(),badge.height())
+                        if new:assert badge.y()>=new.y()+new.height(),(design,new.y(),badge.y(),badge.height())
+                        # Hover/focus mode and global hiding never move the new-game marker.
+                        original_y=new.y() if new else None
+                        store.settings['achievement_badges']='hidden';backend.settingsChanged.emit();spin(30)
+                        assert not badge.isVisible()
+                        store.settings['achievement_badges']='hover';backend.settingsChanged.emit();badge.setProperty('revealed',False);spin(30)
+                        assert not badge.isVisible()
+                        badge.setProperty('revealed',True);spin(30);assert badge.isVisible()
+                        if new:assert new.y()==original_y
+                        store.settings['achievement_badges']='always';backend.settingsChanged.emit();spin(30)
                 window.grabWindow().save(str(output/f'badges-{design}.png'))
             store.settings['library_design']='classic';backend.settingsChanged.emit();invoke(window,'navigate','home','');spin(250)
             window.grabWindow().save(str(output/'home.png'))

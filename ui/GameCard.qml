@@ -49,8 +49,8 @@ Rectangle {
         }
         MouseArea { anchors.fill: parent; z: 1; enabled: !backend.busy; cursorShape: Qt.PointingHandCursor; onClicked: card.settingsRequested() }
         CoverEffects { id: coverEffect; anchors.fill: parent; z: 5; surface: poster; identity: card.game.id || ""; controllerFocused: card.selected && backend.controllerMode; suspended: card.scrolling }
-        AchievementBadge { id: achievements;gameId: card.game.id || "";x: 7;y: 7 }
-        NewGameBadge { visible: !!card.game.isNew;x: 7;y: achievements.visible ? achievements.y+achievements.height+5 : 7 }
+        AchievementBadge { id: achievements;gameId: card.game.id || "";revealed: !card.scrolling && (hover.hovered || card.selected);x: 7;y: card.game.isNew ? 33 : 7 }
+        NewGameBadge { visible: !!card.game.isNew;x: 7;y: 7 }
         IconButton { z: 6; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8; width: 32; height: 32; iconName: "star"; overArtwork: true; accent: !!card.game.favorite; visible: card.game.favorite || hover.hovered; hint: card.game.favorite ? "取消收藏" : "收藏"; enabled: !backend.busy; onClicked: card.favoriteRequested() }
     }
     Item {
