@@ -92,6 +92,25 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
                 window.grabWindow().save(str(output/f'badges-{design}.png'))
             store.settings['library_design']='classic';backend.settingsChanged.emit();invoke(window,'navigate','home','');spin(250)
             window.grabWindow().save(str(output/'home.png'))
+            # Ori regression: leave all achievement pages closed, no launch
+            # session and no manual poll. The Steam cache's next write must
+            # update a visible real QML cover badge through the timer alone.
+            invoke(window,'navigate','all','');spin(180)
+            shown=window.property('shownGames');shown=shown.toVariant() if hasattr(shown,'toVariant') else shown
+            invoke(window.findChild(QObject,'gameGrid'),'navigateFocus',next(i for i,g in enumerate(shown) if g['id']=='steam'));spin(180)
+            steam_badge=next(b for b in walk(window.contentItem()) if b.objectName()=='achievementBadge' and b.property('gameId')=='steam' and b.isVisible())
+            assert steam_badge.property('completed')==1
+            from test_achievement_sources import kv
+            revision=backend.libraryRevision;popups=[];manager.overlay.enqueue=lambda *args:popups.append(args)
+            started=time.monotonic()
+            steam.write_bytes(kv({'cache':{'7':{'data':1},'8':{'data':10},'9':{'data':4}}}))
+            until(lambda:steam_badge.property('completed')==2)
+            assert manager.summary('steam')['unlocked']==2 and manager.statistics('steam',30)['unlocked']==2
+            assert not manager.sessions and not popups and backend.libraryRevision==revision
+            assert not window.findChild(QObject,'achievementsWindow').property('visible')
+            window.grabWindow().save(str(output/'steam-passive-live-badge.png'))
+            print('PASS: Steam timer -> actual cover badge without opening achievements, ms='+str(round((time.monotonic()-started)*1000)),flush=True)
+            invoke(window,'navigate','home','');spin(180)
             nav=window.findChild(QObject,'achievementsNav');QMetaObject.invokeMethod(nav,'clicked');spin(150)
             library=window.findChild(QObject,'achievementsWindow');assert library and library.property('visible')
             invoke(library,'selectGame',0);until(lambda:not manager.state['busy']);spin(120)
@@ -117,10 +136,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             before=backend.libraryRevision;calls=[];manager.overlay.enqueue=lambda *args:calls.append(args)
             manager.begin('steam').result(timeout=3);manager.sessions['steam']['target']={'pid':os.getpid(),'hwnd':0}
             from test_achievement_sources import kv
-            steam.write_bytes(kv({'cache':{'7':{'data':3},'8':{'data':10},'9':{'data':4}}}))
-            manager.poll();until(lambda:manager.summary('steam').get('unlocked')==2)
+            steam.write_bytes(kv({'cache':{'7':{'data':-2147483647},'8':{'data':10},'9':{'data':4}}}))
+            manager.poll();until(lambda:manager.summary('steam').get('unlocked')==3)
             assert not calls and backend.libraryRevision==before
-            assert manager.statistics('steam',30)['unlocked']==2
+            assert manager.statistics('steam',30)['unlocked']==3
             manager.exportDefinitions('local');until(lambda:not manager.state['busy'])
             exported=store.profile/'achievements/exports/42/steam_settings/achievements.json'
             assert exported.is_file() and len(json.loads(exported.read_text(encoding='utf-8')))==96

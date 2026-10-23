@@ -85,10 +85,14 @@ def schema_file(path):
     path=Path(path);stat=path.stat();return schema_cached(str(path),stat.st_mtime_ns,stat.st_size)[0]
 
 
-def progress_file(path):
+def progress_schema_path(path):
     path=Path(path);match=re.fullmatch(r'UserGameStats_(?:\d+_)?(\d+)\.bin',path.name,re.I)
     if not match:raise ValueError('请选择 UserGameStats_<账号>_<AppID>.bin，不是定义缓存')
-    schema=path.parent/('UserGameStatsSchema_'+match[1]+'.bin')
+    return path.parent/('UserGameStatsSchema_'+match[1]+'.bin')
+
+
+def progress_file(path):
+    path=Path(path);schema=progress_schema_path(path)
     info=schema.stat();rows,definitions=schema_cached(str(schema),info.st_mtime_ns,info.st_size)
     if not rows:raise ValueError('对应的 Steam 定义缓存没有可读成就')
     tree=read_kv(path);cache=descendant(tree,'cache');result={}

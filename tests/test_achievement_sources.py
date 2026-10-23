@@ -43,6 +43,23 @@ class Sources(unittest.TestCase):
         with self.assertRaises(OSError):parse_state(source)
         source.write_bytes(b'\0unfinished')
         with self.assertRaises(ValueError):read_kv(source)
+    def test_live_steam_definition_dependency(self):
+        from achievements import Repository
+        from achievement_monitor import check
+        source,definition=steam_fixture(self.root,mask=-2147483647)
+        full=definition.read_bytes();schema=read_kv(definition)
+        schema['game']['stats']['7']['bits'].pop('31');definition.write_bytes(kv(schema))
+        repository=Repository(self.root/'profile');config=repository.config('ori')
+        config.update(appid='43',source=str(source),platform='steam',schema=[dict(id=key,name=key,hidden=False,icon='') for key in ('FIRST','LAST','TEN')])
+        session=dict(ident='ori',game=dict(id='ori',name='Ori',platform='steam'),local={},target={},passive=True,signature=None,discovery=0)
+        check(repository,session)
+        self.assertEqual(repository.summary('ori')['unlocked'],1)
+        before=source.stat().st_mtime_ns
+        definition.write_bytes(full)
+        updated,events,_=check(repository,session)
+        self.assertTrue(updated);self.assertFalse(events)
+        self.assertEqual(source.stat().st_mtime_ns,before)
+        self.assertEqual(repository.summary('ori')['unlocked'],2)
     def test_find_exact_appid_and_multiple_accounts(self):
         source,schema=steam_fixture(self.root);other=source.with_name('UserGameStats_4567_43.bin');other.write_bytes(source.read_bytes())
         with patch('achievement_steam.steam_roots',return_value=[self.root]):

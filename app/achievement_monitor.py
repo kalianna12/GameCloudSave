@@ -5,6 +5,17 @@ import psutil
 from achievement_files import canonical_states, discover, empty_record, merge_progress, parse_state
 
 
+def file_signature(path):
+    """Steam progress also depends on its separate group/bit definition file."""
+    def stamp(file):
+        stat=file.stat();return stat.st_mtime_ns, stat.st_size, stat.st_ino
+    result=stamp(path)
+    if path.suffix.casefold()=='.bin' and path.name.casefold().startswith('usergamestats_'):
+        from achievement_steam import progress_schema_path
+        result+=(stamp(progress_schema_path(path)),)
+    return result
+
+
 def check(repository, session):
     ident = session['ident']; target = dict(session['target'])
     changed = False; ended = False; events = []
@@ -35,18 +46,17 @@ def check(repository, session):
         if not source:
             repository.health[ident] = '找到多个记录，请选择游玩账号／目录' if len(config.get('sources', [])) > 1 else '尚无可读取的记录；仅匹配成就列表不能产生进度'
         else:
-            path = Path(source); stat = path.stat()
+            path = Path(source); files = file_signature(path)
             # Late metadata must retry an unchanged file whose CRC/Steam IDs
             # could not be resolved at the previous tick.
             schema_ids = tuple(r['id'] for r in config.get('schema', []))
-            signature = (config.get('appid'), source, stat.st_mtime_ns, stat.st_size, stat.st_ino, schema_ids)
+            signature = (config.get('appid'), source, files, schema_ids)
             if signature != session.get('signature'):
                 raw = parse_state(path)
                 states = canonical_states(raw, config.get('schema', []))
                 if not states and not empty_record(path):
                     raise ValueError('记录正在写入或格式未识别，保留进度并重试')
-                after = path.stat()
-                if (stat.st_mtime_ns, stat.st_size, stat.st_ino) != (after.st_mtime_ns, after.st_size, after.st_ino):
+                if files != file_signature(path):
                     raise ValueError('记录正在写入，等待完整文件')
                 config['record_empty'] = not states
                 record = repository.record(ident, config)
