@@ -2,7 +2,8 @@
 from achievement_files import fetch_json,normalize_schema,steam_schema
 
 PROVIDERS=[{'id':'auto','name':'自动 · Steam 优先'}, {'id':'steam','name':'Steam'},
-           {'id':'steamhunters','name':'SteamHunters'}, {'id':'local','name':'本地定义 / Steam 缓存'}]
+           {'id':'steamhunters','name':'SteamHunters'}, {'id':'community','name':'Steam Community'},
+           {'id':'completionist','name':'Completionist.me'}, {'id':'local','name':'本地定义 / Steam 缓存'}]
 
 
 def hunters_schema(appid):
@@ -20,12 +21,13 @@ def hunters_schema(appid):
 
 def resolve(appid,provider='auto',local_schema=None,steam_fetch=None):
     if provider not in {r['id'] for r in PROVIDERS}:raise ValueError('成就来源不存在')
-    chain=['steam','local','steamhunters'] if provider=='auto' else [provider]
+    from achievement_web import community_schema,completionist_schema
+    chain=['steam','local','steamhunters','community','completionist'] if provider=='auto' else [provider]
     failures=[]
     for source in chain:
         try:
-            rows=(steam_fetch or steam_schema)(appid) if source=='steam' else hunters_schema(appid) if source=='steamhunters' else local_schema or []
+            rows=(steam_fetch or steam_schema)(appid) if source=='steam' else hunters_schema(appid) if source=='steamhunters' else community_schema(appid) if source=='community' else completionist_schema(appid,local_schema or []) if source=='completionist' else local_schema or []
             if not rows:raise ValueError('没有本地定义')
-            return rows,{'steam':'Steam 公开成就资料','local':'本地成就定义 / Steam 缓存','steamhunters':'SteamHunters'}[source],failures
+            return rows,{'steam':'Steam 公开成就资料','local':'本地成就定义 / Steam 缓存','steamhunters':'SteamHunters','community':'Steam Community','completionist':'Completionist.me（标题来源需核对 ID）'}[source],failures
         except Exception as exc:failures.append(source+': '+str(exc)[:120])
     raise ValueError('；'.join(failures))

@@ -54,6 +54,7 @@ class Sources(unittest.TestCase):
         record=game/'achievements_progress.ini';record.write_text('[Achievements]\nFIRST.achieved=1\nFIRST.unlocktime=1700000000',encoding='utf-8')
         self.assertEqual(identify({}, {'install_dir':str(game)}),'42')
         self.assertTrue(parse_state(record)['FIRST']['unlocked'])
+        self.assertEqual(set(parse_state(record)),{'FIRST'})
         with patch('achievement_steam.steam_roots',return_value=[]):self.assertEqual(len(discover({}, {'install_dir':str(game)},'42')['sources']),1)
     def test_steam_identity_uses_platform_id(self):
         self.assertEqual(identify({'platform':'steam','steam_appid':'43','metadata_steam_appid':'42'},{}),'43')

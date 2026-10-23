@@ -2,6 +2,7 @@
 from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+import configparser
 import hashlib
 import json
 import os
@@ -48,6 +49,13 @@ class Repository:
         appid = identify(game, local, config.get('appid', ''))
         scan_local=dict(local,achievement_roots=config.get('roots',[]))
         found = discover(game, scan_local, appid)
+        previous=config.get('source','')
+        if previous and Path(previous).name.casefold() in ('stats.ini','user_stats.ini') and Path(previous).is_file():
+            from achievement_files import empty_record
+            try:
+                if not parse_state(previous) and not empty_record(previous):
+                    config['source']='';config['record_note']='旧记录为普通统计，已改用成就记录；原文件未修改'
+            except (OSError,ValueError,configparser.Error):pass
         config['appid'] = appid; config['sources'] = found['sources']
         config['checked']=found.get('checked',[]);config['rejected']=found.get('rejected',[])
         if not config.get('source') and len(found['sources']) == 1:
@@ -59,8 +67,11 @@ class Repository:
             try: states = parse_state(config['source'])
             except FileNotFoundError:
                 self.record(game['id'], config)['initialized'] = True; states = None
-            except (OSError, ValueError): states = None
-            if states is not None: merge_progress(self.record(game['id'], config), canonical_states(states,config.get('schema',[])))
+            except (OSError, ValueError,configparser.Error): states = None
+            if states is not None:
+                from achievement_files import empty_record
+                config['record_empty']=not states and empty_record(config['source'])
+                merge_progress(self.record(game['id'], config), canonical_states(states,config.get('schema',[])))
         self.save(); return config
 
     def view(self, ident, message=''):
@@ -90,7 +101,7 @@ class Repository:
         if not config.get('source'):record_status='待选择记录' if len(config.get('sources',[]))>1 else '尚未找到记录'
         elif not Path(config['source']).is_file():record_status='等待记录生成'
         elif not schema:record_status='已读取记录 · 待匹配定义'
-        elif not states:record_status='记录中暂无可读条目'
+        elif not states:record_status='等待首次解锁（成就文件已存在）' if config.get('record_empty') else '记录中暂无可读条目'
         elif not matched:record_status='记录与成就 ID 不匹配 · 请检查游戏版本'
         else:record_status=f'已读取 {len(states)} 项 · 对应定义 {matched} 项'
         return {**{k: v for k, v in config.items() if k != 'schema'}, 'ident': ident, 'rows': rows,
@@ -103,6 +114,7 @@ class Repository:
         keys={row['id'] for row in schema} or set(record.get('progress',{}))|set(record.get('unlocks',{}))
         return {'total':len(keys),'unlocked':len(keys&set(record.get('unlocks',{}))),
                 'record_ready':bool(keys&set(record.get('progress',{}))),
+                'record_empty':config.get('record_empty',False),
                 'has_schema':bool(schema),'has_record':bool(config.get('source')) and Path(config['source']).is_file(),
                 'source':config.get('source',''),'appid':config.get('appid',''),'provider':config.get('schema_source',''),
                 'enabled':config.get('enabled',True),'ambiguous':len(config.get('sources',[]))>1 and not config.get('source'),
@@ -150,7 +162,7 @@ class Achievements(QObject):
         self.icons = ThreadPoolExecutor(max_workers=1, thread_name_prefix='achievement-icons')
         self.batch_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='achievement-batch')
         self._batch_cancel=threading.Event();self._batch={'running':False,'done':0,'total':0,'message':'选择游戏后开始批量匹配'}
-        self._summaries={};self._overview=[];self._recent=[];self._catalog_revision=0;self._icon_jobs=set();self._providers={}
+        self._summaries={};self._overview=[];self._recent=[];self._analytics=[];self._statistics_cache={};self._catalog_revision=0;self._icon_jobs=set();self._providers={}
         self._icon_wanted={}
         self._fetching = set();self._auto_attempted=set()
         self._wanted = {}
@@ -189,20 +201,33 @@ class Achievements(QObject):
     @Slot(str,result='QVariantMap')
     def summary(self,ident):return self._summaries.get(ident,{})
 
+    @Slot(str,int,result='QVariantMap')
+    def statistics(self,ident,period):
+        from achievement_statistics import statistics
+        key=(ident,period,time.strftime('%Y-%m-%d'))
+        if key not in self._statistics_cache:self._statistics_cache[key]=statistics(self._analytics,ident,period if period in (0,7,30,90,365) else 30)
+        return self._statistics_cache[key]
+
     def publish(self):
-        summaries={};rows=[];recent=[]
+        summaries={};rows=[];recent=[];analytics=[]
+        from achievement_statistics import game_snapshot
+        covers={}
+        owner=self.parent()
+        if owner and hasattr(owner,'_games_cache'):
+            covers={g['id']:g.get('coverUrl','') for g in owner._games_cache or []}
         for game in list(self.store.games):
             ident=game['id'];config=self.repository.config(ident)
             value=self.repository.summary(ident)
+            analytics.append(game_snapshot(game,value,config.get('schema',[]),self.repository.record(ident,config)))
             definitions={r['id']:r for r in config.get('schema',[])}
             for key,stamp in self.repository.record(ident,config).get('unlocks',{}).items():
                 if stamp>0 and key in definitions:
-                    recent.append({'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp})
+                    recent.append({'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp,'iconUrl':QUrl.fromLocalFile(self.repository.icon_path(definitions[key])).toString() if self.repository.icon_path(definitions[key]) else ''})
             if value['total']:summaries[ident]=value
-            rows.append(dict(value,id=ident,name=game['name'],platform=game.get('platform') or 'local',
+            rows.append(dict(value,id=ident,name=game['name'],coverUrl=covers.get(ident,''),platform=game.get('platform') or 'local',
                              supported=game.get('platform') in ('local','steam','',None),
-                             error=config.get('last_error',''),status='已就绪' if value['has_schema'] and value['has_record'] and value['record_ready'] else '待选择记录' if value['ambiguous'] else '记录待验证' if value['has_schema'] and value['has_record'] else '已匹配 · 尚无记录' if value['has_schema'] else '匹配失败' if config.get('last_error') else '待匹配'))
-        if not self.closed:self.catalogReady.emit({'summaries':summaries,'rows':rows,'recent':sorted(recent,key=lambda r:-r['stamp'])[:200]})
+                             error=config.get('last_error',''),status='已就绪' if value['has_schema'] and value['has_record'] and value['record_ready'] else '待选择记录' if value['ambiguous'] else '等待首次解锁' if value['has_schema'] and value['has_record'] and value['record_empty'] else '记录待验证' if value['has_schema'] and value['has_record'] else '已匹配 · 尚无记录' if value['has_schema'] else '匹配失败' if config.get('last_error') else '待匹配'))
+        if not self.closed:self.catalogReady.emit({'summaries':summaries,'rows':rows,'recent':sorted(recent,key=lambda r:-r['stamp'])[:200],'analytics':analytics})
 
     @Slot()
     def refreshCatalog(self):
@@ -215,8 +240,9 @@ class Achievements(QObject):
     @Slot(object)
     def receiveCatalog(self,result):
         if self.closed:return
-        if result['summaries']==self._summaries and result['rows']==self._overview and result['recent']==self._recent:return
-        self._summaries=result['summaries'];self._overview=result['rows'];self._recent=result['recent'];self._catalog_revision+=1;self.catalogChanged.emit()
+        if result['summaries']==self._summaries and result['rows']==self._overview and result['recent']==self._recent and result.get('analytics',[])==self._analytics:return
+        if result.get('analytics',[])!=self._analytics:self._statistics_cache.clear()
+        self._summaries=result['summaries'];self._overview=result['rows'];self._recent=result['recent'];self._analytics=result.get('analytics',[]);self._catalog_revision+=1;self.catalogChanged.emit()
 
     @Slot('QVariantList',str,bool)
     def batch(self,ids,provider='auto',force=False):
@@ -314,7 +340,8 @@ class Achievements(QObject):
         self.submit(ident, work)
 
     @Slot(str, str)
-    def search(self, ident, query):
+    @Slot(str, str, bool)
+    def search(self, ident, query, use_ai=False):
         # Use the existing bounded Steam catalog and show candidates for explicit selection.
         if self.closed or self._state.get('busy'): return
         self._serial += 1; serial = self._serial
@@ -322,7 +349,7 @@ class Achievements(QObject):
         def find():
             try:
                 from cover_sources import search
-                rows = search(self.store, query, 'steam', False)[:16]; error = ''
+                rows = search(self.store, query, 'steam', use_ai)[:16]; error = ''
             except Exception as exc: rows = []; error = str(exc)[:180]
             if not self.closed: self.searchReady.emit(serial, ident, rows, error)
         self.network.submit(find)
@@ -445,6 +472,8 @@ class Achievements(QObject):
                     parsed = parse_state(source)
                     if not parsed and Path(source).suffix.casefold() == '.json' and normalize_schema(json.loads(read_text(source))):
                         raise ValueError('这是成就定义，请用“导入定义”；记录文件需要包含 earned / achieved / unlocked 等进度字段')
+                    from achievement_files import empty_record
+                    if not parsed and not empty_record(source):raise ValueError('未识别到成就记录；普通 UserStats 数值不代表解锁，请选择 achievements.ini / JSON 或兼容记录')
             if source != config.get('source'): config['source'] = source
             if source and Path(source).is_file(): merge_progress(self.repository.record(ident, config), canonical_states(parse_state(source),config.get('schema',[])))
             self.repository.configs[ident] = config
@@ -455,6 +484,15 @@ class Achievements(QObject):
     def pickSource(self, ident):
         path, _ = QFileDialog.getOpenFileName(None, '选择游戏生成的成就记录', '', '成就记录 (*.json *.ini *.bin *.cfg *.dat)')
         if path: self.save(ident, {'source': path})
+
+    @Slot(str)
+    def exportDefinitions(self,ident):
+        def work():
+            from achievement_export import export_definitions
+            config=self.repository.config(ident)
+            result=export_definitions(config.get('schema',[]),config.get('appid',''),self.repository.root/'exports',self.repository.icon_path)
+            return self.repository.view(ident,f"已导出 {result['count']} 项定义、{result['icons']} 个图标：{result['path']}。仅导出定义包，未修改游戏文件。")
+        self.submit(ident,work)
 
     @Slot(str)
     def importSchema(self, ident):

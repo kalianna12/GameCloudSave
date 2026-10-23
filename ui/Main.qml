@@ -85,7 +85,11 @@ ApplicationWindow {
     property bool toolbarFocusMove: false
     property real toolbarColumnX: 0
     property real toolbarViewportWidth: 0
-    onActiveFocusItemChanged: if(!toolbarFocusMove) toolbarFocusItem=null
+    onActiveFocusItemChanged: {
+        if(!toolbarFocusMove) toolbarFocusItem=null
+        var item=activeFocusItem
+        while(item) { if(filterControls.indexOf(item)>=0) { revealToolbar(item);break };item=item.parent }
+    }
     readonly property var filterControls: [installedControl,platformControl,sourceControl,facetControl,clearFacetsControl,randomControl,sortControl,mappingProfileControl,layoutControl,recommendationsControl,personalControl,fullscreenControl]
     readonly property var headerControls: [backButton,search,watchControl]
     property var navigationHistory: []
@@ -145,7 +149,14 @@ ApplicationWindow {
         rows.forEach(function(row) { row.items.sort(function(a,b) { return a.x-b.x }) })
         return rows
     }
+    function revealToolbar(control) {
+        if(filterControls.indexOf(control)>=0) {
+            var x=control.mapToItem(toolbarStrip.contentItem,0,0).x
+            toolbarStrip.contentX=Math.max(0,Math.min(Math.max(0,toolbarStrip.contentWidth-toolbarStrip.width),x<toolbarStrip.contentX ? x-4 : x+control.width>toolbarStrip.contentX+toolbarStrip.width ? x+control.width-toolbarStrip.width+4 : toolbarStrip.contentX))
+        }
+    }
     function focusToolbar(control,keepColumn) {
+        revealToolbar(control)
         if(!keepColumn || toolbarViewportWidth!==win.width) toolbarColumnX=control.mapToItem(win.contentItem,control.width/2,0).x
         toolbarFocusItem=control;toolbarViewportWidth=win.width
         var filters=filterControls.filter(function(item) { return item.visible && item.enabled }),headers=headerControls.filter(function(item) { return item.visible && item.enabled })
@@ -446,13 +457,16 @@ ApplicationWindow {
             }
             AppButton { id: importControl; text: "导入游戏"; highlighted: true; onClicked: win.openImport() }
         }
-        GridLayout {
-            Layout.fillWidth: true; columns: win.width<1480 ? 1 : 2
-            rowSpacing: 2; columnSpacing: 16
-            Item {
-                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;implicitHeight: filtersFlow.height
-                Flow {
-                id: filtersFlow;width: parent.width;height: childrenRect.height;spacing: 8
+        Flickable {
+            id: toolbarStrip;objectName: "libraryToolbarStrip";Layout.fillWidth: true;Layout.preferredHeight: 44
+            contentWidth: toolbarRow.width;contentHeight: height;clip: true;boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.HorizontalFlick
+            ScrollBar.horizontal: ScrollBar { height: 3;policy: ScrollBar.AsNeeded }
+            WheelHandler { acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad;onWheel: function(event) { toolbarStrip.contentX=Math.max(0,Math.min(Math.max(0,toolbarStrip.contentWidth-toolbarStrip.width),toolbarStrip.contentX-(event.angleDelta.x || event.angleDelta.y)));event.accepted=true } }
+            Row {
+                id: toolbarRow;spacing: 16;height: 38
+                Row {
+                id: filtersFlow;spacing: 8
                 CheckBox {
                     id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly
                     height: 38
@@ -483,13 +497,9 @@ ApplicationWindow {
                 AppButton { id: clearFacetsControl;objectName: "clearLibraryFilters";visible: activeFacetCount>0;width: 92;height: 38;text: "清除筛选";flat: true;onClicked: win.setFacets({}) }
                 DiceButton { id: randomControl;objectName: "homeRandomGame";visible: !win.alternativeDesign;enabled: win.shownGames.length>0 && !backend.busy && !launchTransition.running;onClicked: win.randomGame();ToolTip.visible: hovered && !backend.controllerMode;ToolTip.text: "从当前筛选范围随机挑选一款游戏" }
                 }
-            }
-            Item {
-                Layout.fillWidth: true;Layout.alignment: Qt.AlignTop;implicitWidth: actionsFlow.naturalWidth;implicitHeight: actionsFlow.height
-                Flow {
-                id: actionsFlow;anchors.right: parent.right;spacing: 10
-                readonly property real naturalWidth: { var total=0,count=0;for(var i=0;i<children.length;i++) if(children[i].visible) { total+=children[i].width;count++ };return total+Math.max(0,count-1)*spacing }
-                width: Math.min(parent.width,naturalWidth);height: childrenRect.height
+                Item { width: Math.max(0,toolbarStrip.width-filtersFlow.width-actionsFlow.width-32);height: 38 }
+                Row {
+                id: actionsFlow;spacing: 10
                 AppComboBox { id: sortControl; objectName: "librarySort"; quiet: true; currentIndex: ["name","recent","added","release_asc","release_desc"].indexOf(librarySort); visible: (!homeVisible || alternativeDesign) && libraryDesign!=="atlas"; model: ["名称排序","最近游玩","最近添加","发行日期: 从早到晚","发行日期: 从晚到早"]; width: Math.max(200,implicitWidth); onActivated: librarySort=["name","recent","added","release_asc","release_desc"][currentIndex] }
                 AppComboBox {
                     id: mappingProfileControl;objectName: "homeMappingProfile";width: 240;model: backend.mapping.profileOptions;textRole: "label";wrapOptions: true

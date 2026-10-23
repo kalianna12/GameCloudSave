@@ -1,4 +1,4 @@
-"""Controller movement follows actual responsive toolbar rows, not declaration order."""
+"""Single-row tools, viewport reveal and controller/keyboard focus at every width."""
 from pathlib import Path
 import sys,tempfile,time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'app'))
@@ -38,41 +38,39 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     def expect(name):assert focus_name()==name,(name,focus_name(),[(n,round(center(c).x()),round(center(c).y())) for n,c in controls.items() if c.isVisible()])
     def content():assert invoke(root,'libraryFocus'),(root.activeFocusItem().objectName(),focus_name())
     try:
+        strip=root.findChild(QObject,'libraryToolbarStrip')
+        def visible_focus():
+            control=controls[focus_name()];p=control.mapToItem(strip,QPointF())
+            assert p.x()>=-1 and p.x()+control.width()<=strip.width()+1,(focus_name(),p.x(),control.width(),strip.width())
         root.resize(1100,800);spin(80)
-        invoke(root,'focusFirstContent');pad('up');expect('homeMappingProfile');pad('up');expect('installedFilter')
-        pad('down');expect('homeMappingProfile');pad('down');content()
-        focus('homeMappingProfile');pad('up');assert center(controls[focus_name()]).y()<center(controls['homeMappingProfile']).y()-15;pad('down');expect('homeMappingProfile')
-        pad('down');content();pad('up');expect('homeMappingProfile')
-        focus('platformFilter');pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
-        focus('sourceFilter');pad('right');expect('libraryFilterControl');pad('right');expect('homeRandomGame')
-        for _ in range(6):pad('right');expect('homeRandomGame')
-        pad('left');expect('libraryFilterControl');pad('activate')
+        focus('sourceFilter');pad('right');expect('libraryFilterControl');visible_focus()
+        pad('right');expect('homeRandomGame');pad('right');expect('homeMappingProfile');visible_focus()
+        pad('left');expect('homeRandomGame');pad('left');expect('libraryFilterControl');pad('activate')
         assert root.findChild(QObject,'libraryFilterDialog').property('visible')
         pad('back');spin(60);expect('libraryFilterControl')
         focus('homeMappingProfile');pad('right');expect('layoutControl');pad('right');expect('personalControl');pad('right');expect('fullscreenControl')
         for _ in range(6):pad('right');expect('fullscreenControl')
+        visible_focus()
         pad('left');expect('personalControl');pad('left');expect('layoutControl');pad('left');expect('homeMappingProfile')
-        # A mouse-picked control uses its current column, rather than an old list index.
+        focus('platformFilter');visible_focus()
         p=center(controls['platformFilter']);QTest.mouseClick(root,Qt.LeftButton,pos=QPoint(round(p.x()),round(p.y())));spin(50)
-        pad('back');spin(50);pad('down');expect('homeMappingProfile');pad('up');expect('platformFilter')
+        pad('back');spin(50);pad('down');content();pad('up');expect('platformFilter')
         focus('homeMappingProfile');pad('activate');spin(70);pad('down')
         assert not root.property('fullScreenMode') and not backend.mapping.state['enabled']
-        pad('back');spin(70);expect('homeMappingProfile');pad('up');assert center(controls[focus_name()]).y()<center(controls['homeMappingProfile']).y()-15
-        # At 900px the tools Flow wraps again: up/down reaches that third row too.
-        invoke(root,'navigate','all','');root.resize(900,750);spin(120)
-        assert center(controls['fullscreenControl']).y()>center(controls['librarySort']).y()+15
-        focus('fullscreenControl');pad('up');expect('librarySort');pad('down');expect('fullscreenControl')
-        pad('down');content();pad('up');expect('fullscreenControl')
-        output=ROOT/'test-data/toolbar-navigation';output.mkdir(exist_ok=True);root.grabWindow().save(str(output/'wrapped-focus-light.png'))
-        # Row boundaries are re-read after resize and when sort/series controls appear.
+        pad('back');spin(70);expect('homeMappingProfile')
+        output=ROOT/'build/toolbar-single-row';output.mkdir(exist_ok=True)
         for width in (900,1100,1440,1920):
             root.resize(width,850);spin(70)
             for mode in ('home','all','series'):
                 invoke(root,'navigate',mode,'');spin(50)
+                filter_names=[n for n in names if n not in ('libraryBack','search','watchControl') and controls[n].isVisible()]
+                ys=[center(controls[n]).y() for n in filter_names]
+                assert max(ys)-min(ys)<3,(width,mode,ys)
                 for name,control in controls.items():
                     if not control.isVisible() or not control.isEnabled():continue
                     focus(name);origin=center(control);pad('right');right=focus_name()
-                    assert right and abs(center(controls[right]).y()-origin.y())<20,(width,mode,name,right,'horizontal wrapped')
+                    assert right and abs(center(controls[right]).y()-origin.y())<20,(width,mode,name,right,'horizontal wrapped',root.isActive(),root.activeFocusItem().objectName() if root.activeFocusItem() else None,[(w.objectName(),w.isVisible(),w.isActive()) for w in app.topLevelWindows()],messages[-6:])
+                    if right not in ('libraryBack','search','watchControl'):visible_focus()
                     focus(name);pad('up');above=focus_name()
                     assert above,(width,mode,name,'lost focus')
                     if above!=name:
@@ -83,8 +81,12 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
                     if invoke(root,'libraryFocus'):break
                     pad('down')
                 content()
+            focus('installedFilter');root.grabWindow().save(str(output/f'window-{width}.png'))
+        invoke(root,'toggleFullScreen');spin(180)
+        ys=[center(controls[n]).y() for n in filter_names];assert max(ys)-min(ys)<3
+        root.grabWindow().save(str(output/'fullscreen.png'));invoke(root,'toggleFullScreen');spin(80)
         errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign'))]
         assert not errors,errors
     finally:
         backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine)
-print('PASS: row-local horizontal movement, reversible vertical columns, mouse recovery, combo popup priority, third-row Flow wrapping and content return at 900/1100/1440/1920px; isolated data')
+print('PASS: single tool row at 900/1100/1440/1920px and fullscreen, scroll-to-focus, mouse and controller recovery')

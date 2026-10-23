@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
     schema=[{'name':f'ACH_{i}','displayName':f'冒险纪念 {i:02}','description':'探索并记录新的旅程','hidden':i==94} for i in range(96)]
     for folder in ('game/steam_settings','game/profile','ambiguous/steam_settings','ambiguous/one','ambiguous/two'):(root/folder).mkdir(parents=True)
     (root/'game/steam_settings/achievements.json').write_text(json.dumps(schema),encoding='utf-8')
-    record=root/'game/profile/achievements.json';record.write_text(json.dumps({f'ACH_{i}':{'earned':i<33} for i in range(96)}),encoding='utf-8')
+    record=root/'game/profile/achievements.json';record.write_text(json.dumps({f'ACH_{i}':{'earned':i<33,'earned_time':time.time()-(i%15)*86400 if i<33 else 0} for i in range(96)}),encoding='utf-8')
     (root/'ambiguous/steam_settings/achievements.json').write_text(json.dumps(schema[:2]),encoding='utf-8')
     for account in ('one','two'):(root/f'ambiguous/{account}/achievements.ini').write_text('[FIRST]\nachieved=1',encoding='utf-8')
     steam,definition=steam_fixture(root/'steam')
@@ -59,6 +59,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             until(lambda:manager.summary('local').get('total')==96)
             assert manager.summary('local')['unlocked']==33
             assert manager.summary('steam')['unlocked']==1
+            assert manager.statistics('steam',30)['unlocked']==1
             assert manager.repository.configs['steam']['notifications'] is False
             assert not manager.repository.configs['ambiguous']['source']
             assert any(r['id']=='missing' for r in manager.batchState['errors'])
@@ -101,10 +102,17 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             assert library.findChild(QObject,'achievementList').property('count')==33
             filter.setProperty('currentIndex',0);spin(50)
             library.resize(900,650);spin(140);library.grabWindow().save(str(output/'page-900.png'))
+            stats=manager.statistics('local',30);assert stats['unlocked']==33 and sum(stats['daily'])==33,stats
+            assert sum(stats['rarity'])==33 and stats['unknown_dates']==0,stats
             pages=library.findChild(QObject,'achievementPages');pages.setProperty('currentIndex',1);spin(120)
             library.grabWindow().save(str(output/'sources.png'));pages.setProperty('currentIndex',2);spin(70)
             assert library.findChild(QObject,'achievementRecentList').property('count')>=1
-            pages.setProperty('currentIndex',0);spin(50)
+            pages.setProperty('currentIndex',3);library.setProperty('chartGame','local');spin(400)
+            library.grabWindow().save(str(output/'statistics-900.png'))
+            library.resize(1440,1000);spin(350);library.grabWindow().save(str(output/'statistics.png'))
+            library.setProperty('cumulative',True);library.setProperty('chartDays',90);spin(350)
+            assert library.findChild(QObject,'achievementStatisticsCharts').property('visible')
+            pages.setProperty('currentIndex',0);spin(350);library.grabWindow().save(str(output/'dashboard.png'))
             # Counters update in the library without rebuilding the game's model.
             before=backend.libraryRevision;calls=[];manager.overlay.enqueue=lambda *args:calls.append(args)
             manager.begin('steam').result(timeout=3);manager.sessions['steam']['target']={'pid':os.getpid(),'hwnd':0}
@@ -112,6 +120,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             steam.write_bytes(kv({'cache':{'7':{'data':3},'8':{'data':10},'9':{'data':4}}}))
             manager.poll();until(lambda:manager.summary('steam').get('unlocked')==2)
             assert not calls and backend.libraryRevision==before
+            assert manager.statistics('steam',30)['unlocked']==2
+            manager.exportDefinitions('local');until(lambda:not manager.state['busy'])
+            exported=store.profile/'achievements/exports/42/steam_settings/achievements.json'
+            assert exported.is_file() and len(json.loads(exported.read_text(encoding='utf-8')))==96
             # Entire requested asset set is visited, rather than a 30-second prefix.
             rows=[{'id':str(i),'icon':'https://cdn.cloudflare.steamstatic.com/'+str(i)} for i in range(60)]
             visited=[]

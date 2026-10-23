@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievements-async
         # Explicitly select source after changing identity (separate history namespace).
         manager.save('a',{'source':str(source)});until(idle)
         before=manager.state['total']
-        with patch('achievements.steam_schema',side_effect=OSError('offline')):
+        with patch('achievements.steam_schema',side_effect=OSError('offline')),patch('achievement_sources.hunters_schema',side_effect=OSError('offline')),patch('achievement_web.fetch_page',side_effect=OSError('offline')):
             manager.match('a','99');until(lambda:'offline' in manager.state.get('message',''))
         assert manager.state['appid']=='42' and manager.state['total']==before
         # Invalid source doesn't partially apply its accompanying toggle.
@@ -71,6 +71,15 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievements-async
         manager.poll();until(lambda:len(events)==2)
         manager.poll();spin(.1);assert len(events)==2
         manager.openFor('a');until(idle);assert manager.state['unlocked']==2
+        # The AI switch only affects catalog identification, not local unlocks.
+        with patch('cover_sources.search',return_value=[]) as search:
+            manager.search('a','A',True);until(idle);assert search.call_args.args[3] is True
+        # An existing RUNE Count=0 container must emit the first real unlock.
+        rune=root/'rune/achievements.ini';rune.parent.mkdir();rune.write_text('[SteamAchievements]\nCount=0',encoding='utf-8')
+        manager.save('a',{'source':str(rune)});until(idle)
+        baseline=manager.begin('a');baseline.result(timeout=3);manager.sessions['a']['target']={'pid':os.getpid(),'hwnd':0}
+        rune.write_text('[FIRST]\nAchieved=1\nUnlockTime=1700000000',encoding='utf-8');manager.poll();until(lambda:len(events)==3)
+        assert events[-1]['id']=='FIRST'
         print('PASS: late metadata isolation, offline cache, transactional settings, first-file unlock, live monitoring during search, partial-write retry')
     finally:
         gate.set();manager.shutdown();manager.pool.shutdown(wait=True);manager.network.shutdown(wait=True);manager.icons.shutdown(wait=True)

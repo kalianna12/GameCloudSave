@@ -12,7 +12,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 LIMIT = 8 * 1024 * 1024
-FILENAMES = ('achievements.json', 'achievements.ini', 'user_stats.ini', 'achiev.ini', 'stats.ini', 'creamapi.achievements.cfg', 'achievements.bin', 'achieve.dat')
+FILENAMES = ('achievements.json', 'achievements.ini', 'user_stats.ini', 'achiev.ini', 'stats.ini', 'creamapi.achievements.cfg', 'achievements.bin', 'achieve.dat','stats.bin','tenoke.ini')
 FLAGS = ('earned', 'achieved', 'unlocked', 'achievedstate', 'haveachieved', 'bachieved', 'state')
 TIMES = ('earned_time', 'unlocktime', 'unlock_time', 'timestamp', 'time', 'haveachievedtime', 'havehaveachievedtime')
 PROGRESS = ('progress', 'cur_progress', 'curprogress', 'current')
@@ -53,6 +53,9 @@ def state_entry(value):
 
 def parse_state(path):
     """JSON schema lists are not progress. Numeric stats alone never unlock achievements."""
+    if Path(path).name.casefold()=='stats.bin':
+        from achievement_local import sse_progress
+        return sse_progress(path)
     if Path(path).suffix.casefold()=='.bin' and Path(path).name.casefold()!='achievements.bin':
         from achievement_steam import progress_file
         return progress_file(path)
@@ -76,8 +79,9 @@ def parse_state(path):
         times_section=next((s for s in parser.sections() if s.casefold()=='achievementsunlocktimes'),None)
         for section in parser.sections()[:5000]:
             fields = dict(parser.items(section))
-            if section.casefold() in ('achievements', 'achievement', 'userstats', 'achieve_data'):
+            if section.casefold() in ('achievements', 'achievement', 'achieve_data'):
                 for key, value in fields.items():
+                    if key.casefold()=='count' or re.fullmatch(r'.+[._](?:earned|achieved|unlocked|earned_time|unlocktime|progress|curprogress|maxprogress|haveachievedtime)',key,re.I):continue
                     if re.fullmatch(r'(?:true|false|[01])', value.strip(), re.I):
                         # Some INI writers keep the unlock times in a second section.
                         stamp=number(parser.get(times_section,key,fallback='0')) if times_section else 0
@@ -98,6 +102,23 @@ def parse_state(path):
                 row=state_entry(fields)
                 if row is not None:entries[key]=row
     return entries
+
+
+def empty_record(path):
+    """An explicit empty achievement container is valid; ordinary stats are not."""
+    try:
+        if Path(path).name.casefold()=='stats.bin':
+            from achievement_local import sse_progress
+            sse_progress(path);return True
+        text=read_text(path)
+        if Path(path).suffix.casefold()=='.json':return json.loads(text)=={}
+        parser=configparser.ConfigParser(interpolation=None,strict=False);parser.read_string(text)
+        for section in parser.sections():
+            if section.casefold() in ('steamachievements','achievements','achievement','achieve_data'):
+                fields=dict(parser.items(section))
+                if not fields or {str(k).casefold():str(v).strip() for k,v in fields.items()}=={'count':'0'}:return True
+    except (OSError,ValueError,configparser.Error):pass
+    return False
 
 
 def localized(value):
@@ -127,6 +148,7 @@ def normalize_schema(data, base=None, appid=''):
             else: icon = ''
         result[key] = {'id': key, 'name': title[:300], 'description': localized(row.get('localized_desc') or row.get('description')),
                        'hidden': truth(row.get('hidden')), 'icon': icon,
+                       'rarity_known':any(k in row for k in ('player_percent_unlocked','steamPercentage')),
                        'rarity':number(row.get('player_percent_unlocked',row.get('steamPercentage',0))),
                        'max': max(0, number(row.get('max_progress_int', row.get('max_progress_float', row.get('max_progress', 0)))))}
     return list(result.values())
@@ -164,7 +186,7 @@ def identify(game, local, override=''):
     return ''
 
 
-def walk_files(root, depth=6, budget=700):
+def walk_files(root, depth=9, budget=700):
     """Bounded scan of a game/known AppID folder; no disk-wide scans or links."""
     root = Path(root)
     if not root.is_dir(): return []
@@ -178,7 +200,7 @@ def walk_files(root, depth=6, budget=700):
                     if entry.is_symlink() or getattr(entry.stat(follow_symlinks=False), 'st_file_attributes', 0) & 0x400: continue
                     if entry.is_file(follow_symlinks=False) and (entry.name.casefold() in FILENAMES or re.fullmatch(r'(?:achievements?|user_stats).*\.(?:json|ini)',entry.name,re.I) or re.fullmatch(r'UserGameStats(?:Schema)?_[\d_]+\.bin',entry.name,re.I)):
                         found.append(Path(entry.path))
-                    elif level < depth and entry.is_dir(follow_symlinks=False) and entry.name.casefold() not in ('node_modules', '.git', 'video', 'movies'):
+                    elif level < depth and entry.is_dir(follow_symlinks=False) and entry.name.casefold() not in ('node_modules', '.git', 'video', 'movies','content','paks'):
                         pending.append((Path(entry.path), level + 1))
         except OSError: continue
     return found
@@ -218,8 +240,9 @@ def discover(game, local, appid):
             key = str(path.resolve()).casefold()
             if key in seen: continue
             seen.add(key)
+            schema=[]
             try:
-                if path.suffix.casefold()=='.bin' and path.name.casefold()!='achievements.bin':
+                if path.suffix.casefold()=='.bin' and path.name.casefold() not in ('achievements.bin','stats.bin'):
                     if not appid or not re.search(r'_'+re.escape(str(appid))+r'\.bin$',path.name,re.I):continue
                     if 'schema_' in path.name.casefold():
                         from achievement_steam import schema_file
@@ -231,7 +254,7 @@ def discover(game, local, appid):
                     if schema: schemas.append((str(path), schema))
                 states = parse_state(path)
                 # Empty state files outside steam_settings are valid pre-first-unlock records.
-                if states or path.suffix.casefold() == '.json' and json.loads(read_text(path)) == {} and 'steam_settings' not in path.parts:
+                if states or not schema and 'steam_settings' not in path.parts and empty_record(path):
                     sources.append(str(path))
                 elif not (path.suffix.casefold()=='.json' and schema):
                     rejected.append({'path':str(path),'reason':'未识别到解锁标记；可能是普通统计／配置，或尚不支持的记录格式'})
@@ -272,4 +295,6 @@ def merge_progress(record, states, notify=False):
 
 def canonical_states(states,schema):
     names={row['id'].casefold():row['id'] for row in schema}
-    return {names.get(key.casefold(),key):value for key,value in states.items()}
+    from achievement_local import crc_names
+    crc=crc_names(schema)
+    return {crc[key] if key in crc else names.get(key.casefold(),key):value for key,value in states.items() if not key.startswith('crc32:') or key in crc}
