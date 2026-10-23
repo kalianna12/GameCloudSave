@@ -17,7 +17,7 @@ GridLayout {
     }
     AchievementChart {
         objectName: "achievementBarChart";Layout.fillWidth: true;Layout.fillHeight: true
-        title: charts.perGame ? "已解锁成就稀有度" : "游戏解锁数量";kind: "bar"
+        title: charts.perGame ? "已解锁成就稀有度" : "游戏解锁数量";kind: "bar";semanticColors: charts.perGame
         values: charts.statistics.bar_values || [];labels: charts.statistics.bar_labels || []
         caption: charts.perGame ? "按来源提供的全球解锁率分组" : "解锁数量最多的 7 款游戏"
     }

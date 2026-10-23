@@ -112,7 +112,7 @@ class Repository:
         return {**{k: v for k, v in config.items() if k != 'schema'}, 'ident': ident, 'rows': rows,
                 'monitor_status': '监听已关闭' if config.get('enabled') is False else self.health.get(ident, '后台同步记录（约每秒）；游戏写入后更新' if config.get('source') else '等待可读取的成就记录'),
                 'record_status':record_status,'record_entries':len(states),'record_matched':matched,
-                'total': len(valid), 'has_schema': bool(schema), 'unlocked': len(valid&set(unlocks)), 'message': message, 'busy': False,
+                'total': len(valid), 'has_schema': bool(schema), 'has_record':bool(config.get('source')) and Path(config['source']).is_file(), 'unlocked': len(valid&set(unlocks)), 'message': message, 'busy': False,
                 'icons_done':sum(bool(self.icon_path(row)) for row in schema.values()),'icons_total':sum(bool(row.get('icon')) for row in schema.values())}
 
     def summary(self,ident):
@@ -230,7 +230,7 @@ class Achievements(QObject):
             definitions={r['id']:r for r in config.get('schema',[])}
             for key,stamp in self.repository.record(ident,config).get('unlocks',{}).items():
                 if stamp>0 and key in definitions:
-                    recent.append({'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp,'iconUrl':QUrl.fromLocalFile(self.repository.icon_path(definitions[key])).toString() if self.repository.icon_path(definitions[key]) else ''})
+                    recent.append({'game_id':ident,'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp,'iconUrl':QUrl.fromLocalFile(self.repository.icon_path(definitions[key])).toString() if self.repository.icon_path(definitions[key]) else ''})
             if value['total']:summaries[ident]=value
             rows.append(dict(value,id=ident,name=game['name'],coverUrl=covers.get(ident,''),platform=game.get('platform') or 'local',
                              supported=game.get('platform') in ('local','steam','',None),

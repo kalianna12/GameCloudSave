@@ -16,6 +16,8 @@ ApplicationWindow {
     property string chartGame: ""
     property int chartDays: 30
     property bool cumulative: false
+    property bool showInlineCharts: height>=960
+    readonly property int selectedCount: visibleGames.filter(function(g) { return !!selected[g.id] }).length
     readonly property var chartStatistics: { var revision=backend.achievements.summaryRevision;return backend.achievements.statistics(chartGame,chartDays) }
     readonly property var catalog: backend.achievements.overview
     readonly property var visibleGames: catalog.filter(function(g) {
@@ -23,9 +25,11 @@ ApplicationWindow {
             (kind.currentIndex===0 || kind.currentIndex===1 && g.platform==="local" || kind.currentIndex===2 && g.platform==="steam" || kind.currentIndex===3 && !g.has_schema || kind.currentIndex===4 && !g.has_record || kind.currentIndex===5 && g.total>0 && g.unlocked===g.total)
     })
     function openFor(ids) { scopeIds=ids || [];backend.achievements.refreshCatalog();show();raise();requestActivate();Qt.callLater(function() { if(!detail.gameId && window.visibleGames.length) window.selectGame(Math.max(0,window.visibleGames.findIndex(function(g) { return g.has_schema }))) }) }
-    function selectGame(index) { if(index>=0 && index<visibleGames.length) { games.currentIndex=index;chartGame=visibleGames[index].id;detail.loadFor(visibleGames[index].id) } }
+    function selectGame(index) { if(index>=0 && index<visibleGames.length) { games.currentIndex=index;chartGame=visibleGames[index].id;if(detail.gameId!==visibleGames[index].id) detail.loadFor(visibleGames[index].id) } }
     function choose(id,value) { var next=Object.assign({},selected);next[id]=value;selected=next }
     function selectVisible() { var next=Object.assign({},selected);visibleGames.forEach(function(g) { next[g.id]=true });selected=next }
+    function reconcileGames() { var index=visibleGames.findIndex(function(g) { return g.id===detail.gameId });games.currentIndex=index;if(index<0) { detail.gameId="";if(visible && visibleGames.length) selectGame(0);else chartGame="" } }
+    function jumpToGame(ident) { search.clear();kind.currentIndex=0;scopeIds=[];pages.currentIndex=0;Qt.callLater(function() { window.selectGame(window.visibleGames.findIndex(function(g) { return g.id===ident }));games.forceActiveFocus() }) }
     function start(force) {
         var ids=visibleGames.filter(function(g) { return selected[g.id] }).map(function(g) { return g.id })
         if(!ids.length) ids=visibleGames.map(function(g) { return g.id })
@@ -33,42 +37,49 @@ ApplicationWindow {
     }
     function inside(item,parent) { while(item) { if(item===parent) return true;item=item.parent };return false }
     function controllerInput(command) {
+        if(detail.entryOpen) return detail.controllerInput(command)
         if(command==="back") { if(pages.currentIndex!==0) { pages.currentIndex=0;games.forceActiveFocus() } else if(inside(window.activeFocusItem,detail)) games.forceActiveFocus();else close();return true }
         if(command==="menu") { if(detail.gameId) detail.save();return true }
         if(command==="previous" || command==="next") { selectGame(Math.max(0,Math.min(visibleGames.length-1,games.currentIndex+(command==="previous" ? -1 : 1))));return true }
         var focus=window.activeFocusItem
-        if(inside(focus,detail)) return detail.controllerInput(command)
+        var browsing=pages.currentIndex===2 ? recentList : pages.currentIndex===3 ? statsList : null
+        if(browsing && browsing.activeFocus) {
+            if(command==="up" && browsing.currentIndex<=0) { (pages.currentIndex===2 ? recentTab : statsGame).forceActiveFocus();return true }
+            if(command==="up" || command==="down") { browsing.currentIndex=Math.max(0,Math.min(browsing.count-1,browsing.currentIndex+(command==="up" ? -1 : 1)));browsing.positionViewAtIndex(browsing.currentIndex,ListView.Contain);return true }
+            if(command==="activate" && browsing.currentIndex>=0 && browsing.count) { window.jumpToGame(pages.currentIndex===2 ? browsing.model[browsing.currentIndex].game_id : browsing.model[browsing.currentIndex].id);return true }
+        }
+        if(inside(focus,detail)) { if(command==="left" && detail.listFocused) { games.forceActiveFocus();return true };return detail.controllerInput(command) }
         if(games.activeFocus) {
             if(command==="up" || command==="down") { selectGame(Math.max(0,Math.min(visibleGames.length-1,games.currentIndex+(command==="up" ? -1 : 1))));games.positionViewAtIndex(games.currentIndex,ListView.Contain);return true }
-            if(command==="favorite" && games.currentIndex>=0) { var g=visibleGames[games.currentIndex];choose(g.id,!selected[g.id]);return true }
-            if(command==="right" || command==="activate") { if(!detail.gameId) selectGame(0);detail.controllerInput("down");return true }
+            if(command==="favorite" && games.currentIndex>=0) { tools.checked=true;var g=visibleGames[games.currentIndex];choose(g.id,!selected[g.id]);return true }
+            if(command==="right" || command==="activate") { if(!detail.gameId) selectGame(0);detail.focusEntries();return true }
             if(command==="left") { search.forceActiveFocus();return true }
             return true
         }
         if(command==="down" && focus===search) { games.forceActiveFocus();if(games.currentIndex<0) selectGame(0);return true }
-        return Form.handle([gamesTab,sourcesTab,recentTab,statsTab,search,kind,selectAll,tools,provider,refresh,full,stop,chartAll,chartCurrent,chartPeriod,chartLine,statsGame,statsPeriod,statsLine,save,closeButton],focus,command,null)
+        return Form.handle([gamesTab,sourcesTab,recentTab,statsTab,search,kind,tools,selectAll,clearSelection,provider,refresh,full,stop,inlineCharts,chartAll,chartCurrent,chartPeriod,chartLine,statsGame,statsPeriod,statsLine,statsList,recentList,save,closeButton],focus,command,null)
     }
-    onVisibleGamesChanged: {
-        var index=visibleGames.map(function(g) { return g.id }).indexOf(detail.gameId)
-        games.currentIndex=index
-        if(index<0 && detail.gameId) { detail.gameId="";chartGame="" }
-    }
+    onVisibleGamesChanged: Qt.callLater(reconcileGames)
+    Shortcut { sequence: StandardKey.Find;context: Qt.WindowShortcut;enabled: window.active && !detail.entryOpen;onActivated: { pages.currentIndex=0;search.forceActiveFocus();search.selectAll() } }
     ColumnLayout {
-        anchors.fill: parent;anchors.margins: 22;spacing: 10
+        anchors.fill: parent;anchors.margins: 20;spacing: 8
         RowLayout {
             Layout.fillWidth: true;spacing: 16
             ColumnLayout {
                 spacing: 4
                 Label { text: "成就管理";font.pixelSize: 26;font.bold: true }
-                Label { text: "每一次探索，都留下记录";color: Theme.secondary;font.pixelSize: 12 }
+                Label { text: window.catalog.filter(function(g) { return g.total>0 }).length+" 款游戏已收录成就";color: Theme.secondary;font.pixelSize: 12 }
             }
             Item { Layout.fillWidth: true }
-            Label { text: window.catalog.reduce(function(n,g) { return n+g.unlocked },0)+" / "+window.catalog.reduce(function(n,g) { return n+g.total },0)+" 已解锁";font.pixelSize: 18;color: Theme.accent }
-            Label { text: window.catalog.filter(function(g) { return g.total>0 && g.unlocked===g.total }).length+" 款已完成";color: Theme.secondary }
+            ColumnLayout { spacing: 4
+                Label { text: window.catalog.reduce(function(n,g) { return n+g.unlocked },0)+" / "+window.catalog.reduce(function(n,g) { return n+g.total },0)+" 已解锁";font.pixelSize: 16;Layout.alignment: Qt.AlignRight;color: Theme.accent }
+                Label { text: window.catalog.filter(function(g) { return g.total>0 && g.unlocked===g.total }).length+" 款全成就";color: Theme.secondary;font.pixelSize: 11;Layout.alignment: Qt.AlignRight }
+            }
+            AppButton { id: inlineCharts;objectName: "achievementInlineChartsToggle";visible: pages.currentIndex===0;text: "图表";checkable: true;checked: window.showInlineCharts;flat: true;onClicked: window.showInlineCharts=checked }
             AppButton { id: closeButton;text: "关闭";onClicked: window.close() }
         }
         TabBar {
-            id: pages;objectName: "achievementPages";Layout.fillWidth: true
+            id: pages;objectName: "achievementPages";Layout.fillWidth: true;background: Rectangle { color: "transparent" }
             TabButton { id: gamesTab;text: "游戏与成就" }
             TabButton { id: sourcesTab;text: "数据源" }
             TabButton { id: recentTab;text: "最近解锁" }
@@ -78,8 +89,14 @@ ApplicationWindow {
             visible: pages.currentIndex===0;Layout.fillWidth: true
             AppTextField { id: search;objectName: "achievementsLibrarySearch";Layout.fillWidth: true;placeholderText: "搜索游戏" }
             AppComboBox { id: kind;objectName: "achievementsLibraryFilter";model: ["全部游戏","本地游戏","Steam 游戏","尚未匹配","记录缺失","已完成"];Layout.preferredWidth: 140 }
-            AppButton { id: selectAll;text: "全选当前结果";onClicked: window.selectVisible() }
             AppButton { id: tools;objectName: "achievementBatchToggle";text: "批量与匹配";checkable: true }
+        }
+        RowLayout {
+            visible: pages.currentIndex===0 && tools.checked;Layout.fillWidth: true
+            Label { text: "已选择 "+window.selectedCount+" / "+window.visibleGames.length+" 款";color: Theme.secondary;font.pixelSize: 12 }
+            AppButton { id: selectAll;text: "全选结果";flat: true;onClicked: window.selectVisible() }
+            AppButton { id: clearSelection;objectName: "achievementClearSelection";text: "取消选择";flat: true;enabled: window.selectedCount>0;onClicked: window.selected=({}) }
+            Item { Layout.fillWidth: true }
         }
         RowLayout {
             visible: pages.currentIndex===0 && tools.checked;Layout.fillWidth: true
@@ -93,29 +110,32 @@ ApplicationWindow {
         RowLayout {
             visible: pages.currentIndex===0;Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumHeight: 200;spacing: 18
             ListView {
-                id: games;objectName: "achievementsGameList";Layout.preferredWidth: window.width<1100 ? 255 : 340;Layout.fillHeight: true
+                id: games;objectName: "achievementsGameList";Layout.preferredWidth: window.width<1100 ? 244 : 294;Layout.fillHeight: true
                 model: window.visibleGames;clip: true;spacing: 4;currentIndex: -1;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
+                header: Label { width: games.width;height: 30;text: "游戏收藏  "+games.count;font.pixelSize: 12;color: Theme.secondary }
+                Label { anchors.centerIn: parent;width: parent.width-24;visible: !games.count;text: "没有找到游戏\n试试其他名称或筛选条件";horizontalAlignment: Text.AlignHCenter;wrapMode: Text.Wrap;color: Theme.secondary }
                 delegate: Rectangle {
                     required property var modelData
                     required property int index
-                    width: games.width;height: 112;radius: Theme.radius
-                    color: games.currentIndex===index ? Theme.selection : Theme.surface;border.color: games.activeFocus && games.currentIndex===index ? Theme.accent : Theme.outline
+                    width: games.width;height: 104;radius: Theme.controlRadius
+                    color: games.currentIndex===index ? Theme.selection : rowHover.hovered ? Theme.surface : "transparent";border.color: games.activeFocus && games.currentIndex===index ? Theme.accent : "transparent"
                     Behavior on color { ColorAnimation { duration: Theme.motion ? 120 : 0 } }
+                    HoverHandler { id: rowHover }
+                    Rectangle { x: 0;y: 13;width: 3;height: parent.height-26;radius: 2;color: Theme.accent;visible: games.currentIndex===index }
                     TapHandler { onTapped: window.selectGame(index) }
-                    CheckBox { id: checked;x: 0;y: 35;width: 32;checked: !!window.selected[modelData.id];onToggled: window.choose(modelData.id,checked) }
+                    CheckBox { id: checked;x: 0;y: 35;width: 32;visible: tools.checked;checked: !!window.selected[modelData.id];onToggled: window.choose(modelData.id,checked) }
                     Rectangle {
-                        x: 35;y: 10;width: 57;height: 82;radius: 4;color: Theme.sidebar;clip: true
+                        x: tools.checked ? 35 : 14;y: 12;width: 51;height: 76;radius: 4;color: Theme.sidebar;clip: true
                         Image { anchors.fill: parent;source: modelData.coverUrl || "";asynchronous: true;fillMode: Image.PreserveAspectCrop;sourceSize.width: 144 }
                         Label { anchors.centerIn: parent;visible: !modelData.coverUrl;text: "◇";font.pixelSize: 24;color: Theme.secondary }
                     }
                     Column {
-                        x: 104;y: 12;width: parent.width-117;spacing: 7
+                        x: tools.checked ? 98 : 78;y: 13;width: parent.width-x-12;spacing: 7
                         Label { width: parent.width;text: modelData.name;elide: Text.ElideRight;font.bold: true }
                         Row { spacing: 7;Label { text: modelData.unlocked+" / "+modelData.total;color: Theme.accent;font.pixelSize: 12;font.bold: true } Label { text: modelData.total ? Math.round(modelData.unlocked/modelData.total*100)+"%" : "待匹配";color: Theme.secondary;font.pixelSize: 12 } }
                         ProgressBar { width: parent.width;from: 0;to: Math.max(1,modelData.total);value: modelData.unlocked;height: 5 }
-                        Label { width: parent.width;text: modelData.status;elide: Text.ElideRight;color: Theme.secondary;font.pixelSize: 11 }
-                        Label { width: parent.width;text: modelData.error || (modelData.platform==="steam" ? "Steam · " : "本地 · ")+"图标 "+modelData.icons_cached+"/"+modelData.icons_total;elide: Text.ElideRight;color: Theme.secondary;font.pixelSize: 11;ToolTip.text: modelData.error || text;ToolTip.visible: rowHover.hovered;HoverHandler { id: rowHover } }
+                        Label { width: parent.width;text: (modelData.platform==="steam" ? "Steam" : "本地")+" · "+modelData.status;elide: Text.ElideRight;color: Theme.secondary;font.pixelSize: 11;ToolTip.text: modelData.error || modelData.status;ToolTip.visible: rowHover.hovered;ToolTip.delay: 600 }
                     }
                 }
             }
@@ -127,7 +147,7 @@ ApplicationWindow {
             }
         }
         ColumnLayout {
-            visible: pages.currentIndex===0 && window.height>=820;Layout.fillWidth: true;Layout.preferredHeight: 210;Layout.minimumHeight: 210;Layout.maximumHeight: 210;spacing: 8
+            visible: pages.currentIndex===0 && window.showInlineCharts;Layout.fillWidth: true;Layout.preferredHeight: 188;Layout.minimumHeight: 188;Layout.maximumHeight: 188;spacing: 6
             RowLayout {
                 Layout.fillWidth: true
                 AppButton { id: chartAll;text: "全部游戏";flat: true;highlighted: !window.chartGame;onClicked: window.chartGame="" }
@@ -158,14 +178,16 @@ ApplicationWindow {
                 Label { text: window.chartStatistics.completed_games+" 款全成就";color: Theme.secondary }
                 Item { Layout.fillWidth: true }
             }
-            AchievementCharts { objectName: "achievementStatisticsCharts";Layout.fillWidth: true;Layout.preferredHeight: Math.max(230,window.height*.33);statistics: window.chartStatistics;perGame: !!window.chartGame;cumulative: window.cumulative }
+            AchievementCharts { objectName: "achievementStatisticsCharts";Layout.fillWidth: true;Layout.fillHeight: false;Layout.preferredHeight: Math.max(210,Math.min(300,window.height*.3));Layout.minimumHeight: 200;Layout.maximumHeight: Layout.preferredHeight;statistics: window.chartStatistics;perGame: !!window.chartGame;cumulative: window.cumulative }
             Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "时间未知的历史解锁计入完成度，不计入日期曲线。稀有度使用数据源的全球解锁率，没有来源的数据归为未知。";color: Theme.secondary;font.pixelSize: 12 }
+            Label { text: "游戏进度";font.pixelSize: 14;font.weight: Font.DemiBold }
             ListView {
-                objectName: "achievementStatisticsGames";Layout.fillWidth: true;Layout.fillHeight: true;clip: true;spacing: 6;model: window.catalog.filter(function(g) { return g.total>0 && (!window.chartGame || g.id===window.chartGame) });ScrollBar.vertical: ScrollBar {}
+                id: statsList;objectName: "achievementStatisticsGames";Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumHeight: 62;clip: true;spacing: 6;model: window.catalog.filter(function(g) { return g.total>0 && (!window.chartGame || g.id===window.chartGame) });ScrollBar.vertical: ScrollBar {}
                 delegate: Rectangle {
-                    required property var modelData;width: ListView.view.width;height: 62;radius: Theme.controlRadius;color: Theme.surface
-                    TapHandler { onTapped: { window.chartGame=modelData.id;var index=window.visibleGames.findIndex(function(g) { return g.id===modelData.id });if(index>=0) window.selectGame(index);pages.currentIndex=0 } }
+                    required property var modelData;required property int index;width: ListView.view.width;height: 62;radius: Theme.controlRadius;color: Theme.surface;border.color: statsList.activeFocus && statsList.currentIndex===index ? Theme.accent : "transparent"
+                    TapHandler { onTapped: window.jumpToGame(modelData.id) }
                     RowLayout { anchors.fill: parent;anchors.margins: 12;spacing: 16
+                        Image { source: modelData.coverUrl || "";Layout.preferredWidth: 28;Layout.preferredHeight: 40;asynchronous: true;fillMode: Image.PreserveAspectCrop;sourceSize.width: 80 }
                         Label { text: modelData.name;Layout.fillWidth: true;elide: Text.ElideRight }
                         ProgressBar { Layout.preferredWidth: 220;from: 0;to: Math.max(1,modelData.total);value: modelData.unlocked }
                         Label { text: modelData.unlocked+" / "+modelData.total;color: Theme.accent;Layout.preferredWidth: 90 }
@@ -176,7 +198,7 @@ ApplicationWindow {
         ScrollView {
             id: sourceView;visible: pages.currentIndex===1;Layout.fillWidth: true;Layout.fillHeight: true;clip: true;contentWidth: availableWidth
             ColumnLayout {
-                width: sourceView.availableWidth;spacing: 18
+                width: Math.min(860,sourceView.availableWidth);spacing: 18
                 Label { text: "成就定义来源";font.pixelSize: 20;font.bold: true }
                 Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "定义提供名称、说明与每项独立图标；解锁进度来自本机记录。自动模式先读取 Steam，失败时使用本地定义，再尝试 SteamHunters、Steam Community 和 Completionist.me。";color: Theme.secondary }
                 Repeater {
@@ -195,22 +217,27 @@ ApplicationWindow {
             }
         }
         ListView {
-            objectName: "achievementRecentList";visible: pages.currentIndex===2;Layout.fillWidth: true;Layout.fillHeight: true;clip: true;spacing: 6
+            id: recentList;objectName: "achievementRecentList";visible: pages.currentIndex===2;Layout.fillWidth: true;Layout.fillHeight: true;clip: true;spacing: 6;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
             model: backend.achievements.recent;ScrollBar.vertical: ScrollBar {}
-            delegate: Rectangle {
-                required property var modelData;width: ListView.view.width;height: 78;color: Theme.surface;radius: Theme.radius
+            header: Label { width: recentList.width;height: 38;text: "最近解锁  "+recentList.count+" 项";font.pixelSize: 16;font.weight: Font.DemiBold }
+            Label { anchors.centerIn: parent;visible: !recentList.count;text: "还没有带日期的解锁记录\n继续游玩，新的成就会出现在这里。";horizontalAlignment: Text.AlignHCenter;color: Theme.secondary }
+            delegate: ItemDelegate {
+                required property var modelData;required property int index;width: ListView.view.width;height: 84
+                hoverEnabled: !backend.controllerMode;onClicked: window.jumpToGame(modelData.game_id)
+                background: Rectangle { color: parent.hovered ? Theme.hover : Theme.surface;radius: Theme.controlRadius;border.color: recentList.activeFocus && recentList.currentIndex===index ? Theme.accent : "transparent" }
                 RowLayout {
                     anchors.fill: parent;anchors.margins: 14;spacing: 14
-                    Image { source: modelData.iconUrl || "";Layout.preferredWidth: 48;Layout.preferredHeight: 48;asynchronous: true;fillMode: Image.PreserveAspectFit }
-                    ColumnLayout { Layout.fillWidth: true;Label { text: modelData.name;font.bold: true } Label { text: modelData.game;color: Theme.secondary } }
-                    Label { text: modelData.time;color: Theme.secondary }
+                    Rectangle { Layout.preferredWidth: 52;Layout.preferredHeight: 52;color: Theme.sidebar;radius: 5;Label { anchors.centerIn: parent;text: "✓";color: Theme.accent;visible: recentIcon.status!==Image.Ready } Image { id: recentIcon;anchors.fill: parent;source: modelData.iconUrl || "";asynchronous: true;fillMode: Image.PreserveAspectFit } }
+                    ColumnLayout { Layout.fillWidth: true;spacing: 6;Label { text: modelData.name;font.pixelSize: 14;font.weight: Font.DemiBold;Layout.fillWidth: true;elide: Text.ElideRight } Label { text: modelData.game;color: Theme.secondary;font.pixelSize: 12;Layout.fillWidth: true;elide: Text.ElideRight } }
+                    Label { text: modelData.time;color: Theme.secondary;font.pixelSize: 12 }
                 }
             }
         }
         RowLayout {
             Layout.fillWidth: true
-            Label { text: backend.controllerMode ? "LB / RB 切游戏 · X 勾选 · A 确认 · Menu 保存 · B 返回" : "成就定义与解锁记录分别检测；列表匹配成功不代表已找到记录。";Layout.fillWidth: true;color: Theme.secondary;font.pixelSize: 12;wrapMode: Text.Wrap }
-            AppButton { id: save;text: "保存本游戏方案";visible: pages.currentIndex===0 && !!detail.gameId;enabled: !backend.achievements.state.busy;onClicked: detail.save() }
+            Label { text: backend.controllerMode ? "LB / RB 切游戏 · X 批量选择 · A 查看 · Menu 保存 · B 返回" : "点击成就查看完整说明与解锁详情";Layout.fillWidth: true;color: Theme.secondary;font.pixelSize: 12;wrapMode: Text.Wrap }
+            Label { visible: pages.currentIndex===0 && detail.dirty;text: "有未保存更改";color: Theme.accent;font.pixelSize: 12 }
+            AppButton { id: save;text: "保存方案";visible: pages.currentIndex===0 && !!detail.gameId;enabled: !backend.achievements.state.busy;highlighted: detail.dirty;onClicked: detail.save() }
         }
     }
 }

@@ -40,6 +40,7 @@ Dialog {
     function mark(field) { var next=Object.assign({},dirtyFields);next[field]=true;dirtyFields=next;dirty=true }
     function openFor(ident,page) { gameId=ident;loadFields();var target=page || 0,same=tabs.currentIndex===target;tabs.currentIndex=target;if(same && target===4) achievementsPane.loadFor(gameId);coverPicker.reset();saving="";open() }
     function controllerInput(command) {
+        if(tabs.currentIndex===4 && achievementsPane.entryOpen) return achievementsPane.controllerInput(command)
         if(command==="back") { close();return true }
         if(command==="previous" || command==="next") { tabs.currentIndex=Math.max(0,Math.min(4,tabs.currentIndex+(command==="previous" ? -1 : 1)));return true }
         if(command==="menu") { if(saveButton.visible && saveButton.enabled) saveButton.clicked();return true }

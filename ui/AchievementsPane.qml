@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
 import "ControllerForm.js" as Form
+import "AchievementStyle.js" as Style
 
 ScrollView {
     id: pane
@@ -12,21 +13,29 @@ ScrollView {
     property bool loaded: false
     property bool dirty: false
     property bool compact: false
+    readonly property var game: { var revision=backend.libraryRevision;return backend.libraryGame(gameId) }
+    readonly property bool entryOpen: entryDialog.visible
+    readonly property bool listFocused: list.activeFocus
+    property var activeEntry: ({})
+    function showEntry(row) { list.navigationId=row.id;activeEntry=row;entryDialog.open() }
+    function focusEntries() { if(list.count) { list.currentIndex=Math.max(0,list.currentIndex);Form.reveal(list,pane);list.positionViewAtIndex(list.currentIndex,ListView.Contain) } else Form.reveal(setup,pane) }
     readonly property bool steamGame: backend.libraryGame(gameId).platform==="steam"
     readonly property bool localGame: !backend.libraryGame(gameId).platform || ["local","steam"].indexOf(backend.libraryGame(gameId).platform)>=0
     property string achievementQuery: ""
     clip: true
     contentWidth: availableWidth
-    function loadFor(ident) { gameId=ident;loaded=false;dirty=false;query.text=backend.libraryGame(ident).name || "";backend.achievements.openFor(ident);Qt.callLater(function() { if(pane.contentItem && pane.contentItem.contentY!==undefined) pane.contentItem.contentY=0 }) }
+    function loadFor(ident) { if(ident!==gameId) { list.navigationId="";list.currentIndex=-1 };gameId=ident;loaded=false;dirty=false;query.text=backend.libraryGame(ident).name || "";backend.achievements.openFor(ident);Qt.callLater(function() { if(pane.contentItem && pane.contentItem.contentY!==undefined) pane.contentItem.contentY=0 }) }
     function save() { dirty=false;backend.achievements.save(gameId,{enabled:enabledToggle.checked,notifications:notifications.checked,source:source.text,provider:backend.achievements.providers[provider.currentIndex].id}) }
     function controllerInput(command) {
+        if(entryDialog.visible) { if(command==="back" || command==="activate") entryDialog.close();else if(command==="up" || command==="down") { var flick=descriptionView.contentItem;flick.contentY=Math.max(0,Math.min(Math.max(0,flick.contentHeight-flick.height),flick.contentY+(command==="up" ? -60 : 60))) };return true }
         if(list.activeFocus) {
             if(command==="up" && list.currentIndex<=0) { Form.reveal(preview,pane);return true }
-            if(command==="up" || command==="down") { list.currentIndex=Math.max(0,Math.min(list.count-1,list.currentIndex+(command==="up" ? -1 : 1)));list.positionViewAtIndex(list.currentIndex,ListView.Contain);return true }
+            if(command==="up" || command==="down") { list.currentIndex=Math.max(0,Math.min(list.count-1,list.currentIndex+(command==="up" ? -1 : 1)));if(list.count) list.navigationId=list.model[list.currentIndex].id;list.positionViewAtIndex(list.currentIndex,ListView.Contain);return true }
+            if(command==="activate" && list.currentIndex>=0 && list.currentIndex<list.count) { showEntry(list.model[list.currentIndex]);return true }
             return true
         }
         if(command==="down" && pane.Window.window.activeFocusItem===preview && list.count) { list.currentIndex=0;Form.reveal(list,pane);return true }
-        return Form.handle([enabledToggle,notifications,setup,query,searchButton,aiSearch,candidates,chooseCandidate,provider,appid,matchButton,source,sourceChoice,pickSource,rootButton,diagnostics,importSchema,refreshButton,exportSchema,achievementSearch,filter,sort,hiddenToggle,preview],pane.Window.window.activeFocusItem,command,pane)
+        return Form.handle([enabledToggle,notifications,setup,query,searchButton,aiSearch,candidates,chooseCandidate,provider,appid,matchButton,source,sourceChoice,pickSource,rootButton,diagnostics,importSchema,refreshButton,exportSchema,achievementSearch,filter,sort,hiddenToggle,resetFilter,preview],pane.Window.window.activeFocusItem,command,pane)
     }
     Connections {
         target: pane.Window.window
@@ -43,23 +52,17 @@ ScrollView {
     ColumnLayout {
     width: pane.availableWidth
     spacing: 10
+    AchievementHero { Layout.fillWidth: true;game: pane.game;info: pane.info;compact: pane.compact }
     RowLayout {
         Layout.fillWidth: true
-        Label { text: "游戏成就";font.pixelSize: 21;font.bold: true;Layout.fillWidth: true }
-        Label { text: (pane.info.unlocked || 0)+" / "+(pane.info.total || 0)+" 已解锁";color: Theme.accent }
+        AppButton { id: setup;objectName: "achievementSetup";visible: pane.localGame;text: checked ? "收起设置" : "匹配与记录";checkable: true;flat: true }
+        Item { Layout.fillWidth: true }
         Switch { id: enabledToggle;objectName: "achievementEnabled";text: "监听";enabled: pane.localGame && !pane.info.busy;onToggled: pane.dirty=true }
         Switch { id: notifications;objectName: "achievementNotifications";text: pane.steamGame ? "使用 Steam 弹窗" : "游戏内弹窗";enabled: pane.localGame && !pane.steamGame && !pane.info.busy;onToggled: pane.dirty=true }
     }
-    ProgressBar { Layout.fillWidth: true;from: 0;to: Math.max(1,pane.info.total || 0);value: pane.info.unlocked || 0 }
-    Label { visible: !pane.compact;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.steamGame ? "读取 Steam 本机成就缓存，统计完成进度；本程序不重复弹窗。缓存写入时机由 Steam 决定。" : "读取游戏生成的成就记录。首次导入不弹窗；普通窗口、无边框及 Anime4K 放大时，新解锁会显示在游戏上方。";font.pixelSize: 12 }
-    Label { objectName: "achievementRecordStatus";Layout.fillWidth: true;wrapMode: Text.Wrap;color: pane.info.record_matched>0 ? Theme.accent : Theme.secondary;text: "定义："+(pane.info.has_schema ? (pane.info.total || 0)+" 项已缓存" : "待匹配")+"　进度："+(pane.info.record_status || "尚未检测");font.pixelSize: 12 }
-    Label { objectName: "achievementMonitorStatus";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.monitor_status || "等待检测监听状态";font.pixelSize: 12 }
-    RowLayout {
-        Layout.fillWidth: true
-        AppButton { id: setup;objectName: "achievementSetup";visible: pane.localGame;text: checked ? "收起匹配设置" : "匹配与记录设置";checkable: true }
-        Item { Layout.fillWidth: true }
-        AppButton { id: preview;objectName: "achievementPreview";text: "预览弹窗";onClicked: backend.achievements.preview() }
-    }
+    Label { visible: setup.checked;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.steamGame ? "使用 Steam 的解锁提示，本程序同步本机记录。" : "新解锁可显示在普通窗口、无边框与 Anime4K 画面上方。";font.pixelSize: 12 }
+    Label { objectName: "achievementRecordStatus";visible: setup.checked || !pane.info.has_record;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.record_status || "尚未检测记录";font.pixelSize: 12 }
+    Label { objectName: "achievementMonitorStatus";visible: setup.checked || String(pane.info.monitor_status || "").indexOf("重试")>=0;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.monitor_status || "等待检测监听状态";font.pixelSize: 12 }
     Label { visible: setup.checked;Layout.fillWidth: true;wrapMode: Text.Wrap;font.pixelSize: 12;color: Theme.secondary;text: "需要游戏生成可读取的成就记录；只有成就列表不能自动判定解锁。部分独占全屏请改为无边框。" }
     RowLayout {
         visible: pane.localGame && setup.checked;Layout.fillWidth: true
@@ -112,52 +115,80 @@ ScrollView {
         Label { objectName: "achievementStatus";Layout.fillWidth: true;wrapMode: Text.Wrap;text: pane.info.message || "";color: Theme.secondary;font.pixelSize: 12 }
     }
     Label { visible: (pane.info.icons_total || 0)>0 && (!pane.compact || setup.checked || pane.info.icons_failed>0);Layout.fillWidth: true;color: Theme.secondary;font.pixelSize: 11;text: "图标缓存 "+(pane.info.icons_done || 0)+" / "+(pane.info.icons_total || 0)+(pane.info.icons_failed ? "，失败 "+pane.info.icons_failed+" 项，下次匹配重试" : "") }
+    GridLayout {
+        Layout.fillWidth: true;columns: pane.availableWidth<500 ? 3 : 4;columnSpacing: 8;rowSpacing: 6
+        AppTextField { id: achievementSearch;objectName: "achievementListSearch";Layout.columnSpan: pane.availableWidth<500 ? 3 : 1;Layout.fillWidth: true;placeholderText: "搜索成就名称、说明" }
+        AppComboBox { id: filter;objectName: "achievementListFilter";model: ["全部","未解锁","已解锁"];Layout.preferredWidth: 100 }
+        AppComboBox { id: sort;objectName: "achievementListSort";model: ["默认排序","最近解锁","稀有度"];Layout.preferredWidth: 116 }
+        CheckBox { id: hiddenToggle;objectName: "achievementRevealHidden";text: "显示隐藏" }
+    }
     RowLayout {
         Layout.fillWidth: true
-        AppTextField { id: achievementSearch;objectName: "achievementListSearch";Layout.fillWidth: true;placeholderText: "搜索成就名称、说明" }
-        AppComboBox { id: filter;objectName: "achievementListFilter";model: ["全部","未解锁","已解锁"];Layout.preferredWidth: 100 }
-        AppComboBox { id: sort;model: ["默认排序","最近解锁","稀有度"];Layout.preferredWidth: 116 }
-        CheckBox { id: hiddenToggle;text: "显示隐藏" }
+        Label { text: "成就列表";font.pixelSize: 13;font.weight: Font.DemiBold }
+        Label { objectName: "achievementResultCount";text: list.count+" 项";font.pixelSize: 11;color: Theme.secondary }
+        Item { Layout.fillWidth: true }
+        AppButton { id: resetFilter;objectName: "achievementResetFilters";text: "重置筛选";flat: true;visible: !!achievementSearch.text || filter.currentIndex!==0 || sort.currentIndex!==0 || hiddenToggle.checked;onClicked: { achievementSearch.clear();filter.currentIndex=0;sort.currentIndex=0;hiddenToggle.checked=false } }
+        AppButton { id: preview;objectName: "achievementPreview";text: "预览弹窗";flat: true;implicitHeight: 28;topPadding: 4;bottomPadding: 4;onClicked: backend.achievements.preview() }
     }
     ListView {
         id: list;objectName: "achievementList";Layout.fillWidth: true;Layout.preferredHeight: Math.max(180,pane.availableHeight-list.y-12);clip: true;spacing: 4
+        property string navigationId: ""
+        Keys.onReturnPressed: if(currentIndex>=0 && currentIndex<count) pane.showEntry(model[currentIndex])
+        Keys.onEnterPressed: if(currentIndex>=0 && currentIndex<count) pane.showEntry(model[currentIndex])
+        Keys.onUpPressed: pane.controllerInput("up")
+        Keys.onDownPressed: pane.controllerInput("down")
+        onModelChanged: Qt.callLater(function() { if(!list.navigationId) return;var index=list.model.findIndex(function(r) { return r.id===list.navigationId });if(index>=0) { list.currentIndex=index;list.positionViewAtIndex(index,ListView.Contain) } })
         model: {
             if(pane.info.ident!==pane.gameId) return []
             var q=achievementSearch.text.trim().toLowerCase(),rows=(pane.info.rows || []).filter(function(r) { return (filter.currentIndex===0 || filter.currentIndex===1 && !r.unlocked || filter.currentIndex===2 && r.unlocked) && (!q || ((hiddenToggle.checked ? r.secret_name+" "+r.secret_description : r.name+" "+r.description).toLowerCase().indexOf(q)>=0)) })
             if(sort.currentIndex===1) rows.sort(function(a,b) { return b.unlocked_time-a.unlocked_time })
-            if(sort.currentIndex===2) rows.sort(function(a,b) { return (a.rarity || 0)-(b.rarity || 0) })
+            if(sort.currentIndex===2) rows.sort(function(a,b) { return (Style.known(a) ? a.rarity : 101)-(Style.known(b) ? b.rarity : 101) })
             return rows
         }
         currentIndex: -1;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
-        delegate: Rectangle {
+        delegate: AchievementEntry {
             required property var modelData
             required property int index
-            width: list.width;height: Math.max(pane.compact ? 74 : 88,details.implicitHeight+20);radius: Theme.controlRadius
-            color: modelData.unlocked ? Theme.selection : Theme.surface
-            border.color: list.activeFocus && list.currentIndex===index ? Theme.accent : Theme.outline
+            objectName: "achievementEntry";width: list.width;height: implicitHeight
+            record: modelData;compact: pane.compact;revealHidden: hiddenToggle.checked;selected: list.activeFocus && list.currentIndex===index
+            onClicked: { list.currentIndex=index;pane.showEntry(modelData) }
+        }
+        Label { anchors.centerIn: parent;width: parent.width-30;wrapMode: Text.Wrap;horizontalAlignment: Text.AlignHCenter;visible: !list.count;text: pane.info.has_schema ? "没有符合筛选条件的成就\n试试其他关键词，或重置筛选。" : "还没有成就列表\n展开匹配与记录设置，选择游戏版本后查看。";color: Theme.secondary }
+    }
+    }
+    Dialog {
+        id: entryDialog;objectName: "achievementEntryDialog";parent: Overlay.overlay
+        function controllerInput(command) { return pane.controllerInput(command) }
+        anchors.centerIn: parent;width: Math.min(540,parent ? parent.width-48 : 540)
+        modal: true;focus: true;padding: 24;closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle { color: Theme.sidebar;radius: Theme.radius;border.color: Theme.outline }
+        Overlay.modal: Rectangle { color: Theme.dark ? "#aa000000" : "#66000000" }
+        onClosed: Qt.callLater(function() { list.forceActiveFocus();if(list.currentIndex>=0) list.positionViewAtIndex(list.currentIndex,ListView.Contain) })
+        contentItem: ColumnLayout {
+            spacing: 16
             RowLayout {
-                anchors.fill: parent;anchors.margins: 10;spacing: 14
-                Item {
-                    Layout.preferredWidth: pane.compact ? 48 : 56;Layout.preferredHeight: pane.compact ? 48 : 56
-                    Label { anchors.centerIn: parent;text: modelData.unlocked ? "★" : "☆";color: modelData.unlocked ? Theme.accent : Theme.secondary;font.pixelSize: 30;visible: !icon.visible }
-                    Image { id: icon;anchors.fill: parent;source: modelData.iconUrl || "";asynchronous: true;visible: status===Image.Ready && (!modelData.hidden || modelData.unlocked || hiddenToggle.checked);fillMode: Image.PreserveAspectFit;opacity: modelData.unlocked ? 1 : .55 }
+                Layout.fillWidth: true;spacing: 18
+                Rectangle {
+                    Layout.preferredWidth: 76;Layout.preferredHeight: 76;radius: 8;color: Theme.surface
+                    Label { anchors.centerIn: parent;text: pane.activeEntry.hidden && !pane.activeEntry.unlocked && !hiddenToggle.checked ? "?" : pane.activeEntry.unlocked ? "✓" : "◇";font.pixelSize: 32;color: Theme.accent;visible: detailIcon.status!==Image.Ready || !detailIcon.visible }
+                    Image { id: detailIcon;anchors.fill: parent;anchors.margins: 4;source: pane.activeEntry.iconUrl || "";sourceSize.width: 160;asynchronous: true;fillMode: Image.PreserveAspectFit;visible: !pane.activeEntry.hidden || !!pane.activeEntry.unlocked || hiddenToggle.checked }
                 }
                 ColumnLayout {
-                    id: details;Layout.fillWidth: true;spacing: 4
-                    Label { text: hiddenToggle.checked ? modelData.secret_name : modelData.name;font.bold: true;Layout.fillWidth: true;elide: Text.ElideRight }
-                    Label { text: hiddenToggle.checked ? modelData.secret_description : modelData.description;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;font.pixelSize: 12;maximumLineCount: 2;elide: Text.ElideRight }
-                    Label { visible: modelData.max>0 && !modelData.unlocked;text: modelData.progress+" / "+modelData.max;color: Theme.secondary;font.pixelSize: 12 }
-                    ProgressBar { visible: modelData.max>0 && !modelData.unlocked;Layout.fillWidth: true;from: 0;to: Math.max(1,modelData.max);value: modelData.progress;implicitHeight: 4 }
-                }
-                ColumnLayout {
-                    spacing: 5
-                    Label { text: modelData.unlocked ? modelData.unlocked_at : "未解锁";color: modelData.unlocked ? Theme.accent : Theme.secondary;font.pixelSize: 11 }
-                    Label { text: modelData.rarity_known || modelData.rarity>0 ? modelData.rarity+"%" : "稀有度未知";color: Theme.secondary;font.pixelSize: 10 }
+                    Layout.fillWidth: true;spacing: 8
+                    Label { objectName: "achievementEntryTitle";text: Style.title(pane.activeEntry,hiddenToggle.checked) || "成就详情";textFormat: Text.PlainText;font.pixelSize: 20;font.weight: Font.DemiBold;Layout.fillWidth: true;wrapMode: Text.Wrap;maximumLineCount: 3;elide: Text.ElideRight }
+                    Label { text: pane.activeEntry.unlocked ? "已解锁 · "+(pane.activeEntry.unlocked_at || "时间未知") : "尚未解锁";color: pane.activeEntry.unlocked ? Theme.accent : Theme.secondary;font.pixelSize: 12 }
                 }
             }
+            Rectangle { Layout.fillWidth: true;implicitHeight: 1;color: Theme.outline }
+            ScrollView {
+                id: descriptionView;objectName: "achievementDescriptionScroll";Layout.fillWidth: true;Layout.preferredHeight: Math.min(200,entryDescription.implicitHeight);clip: true;contentWidth: availableWidth
+                Label { id: entryDescription;objectName: "achievementEntryDescription";text: Style.description(pane.activeEntry,hiddenToggle.checked) || "暂无说明";textFormat: Text.PlainText;width: descriptionView.availableWidth;wrapMode: Text.Wrap;font.pixelSize: 14;lineHeight: 1.4 }
+            }
+            ProgressBar { visible: pane.activeEntry.max>0 && !pane.activeEntry.unlocked;Layout.fillWidth: true;from: 0;to: Math.max(1,pane.activeEntry.max || 0);value: pane.activeEntry.progress || 0 }
+            Label { visible: pane.activeEntry.max>0 && !pane.activeEntry.unlocked;text: "当前进度 "+(pane.activeEntry.progress || 0)+" / "+(pane.activeEntry.max || 0);color: Theme.secondary }
+            Label { text: Style.rarity(pane.activeEntry)+(Style.known(pane.activeEntry) ? " · 全球解锁率 "+Number(pane.activeEntry.rarity).toFixed(1)+"%" : "");color: Style.color(pane.activeEntry,Theme.secondary,Theme.dark);font.pixelSize: 12 }
+            AppButton { objectName: "achievementEntryClose";text: "返回成就列表";Layout.alignment: Qt.AlignRight;onClicked: entryDialog.close() }
         }
-        Label { anchors.centerIn: parent;width: parent.width-30;wrapMode: Text.Wrap;horizontalAlignment: Text.AlignHCenter;visible: !list.count;text: "尚无成就列表\n匹配游戏或导入定义后，在这里查看解锁进度。";color: Theme.secondary }
-    }
     }
 }
