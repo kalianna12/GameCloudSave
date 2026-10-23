@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievements-async
     try:
         manager.openFor('a');until(idle);manager.save('a',{'source':str(source)});until(idle)
         # Late responses persist for their own game but cannot replace another page.
-        schema=[{'id':'NEW','name':'New adventure','description':'Explore','hidden':False,'icon':'','max':0}]
+        schema=[{'id':key,'name':key,'description':'Explore','hidden':False,'icon':'','max':0} for key in ('FIRST','NEXT')]
         with patch('achievements.steam_schema',side_effect=lambda _: (gate.wait(3),schema)[1]):
             manager.match('a','42');manager.openFor('b');until(idle);gate.set()
             until(lambda:not manager._fetching);spin(.1)
@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievements-async
             manager.match('a','99');until(lambda:'offline' in manager.state.get('message',''))
         assert manager.state['appid']=='42' and manager.state['total']==before
         # Invalid source doesn't partially apply its accompanying toggle.
-        manager.save('a',{'enabled':False,'source':str(root/'invalid.bin')});until(idle)
+        manager.save('a',{'enabled':False,'source':str(root/'invalid.txt')});until(idle)
         assert manager.repository.configs['a']['enabled'] is True
         # File does not yet exist. Reading a baseline now must allow FIRST to pop
         # when the game creates it, rather than silently import the first unlock.

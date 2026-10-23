@@ -139,7 +139,8 @@ Item {
                             Rectangle { x: 28; width: 88; height: 112; radius: 8; color: "#243d59"; border.color: node.modelData.color; border.width: 2
                                 scale: nodeHover.hovered && Theme.motion ? 1.04 : 1;Behavior on scale { NumberAnimation { duration: Theme.motion ? 140 : 0 } }
                                 Image { anchors.fill: parent; anchors.margins: 5; source: node.modelData.game.coverUrl || ""; asynchronous: true; fillMode: Image.PreserveAspectCrop; sourceSize.width: 180 }
-                                NewGameBadge { visible: !!node.modelData.game.isNew;anchors.horizontalCenter: parent.horizontalCenter;y: 12 }
+                                AchievementBadge { id: achievements;gameId: node.modelData.game.id || "";x: 4;y: 4;width: 34 }
+                                NewGameBadge { visible: !!node.modelData.game.isNew;anchors.horizontalCenter: parent.horizontalCenter;y: achievements.visible ? 78 : 12 }
                                 SelectionFrame { objectName: "atlasFocusRing"; selected: node.current && atlas.controllerFocused; radius: 8 }
                                 Label { visible: !node.modelData.game.coverUrl; anchors.fill: parent; anchors.margins: 6; text: node.modelData.game.name; color: "white"; wrapMode: Text.Wrap; font.pixelSize: 13; maximumLineCount: 4; elide: Text.ElideRight }
                             }

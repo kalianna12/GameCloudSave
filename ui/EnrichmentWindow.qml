@@ -10,6 +10,7 @@ ApplicationWindow {
     title: "资料补全"; color: Theme.background; font.family: "Microsoft YaHei UI"
     Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
     property var scopeIds: []
+    signal achievementsRequested(var ids)
     property var selected: ({})
     property bool hasQuery: false
     property bool ownsQuery: false
@@ -91,6 +92,7 @@ ApplicationWindow {
                 Label { text: window.scopeIds.length ? "已选 "+window.scopeIds.length+" 款游戏" : "全部游戏"; color: Theme.secondary }
             }
             Item { Layout.fillWidth: true }
+            AppButton { objectName: "enrichmentAchievements";text: "批量补全成就";onClicked: window.achievementsRequested(window.scopeIds) }
             AppButton { objectName: "enrichmentClose"; text: "关闭"; onClicked: window.close() }
         }
         Label { visible: !window.manualId; text: "只补缺失内容，查询后预览。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }

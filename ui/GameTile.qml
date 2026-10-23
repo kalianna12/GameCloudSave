@@ -41,7 +41,8 @@ Item {
             Label { visible: !cover.source.toString() || cover.status===Image.Error; anchors.centerIn: parent; width: parent.width-20; text: tile.game.name || ""; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter; color: Theme.secondary }
         }
         CoverEffects { id: coverEffect; anchors.fill: parent; surface: poster; identity: tile.game.id || ""; controllerFocused: tile.selected && backend.controllerMode; suspended: tile.scrolling; tiltLimit: tile.featured ? 7 : 18 }
-        NewGameBadge { visible: !!tile.game.isNew;anchors.left: parent.left;anchors.top: parent.top;anchors.margins: 7 }
+        AchievementBadge { id: achievements;gameId: tile.game.id || "";x: 7;y: 7 }
+        NewGameBadge { visible: !!tile.game.isNew;x: 7;y: achievements.visible ? achievements.y+achievements.height+5 : 7 }
         Rectangle { objectName: "tileFocusRing"; z: 10; readonly property real focusWidth: border.width; anchors.fill: parent; color: "transparent"; radius: 6; border.width: tile.selected ? 3 : hover.hovered && !tile.scrolling && !tile.featured ? 2 : 0; border.color: tile.selected ? Theme.accent : Theme.secondary; Behavior on border.width { NumberAnimation { duration: Theme.motion ? 100 : 0 } } }
         TapHandler { onTapped: { tile.forceActiveFocus();if(tile.selectOnly) tile.selectionRequested();else tile.detailsRequested(tile.game) } }
         Item {

@@ -109,7 +109,7 @@ def main():
             window.grabWindow().save(str(output/'expanded-900.png'))
             window.resize(1440,900);spin(.1)
             # Old asynchronous result cannot replace a different selected game's page.
-            manager.openFor('platform-fixture');assert not manager.state['rows']
+            manager.openFor('platform-fixture');until(lambda:not manager.state['busy']);assert manager.state['notifications'] is False
             manager.openFor('local-fixture');until(lambda:not manager.state['busy'])
             invoke(dialog,'controllerInput','back');spin(.1)
             fixture=root/'fixture.py';fixture.write_text('''from PySide6.QtWidgets import QApplication,QWidget

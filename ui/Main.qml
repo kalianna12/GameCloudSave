@@ -91,7 +91,8 @@ ApplicationWindow {
     property var navigationHistory: []
     property var toolbarReturn: null
     property string sidebarOrigin: ""
-    function focusSidebar(index) { sidebarOrigin=libraryMode;focusControls([navHome,navAll,navRecent,navFavorites,navSeries,navNew,navMapping],index) }
+    function revealSidebar(control) { var flick=sidebarScroll.contentItem;if(!control || !flick.contentItem) return;var y=control.mapToItem(flick.contentItem,0,0).y;flick.contentY=Math.max(0,Math.min(Math.max(0,flick.contentHeight-flick.height),y<flick.contentY ? y-4 : y+control.height>flick.contentY+flick.height ? y+control.height-flick.height+4 : flick.contentY)) }
+    function focusSidebar(index) { sidebarOrigin=libraryMode;var items=[navHome,navAll,navRecent,navFavorites,navSeries,navNew,navEnrichment,navAchievements,navMapping];focusControls(items,index);revealSidebar(items[index]) }
     function rememberNavigationFocus() { return {content:libraryFocus(),item:activeFocusItem} }
     function restoreNavigationFocus() {
         var saved=toolbarReturn;toolbarReturn=null
@@ -175,14 +176,14 @@ ApplicationWindow {
             else navHome.forceActiveFocus()
             return true
         }
-        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries,navNew,navMapping]
+        var sidebar=[navHome,navAll,navRecent,navFavorites,navSeries,navNew,navEnrichment,navAchievements,navMapping]
         var filters=filterControls.filter(function(control) { return control.visible && control.enabled })
         var headers=headerControls.filter(function(control) { return control.visible && control.enabled })
         var item=activeFocusItem,side=-1,filter=-1,header=-1
         while(item) { if(side<0) side=sidebar.indexOf(item);if(filter<0) filter=filters.indexOf(item);if(header<0) header=headers.indexOf(item);item=item.parent }
         if(side>=0) {
-            if(command==="right" || command==="activate") { if(command==="right" && sidebarOrigin===libraryMode) focusContent();else if(sidebar[side]===navMapping && command==="activate") navMapping.clicked();else { var changed=previewSidebar(side);if(changed) focusFirstContent();else focusContent() };sidebarOrigin="";return true }
-            if(command==="up" || command==="down") { sidebarOrigin="";var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);previewSidebar(nextSide);return true }
+            if(command==="right" || command==="activate") { if(command==="right" && sidebarOrigin===libraryMode) focusContent();else if(side>=6 && command==="activate") sidebar[side].clicked();else { var changed=previewSidebar(side);if(changed) focusFirstContent();else focusContent() };sidebarOrigin="";return true }
+            if(command==="up" || command==="down") { sidebarOrigin="";var nextSide=Math.max(0,Math.min(sidebar.length-1,side+(command==="up" ? -1 : 1)));focusControls(sidebar,nextSide);revealSidebar(sidebar[nextSide]);previewSidebar(nextSide);return true }
             return true
         }
         if(filter>=0 || header>=0) {
@@ -320,7 +321,7 @@ ApplicationWindow {
         if(resetGridSelection) { grid.currentIndex=libraryModel.count ? 0 : -1;resetGridSelection=false;return }
         var current=shownGames.findIndex(function(g) { return g.id===selectedId });if(current>=0) grid.currentIndex=current
     }
-    onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();mappingWindow.hide();enrichmentWindow.hide();hide() } else Qt.quit() }
+    onClosing: function(close) { if(launchTransition.running) launchTransition.cancel();if(backend.closeToTray()) { close.accepted=false; cloudWindow.hide(); matchWindow.hide(); importWindow.hide(); batchWindow.hide();setupWizard.hide();libraryManager.hide();personalization.hide();mappingWindow.hide();enrichmentWindow.hide();achievementsWindow.hide();hide() } else Qt.quit() }
     function selectGame(g) { activeId = g.id; activeName = g.name }
     function editMetadata() { gameDialog.openFor(activeId,2) }
     function openGame(g) {
@@ -373,7 +374,8 @@ ApplicationWindow {
         launchTransition.begin(game,libraryDesign)
     }
     LaunchTransition { id: launchTransition; anchors.fill: parent; z: 500; onCommitted: function(game) { backend.launch(game.id) } }
-    EnrichmentWindow { id: enrichmentWindow;onSaveSearchRequested: function(ids) { if(ids.length) { hide();win.openSaveSearch(ids) } } }
+    EnrichmentWindow { id: enrichmentWindow;onSaveSearchRequested: function(ids) { if(ids.length) { hide();win.openSaveSearch(ids) } } onAchievementsRequested: function(ids) { achievementsWindow.openFor(ids) } }
+    AchievementsWindow { id: achievementsWindow;objectName: "achievementsWindow" }
     Connections { target: backend; function onEnrichmentRequested(ids,options) { win.openEnrichment(ids,options,true) } }
     CloudWindow { id: cloudWindow; objectName: "cloudWindow" }
     ImportWindow { id: importWindow; objectName: "importWindow" }
@@ -395,7 +397,7 @@ ApplicationWindow {
             Image { source: "icons/app.svg"; width: 30; height: 30; sourceSize: Qt.size(90,90) }
             Label { text: "GameCloudSave"; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.text }
         }
-        ScrollView { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 84; bottom: parent.bottom; bottomMargin: 80 }
+        ScrollView { id: sidebarScroll;anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 84; bottom: parent.bottom; bottomMargin: 80 }
             clip: true
             Column { x: 8; spacing: 4
                 NavigationButton { id: navHome; objectName: "navHome"; width: 184; iconName: "grid"; text: "游戏库主页"; selected: libraryMode==="home"; onClicked: win.navigate("home","") }
@@ -405,7 +407,8 @@ ApplicationWindow {
                 NavigationButton { id: navSeries; objectName: "navSeries"; width: 184; iconName: "folder"; text: "系列"; selected: libraryMode==="series"; onClicked: win.navigate("series","") }
                 NavigationButton { id: navNew;objectName: "navNew";width: 184;iconName: "star";text: "新加入";selected: libraryMode==="new";onClicked: win.navigate("new","") }
                 Item { width: 184; height: 18; Rectangle { anchors.centerIn: parent; width: 160; height: 1; color: Theme.outline } }
-                NavigationButton { objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
+                NavigationButton { id: navEnrichment;objectName: "enrichmentNav"; width: 184; iconName: "spark"; text: "资料补全"; onClicked: win.openEnrichment([],{},false) }
+                NavigationButton { id: navAchievements;objectName: "achievementsNav";width: 184;iconName: "achievement";text: "成就管理";onClicked: achievementsWindow.openFor([]) }
                 NavigationButton { id: navMapping; objectName: "mappingNav"; width: 184; iconName: "settings"; text: "手柄映射"; onClicked: mappingWindow.openMapping() }
                 NavigationButton { width: 184; iconName: "cloud"; text: "云端存储"; onClicked: win.openCloud() }
                 NavigationButton { width: 184; iconName: "folder"; text: "查找存档"; onClicked: win.openMatch("") }

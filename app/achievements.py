@@ -7,12 +7,13 @@ import json
 import os
 from pathlib import Path
 import time
+import threading
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl
 from PySide6.QtWidgets import QFileDialog
 from achievement_files import (discover, identify, merge_progress, namespace,
-                               normalize_schema, parse_state, read_text, steam_schema)
+                               normalize_schema, parse_state, read_text, steam_schema,canonical_states)
 
 
 class Repository:
@@ -42,9 +43,13 @@ class Repository:
 
     def setup(self, game, local, refresh=False, baseline=True):
         config = self.config(game['id'])
+        config['platform']=game.get('platform') or 'local'
+        if config['platform']=='steam':config['notifications']=False
         appid = identify(game, local, config.get('appid', ''))
-        found = discover(game, local, appid)
+        scan_local=dict(local,achievement_roots=config.get('roots',[]))
+        found = discover(game, scan_local, appid)
         config['appid'] = appid; config['sources'] = found['sources']
+        config['checked']=found.get('checked',[]);config['rejected']=found.get('rejected',[])
         if not config.get('source') and len(found['sources']) == 1:
             config['source'] = found['sources'][0]
             if not baseline: self.record(game['id'], config)['initialized'] = True
@@ -55,7 +60,7 @@ class Repository:
             except FileNotFoundError:
                 self.record(game['id'], config)['initialized'] = True; states = None
             except (OSError, ValueError): states = None
-            if states is not None: merge_progress(self.record(game['id'], config), states)
+            if states is not None: merge_progress(self.record(game['id'], config), canonical_states(states,config.get('schema',[])))
         self.save(); return config
 
     def view(self, ident, message=''):
@@ -65,19 +70,33 @@ class Repository:
         rows = []
         for key in dict.fromkeys([*schema, *states, *unlocks]):
             row = dict(schema.get(key) or {'id': key, 'name': key, 'description': '尚未匹配成就说明', 'icon': '', 'hidden': False, 'max': 0})
-            row.update(unlocked=key in unlocks, unlocked_at=time.strftime('%Y-%m-%d %H:%M', time.localtime(unlocks[key])) if key in unlocks else '', progress=states.get(key, {}).get('progress', 0))
+            row.update(unlocked=key in unlocks, unlocked_at=time.strftime('%Y-%m-%d %H:%M', time.localtime(unlocks[key])) if unlocks.get(key,0)>0 else '时间未知' if key in unlocks else '', progress=states.get(key, {}).get('progress', 0))
+            row.update(secret_name=row['name'],secret_description=row['description'],unlocked_time=unlocks.get(key,0))
             if row['hidden'] and not row['unlocked']: row.update(name='隐藏成就', description='解锁后显示详情')
             icon = self.icon_path(row)
             row['iconUrl'] = QUrl.fromLocalFile(icon).toString() if icon else ''
             rows.append(row)
         rows.sort(key=lambda row: (not row['unlocked'], row['name']))
         if not message:
-            if not config.get('source'):
+            if config.get('last_error'):
+                message='上次匹配未完成：'+config['last_error']+('；已缓存定义保留' if schema else '')
+            elif not config.get('source'):
                 message = '找到多个记录，请选择本次游玩的账号／目录' if len(config.get('sources', [])) > 1 else '尚未找到可读取的成就记录；可选择记录文件，游戏首次解锁后也可能才生成文件'
             elif not Path(config['source']).is_file(): message = '记录文件尚未生成；游玩时会等待它出现'
             else: message = '本地记录已同步；启动游戏后监听新解锁' if config.get('schema') else '已读取进度；请匹配成就定义以显示名称与图标'
+        valid=set(schema) or {row['id'] for row in rows}
         return {**{k: v for k, v in config.items() if k != 'schema'}, 'ident': ident, 'rows': rows,
-                'total': len(rows), 'has_schema': bool(schema), 'unlocked': sum(row['unlocked'] for row in rows), 'message': message, 'busy': False}
+                'total': len(valid), 'has_schema': bool(schema), 'unlocked': len(valid&set(unlocks)), 'message': message, 'busy': False,
+                'icons_done':sum(bool(self.icon_path(row)) for row in schema.values()),'icons_total':sum(bool(row.get('icon')) for row in schema.values())}
+
+    def summary(self,ident):
+        config=self.config(ident);record=self.record(ident,config);schema=config.get('schema',[])
+        keys={row['id'] for row in schema} or set(record.get('progress',{}))|set(record.get('unlocks',{}))
+        return {'total':len(keys),'unlocked':len(keys&set(record.get('unlocks',{}))),
+                'has_schema':bool(schema),'has_record':bool(config.get('source')) and Path(config['source']).is_file(),
+                'source':config.get('source',''),'appid':config.get('appid',''),'provider':config.get('schema_source',''),
+                'enabled':config.get('enabled',True),'ambiguous':len(config.get('sources',[]))>1 and not config.get('source'),
+                'icons_cached':sum(bool(self.icon_path(row)) for row in schema),'icons_total':sum(bool(row.get('icon')) for row in schema)}
 
     def icon_path(self, row):
         value = row.get('icon', '')
@@ -108,13 +127,22 @@ class Achievements(QObject):
     schemaReady = Signal(str, str, object, str)
     iconsReady = Signal(str)
     searchReady = Signal(int, str, object, str)
+    catalogChanged=Signal()
+    catalogReady=Signal(object)
+    batchChanged=Signal()
+    batchReady=Signal(object)
+    iconProgress=Signal(str,int,int,int)
 
     def __init__(self, store, parent=None):
         super().__init__(parent); self.store = store; self.repository = Repository(store.profile)
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='achievements')
         self.network = ThreadPoolExecutor(max_workers=1, thread_name_prefix='achievement-metadata')
         self.icons = ThreadPoolExecutor(max_workers=1, thread_name_prefix='achievement-icons')
-        self._fetching = set()
+        self.batch_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='achievement-batch')
+        self._batch_cancel=threading.Event();self._batch={'running':False,'done':0,'total':0,'message':'选择游戏后开始批量匹配'}
+        self._summaries={};self._overview=[];self._recent=[];self._catalog_revision=0;self._icon_jobs=set();self._providers={}
+        self._icon_wanted={}
+        self._fetching = set();self._auto_attempted=set()
         self._wanted = {}
         self._fetch_serial = {}
         self._state = {'busy': False, 'ident': '', 'message': '选择一款本地游戏以匹配成就', 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0}
@@ -124,10 +152,115 @@ class Achievements(QObject):
         self.completed.connect(self.receive); self.polled.connect(self.receivePoll)
         self.schemaReady.connect(self.receiveSchema); self.iconsReady.connect(self.refreshView)
         self.searchReady.connect(self.receiveSearch)
+        self.catalogReady.connect(self.receiveCatalog);self.batchReady.connect(self.receiveBatch);self.iconProgress.connect(self.receiveIcons)
         self.timer = QTimer(self); self.timer.setInterval(1000); self.timer.timeout.connect(self.poll)
+        QTimer.singleShot(0,self.refreshCatalog)
 
     @Property('QVariantMap', notify=changed)
     def state(self): return self._state
+
+    @Property(int,notify=catalogChanged)
+    def summaryRevision(self):return self._catalog_revision
+
+    @Property('QVariantList',notify=catalogChanged)
+    def overview(self):return self._overview
+
+    @Property('QVariantList',notify=catalogChanged)
+    def recent(self):return self._recent
+
+    @Property('QVariantMap',notify=batchChanged)
+    def batchState(self):return self._batch
+
+    @Property('QVariantList',constant=True)
+    def providers(self):
+        from achievement_sources import PROVIDERS
+        return PROVIDERS
+
+    @Slot(str,result='QVariantMap')
+    def summary(self,ident):return self._summaries.get(ident,{})
+
+    def publish(self):
+        summaries={};rows=[];recent=[]
+        for game in list(self.store.games):
+            ident=game['id'];config=self.repository.config(ident)
+            value=self.repository.summary(ident)
+            definitions={r['id']:r for r in config.get('schema',[])}
+            for key,stamp in self.repository.record(ident,config).get('unlocks',{}).items():
+                if stamp>0 and key in definitions:
+                    recent.append({'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp})
+            if value['total']:summaries[ident]=value
+            rows.append(dict(value,id=ident,name=game['name'],platform=game.get('platform') or 'local',
+                             supported=game.get('platform') in ('local','steam','',None),
+                             error=config.get('last_error',''),status='已就绪' if value['has_schema'] and value['has_record'] else '待选择记录' if value['ambiguous'] else '已匹配 · 尚无记录' if value['has_schema'] else '匹配失败' if config.get('last_error') else '待匹配'))
+        if not self.closed:self.catalogReady.emit({'summaries':summaries,'rows':rows,'recent':sorted(recent,key=lambda r:-r['stamp'])[:200]})
+
+    @Slot()
+    def refreshCatalog(self):
+        if self.closed:return
+        def work():
+            try:self.publish()
+            except Exception:pass
+        self.pool.submit(work)
+
+    @Slot(object)
+    def receiveCatalog(self,result):
+        if self.closed:return
+        if result['summaries']==self._summaries and result['rows']==self._overview and result['recent']==self._recent:return
+        self._summaries=result['summaries'];self._overview=result['rows'];self._recent=result['recent'];self._catalog_revision+=1;self.catalogChanged.emit()
+
+    @Slot('QVariantList',str,bool)
+    def batch(self,ids,provider='auto',force=False):
+        if self.closed or self._batch['running']:return
+        wanted=set(ids);games=[deepcopy(g) for g in self.store.games if (not wanted or g['id'] in wanted) and g.get('platform') in ('local','steam','',None)]
+        local=deepcopy(self.store.local);self._batch_cancel.clear()
+        self._batch={'running':True,'done':0,'total':len(games),'message':'正在检测成就记录与匹配定义','errors':[]};self.batchChanged.emit()
+        def run():
+            done=0;errors=[]
+            try:
+                for game in games:
+                    if self.closed or self._batch_cancel.is_set():break
+                    ident=game['id'];message=''
+                    try:
+                        config=deepcopy(self.pool.submit(self.repository.setup,game,local.get(ident,{}),False,ident not in self.sessions).result())
+                        appid=config.get('appid','')
+                        if not appid and provider!='local':
+                            from network_metadata import lookup
+                            identity=lookup(game['name'],Path(local.get(ident,{}).get('install_dir','')).name,cancel=self._batch_cancel)
+                            appid=identity.get('steam_appid','')
+                        # Normal refresh reuses cached definitions; full refresh is explicit.
+                        if force or not config.get('schema'):
+                            if not appid and not config.get('schema'):raise ValueError('没有可靠的 App ID；请在单游戏页搜索并确认版本')
+                            from achievement_sources import resolve
+                            rows,label,failures=resolve(appid,provider,config.get('schema'),steam_fetch=steam_schema)
+                            def apply():
+                                current=self.repository.config(ident)
+                                if current.get('appid')!=appid:current.update(source='',sources=[])
+                                current.update(appid=appid,schema=rows,schema_source=label,provider=provider,last_error='')
+                                self.repository.setup(game,local.get(ident,{}),baseline=ident not in self.sessions)
+                                if failures:current['source_notes']=failures
+                                self.repository.save();return deepcopy(current)
+                            config=self.pool.submit(apply).result()
+                        if not self.closed:self.cacheAll(ident,config.get('schema',[]))
+                    except Exception as exc:
+                        message=str(exc)[:240];errors.append({'id':ident,'name':game['name'],'message':message})
+                        def remember_error():
+                            self.repository.config(ident)['last_error']=message;self.repository.save()
+                        self.pool.submit(remember_error).result()
+                    done+=1
+                    self.pool.submit(self.publish).result()
+                    if not self.closed:self.batchReady.emit({'running':True,'done':done,'total':len(games),'message':game['name']+('：'+message if message else '：定义与记录检测完成'),'errors':list(errors)})
+            finally:
+                if not self.closed:self.batchReady.emit({'running':False,'done':done,'total':len(games),'message':'已停止，已完成内容保留' if self._batch_cancel.is_set() else '批量检测完成；图标继续后台缓存，缺失项可在单游戏页处理','errors':errors})
+        self.batch_pool.submit(run)
+
+    @Slot(object)
+    def receiveBatch(self,result):
+        if self.closed:return
+        self._batch=result;self.batchChanged.emit()
+        if not result['running'] and self._state.get('ident'):self.refreshView(self._state['ident'])
+
+    @Slot()
+    def cancelBatch(self):self._batch_cancel.set()
 
     def game(self, ident):
         return next((deepcopy(g) for g in self.store.games if g['id'] == ident), None)
@@ -148,22 +281,25 @@ class Achievements(QObject):
         if error: self._state.update(busy=False, message='成就：'+error)
         else: self._state = result
         self.changed.emit()
+        self.refreshCatalog()
         if not error and (result.get('enabled') is False or result.get('notifications') is False): self.overlay.discard(ident)
-        if not error and result.get('appid') and not result.get('has_schema') and not result.get('candidates'):
-            self.fetchSchema(ident, result['appid'])
+        needs_schema=not error and (not result.get('has_schema') or result.get('platform')=='steam' and result.get('provider','auto')=='auto' and not result.get('schema_source','').startswith('Steam 公开'))
+        if needs_schema and result.get('appid') and not result.get('candidates') and (ident,result['appid']) not in self._auto_attempted:
+            self._auto_attempted.add((ident,result['appid']));self.fetchSchema(ident, result['appid'])
 
     @Slot(str)
     def openFor(self, ident):
         game = self.game(ident)
         if not game: return
-        if game.get('platform') not in ('local', '', None):
+        if game.get('platform') not in ('local','steam', '', None):
             self._serial += 1
-            self._state = {'ident': ident, 'busy': False, 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0, 'message': '此页用于本地游戏；平台游戏请使用平台自身成就'}; self.changed.emit(); return
+            self._state = {'ident': ident, 'busy': False, 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0, 'message': '此平台暂不支持自动读取；可使用本地游戏条目和对应记录'}; self.changed.emit(); return
         # A newly selected game invalidates old results without cancelling its disk write.
         self._serial += 1; self._state = {'ident': ident, 'busy': False, 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0}
         local = deepcopy(self.store.local.get(ident, {}))
         def work():
-            self.repository.setup(game, local, baseline=ident not in self.sessions)
+            config=self.repository.setup(game, local, baseline=ident not in self.sessions)
+            self.cacheAll(ident,config.get('schema',[]))
             return self.repository.view(ident)
         self.submit(ident, work)
 
@@ -196,6 +332,10 @@ class Achievements(QObject):
         self._state.update(message='正在匹配成就定义，游戏监听保持运行'); self.changed.emit()
         self.fetchSchema(ident, appid)
 
+    @Slot(str,str,str)
+    def matchSource(self,ident,appid,provider):
+        self._providers[ident]=provider;self.match(ident,appid)
+
     def fetchSchema(self, ident, appid):
         if self.closed: return
         self._wanted[ident] = appid
@@ -203,7 +343,13 @@ class Achievements(QObject):
         if (ident, appid) in self._fetching: return
         self._fetching.add((ident, appid))
         def run():
-            try: rows = steam_schema(appid); error = ''
+            try:
+                from achievement_sources import resolve
+                config=self.pool.submit(lambda:deepcopy(self.repository.config(ident))).result()
+                local_rows=config.get('schema',[]) if config.get('appid') in ('',appid) else []
+                rows,label,failures=resolve(appid,self._providers.get(ident,config.get('provider','auto')),local_rows,steam_fetch=steam_schema)
+                for row in rows:row['_definition_source']=label
+                error = ''
             except Exception as exc: rows = []; error = str(exc)[:180]
             if not self.closed: self.schemaReady.emit(ident, appid, rows, error)
         self.network.submit(run)
@@ -224,20 +370,42 @@ class Achievements(QObject):
                 config = self.repository.config(ident)
                 changed_identity = config.get('appid') != appid
                 if changed_identity: config.update(source='', schema=[], sources=[])
-                config.update(appid=appid, schema=rows, schema_source='Steam 公开成就资料')
+                config.update(appid=appid, schema=rows, schema_source=rows[0].get('_definition_source','Steam 公开成就资料'),provider=self._providers.get(ident,'auto'),last_error='')
                 self.repository.setup(game, local, baseline=ident not in self.sessions or changed_identity); self.repository.save()
                 view = self.repository.view(ident)
                 if not self.closed: self.completed.emit(serial, ident, view, '')
+                self.publish()
             except Exception as exc:
                 if not self.closed: self.completed.emit(serial, ident, None, str(exc)[:180])
         self.pool.submit(write)
-        def icons():
-            deadline = time.monotonic()+30
-            for row in rows:
-                if self.closed or time.monotonic()>deadline: break
-                self.repository.cache_icons([row])
-            if not self.closed: self.iconsReady.emit(ident)
-        self.icons.submit(icons)
+        self.cacheAll(ident,rows)
+
+    def cacheAll(self,ident,rows):
+        if self.closed:return
+        self._icon_wanted[ident]=rows
+        if ident in self._icon_jobs:return
+        self._icon_jobs.add(ident)
+        def run():
+            assets=[row for row in rows if row.get('icon')];failed=0
+            try:
+                for index,row in enumerate(assets):
+                    if self.closed:break
+                    self.repository.cache_icons([row])
+                    if not self.repository.icon_path(row):failed+=1
+                    if index%8==0 or index==len(assets)-1:self.iconProgress.emit(ident,index+1,len(assets),failed)
+            finally:
+                self._icon_jobs.discard(ident)
+                if not self.closed:self.iconsReady.emit(ident)
+                latest=self._icon_wanted.get(ident)
+                if not self.closed and latest is not rows:self.cacheAll(ident,latest)
+        self.icons.submit(run)
+
+    @Slot(str,int,int,int)
+    def receiveIcons(self,ident,done,total,failed):
+        if self.closed:return
+        if self._state.get('ident')==ident:
+            self._state.update(icons_done=done,icons_total=total,icons_failed=failed);self.changed.emit()
+        if done==total:self.refreshCatalog()
 
     @Slot(str)
     def refreshView(self, ident):
@@ -255,22 +423,27 @@ class Achievements(QObject):
                 if key in values:
                     if type(values[key]) is not bool: raise ValueError('成就开关无效')
                     config[key] = values[key]
+            if (self.game(ident) or {}).get('platform')=='steam':config['notifications']=False
+            if 'provider' in values:
+                from achievement_sources import PROVIDERS
+                if values['provider'] not in {p['id'] for p in PROVIDERS}:raise ValueError('成就来源不存在')
+                config['provider']=values['provider']
             source = str(values.get('source', config.get('source', ''))).strip()
             if source:
-                if Path(source).suffix.casefold() not in ('.json', '.ini'): raise ValueError('请选择 JSON 或 INI 成就记录')
+                if Path(source).suffix.casefold() not in ('.json', '.ini','.bin'): raise ValueError('请选择 JSON、INI 或 Steam BIN 成就记录')
                 if Path(source).is_file():
                     parsed = parse_state(source)
                     if not parsed and Path(source).suffix.casefold() == '.json' and normalize_schema(json.loads(read_text(source))):
                         raise ValueError('这是成就定义，请用“导入定义”；记录文件需要包含 earned / achieved / unlocked 等进度字段')
             if source != config.get('source'): config['source'] = source
-            if source and Path(source).is_file(): merge_progress(self.repository.record(ident, config), parse_state(source))
+            if source and Path(source).is_file(): merge_progress(self.repository.record(ident, config), canonical_states(parse_state(source),config.get('schema',[])))
             self.repository.configs[ident] = config
             self.repository.save(); return self.repository.view(ident, '方案已保存；已有进度已导入，不重复弹出')
         self.submit(ident, work)
 
     @Slot(str)
     def pickSource(self, ident):
-        path, _ = QFileDialog.getOpenFileName(None, '选择游戏生成的成就记录', '', '成就记录 (*.json *.ini)')
+        path, _ = QFileDialog.getOpenFileName(None, '选择游戏生成的成就记录', '', '成就记录 (*.json *.ini *.bin)')
         if path: self.save(ident, {'source': path})
 
     @Slot(str)
@@ -284,6 +457,17 @@ class Achievements(QObject):
             self.repository.save(); return self.repository.view(ident)
         self.submit(ident, work)
 
+    @Slot(str)
+    def addRoot(self,ident):
+        root=QFileDialog.getExistingDirectory(None,'选择成就记录可能所在的目录')
+        if not root:return
+        game=self.game(ident);local=deepcopy(self.store.local.get(ident,{}))
+        def work():
+            config=self.repository.config(ident);config['roots']=list(dict.fromkeys(config.get('roots',[])+[root]))[-10:]
+            self.repository.setup(game,local,baseline=ident not in self.sessions)
+            return self.repository.view(ident)
+        self.submit(ident,work)
+
     @Slot()
     def preview(self):
         self.overlay.enqueue({'name': '新的冒险', 'description': '弹窗不会抢走游戏焦点，也不会拦截鼠标。'}, {}, True)
@@ -291,17 +475,23 @@ class Achievements(QObject):
     def begin(self, ident):
         """Called before launch; baseline reads on the same serial worker as polling."""
         game = self.game(ident)
-        if self.closed or not game or game.get('platform') not in ('local', '', None): return
+        if self.closed or not game or game.get('platform') not in ('local','steam', '', None): return
         session = {'ident': ident, 'game': game, 'local': deepcopy(self.store.local.get(ident, {})), 'target': {}, 'created': time.monotonic(), 'primed': False, 'signature': None, 'discovery': 0}
+        if game.get('platform')=='steam':
+            # Steam may launch through an already-running client, without a
+            # detectable child window. Silent cache statistics can still sync.
+            import psutil
+            session['target']={'pid':os.getpid(),'hwnd':0,'created':psutil.Process().create_time(),'cache_only':True}
         self.sessions[ident] = session
         def prime():
             try:
                 self.repository.setup(game, session['local'])
                 session['primed'] = True
                 config = self.repository.config(ident)
+                self.cacheAll(ident,config.get('schema',[]))
                 if config.get('enabled', True) and config.get('appid') and not config.get('schema'):
                     # Signal to GUI; network work never holds the monitoring worker.
-                    self.polled.emit({'events': [], 'ended': [], 'view': None, 'fetch': (ident, config['appid'])})
+                    if not self.closed:self.polled.emit({'events': [], 'ended': [], 'view': None, 'fetch': (ident, config['appid'])})
             except Exception: session['primed'] = True
         baseline = self.pool.submit(prime); self.timer.start(); return baseline
 
@@ -319,7 +509,7 @@ class Achievements(QObject):
         if self.closed or self.polling: return
         self.polling = True; sessions = list(self.sessions.values()); selected = self._state.get('ident', '')
         def run():
-            events = []; ended = []; changed = False
+            events = []; ended = []; changed = False;any_changed=False
             for session in sessions:
                 target = dict(session['target']); ident = session['ident']
                 if not target:
@@ -339,7 +529,7 @@ class Achievements(QObject):
                     source = config.get('source', '')
                     if not source and time.monotonic()-session['discovery'] > 8:
                         # Discovery never baselines a newly generated file during a game.
-                        found = discover(session['game'], session['local'], config.get('appid', ''))
+                        found = discover(session['game'], dict(session['local'],achievement_roots=config.get('roots',[])), config.get('appid', ''))
                         session['discovery'] = time.monotonic(); config['sources'] = found['sources']
                         if len(found['sources']) == 1:
                             source = config['source'] = found['sources'][0]
@@ -348,15 +538,15 @@ class Achievements(QObject):
                     if not source: continue
                     path = Path(source); stat = path.stat(); signature = (config.get('appid'), source, stat.st_mtime_ns, stat.st_size)
                     if signature == session['signature']: continue
-                    states = parse_state(path)
+                    states = canonical_states(parse_state(path),config.get('schema',[]))
                     # Empty/partial transient writes do not erase remembered progress.
                     if not states and stat.st_size == 0: continue
                     record = self.repository.record(ident, config)
                     keys, dirty = merge_progress(record, states, notify=True)
                     session['signature'] = signature
-                    if dirty: self.repository.save(); changed = changed or ident == selected
+                    if dirty: self.repository.save(); changed = changed or ident == selected;any_changed=True
                     schema = {r['id']: r for r in config.get('schema', [])}
-                    if config.get('notifications', True):
+                    if config.get('notifications', True) and session['game'].get('platform')!='steam':
                         for key in keys:
                             row = dict(schema.get(key) or {'id': key, 'name': key, 'description': ''})
                             row.update(game_id=ident, game_name=session['game']['name'], icon_path=self.repository.icon_path(row))
@@ -365,6 +555,7 @@ class Achievements(QObject):
                 except Exception: continue  # Writing/atomic replace/file missing: retry, preserve history.
             view = self.repository.view(selected) if changed else None
             if not self.closed: self.polled.emit({'events': events, 'ended': ended, 'view': view})
+            if any_changed:self.publish()
         self.pool.submit(run)
 
     @Slot(object)
@@ -385,7 +576,8 @@ class Achievements(QObject):
                     target['scaler'] = int(user.FindWindowW(SCALING_CLASS, None) or 0)
                 except Exception: pass
             self.overlay.enqueue(row, target)
-        if result.get('fetch'): self.fetchSchema(*result['fetch'])
+        if result.get('fetch') and tuple(result['fetch']) not in self._auto_attempted:
+            self._auto_attempted.add(tuple(result['fetch']));self.fetchSchema(*result['fetch'])
         if result['view'] and result['view']['ident'] == self._state.get('ident') and not self._state.get('busy'):
             self._state = result['view']; self.changed.emit()
         if not self.sessions: self.timer.stop()
@@ -395,3 +587,4 @@ class Achievements(QObject):
         self.pool.shutdown(wait=False, cancel_futures=True)
         self.network.shutdown(wait=False, cancel_futures=True)
         self.icons.shutdown(wait=False, cancel_futures=True)
+        self._batch_cancel.set();self.batch_pool.shutdown(wait=False,cancel_futures=True)
