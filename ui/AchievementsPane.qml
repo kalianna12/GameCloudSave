@@ -53,6 +53,7 @@ ScrollView {
     ProgressBar { Layout.fillWidth: true;from: 0;to: Math.max(1,pane.info.total || 0);value: pane.info.unlocked || 0 }
     Label { visible: !pane.compact;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.steamGame ? "读取 Steam 本机成就缓存，统计完成进度；本程序不重复弹窗。缓存写入时机由 Steam 决定。" : "读取游戏生成的成就记录。首次导入不弹窗；普通窗口、无边框及 Anime4K 放大时，新解锁会显示在游戏上方。";font.pixelSize: 12 }
     Label { objectName: "achievementRecordStatus";Layout.fillWidth: true;wrapMode: Text.Wrap;color: pane.info.record_matched>0 ? Theme.accent : Theme.secondary;text: "定义："+(pane.info.has_schema ? (pane.info.total || 0)+" 项已缓存" : "待匹配")+"　进度："+(pane.info.record_status || "尚未检测");font.pixelSize: 12 }
+    Label { objectName: "achievementMonitorStatus";Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.monitor_status || "等待检测监听状态";font.pixelSize: 12 }
     RowLayout {
         Layout.fillWidth: true
         AppButton { id: setup;objectName: "achievementSetup";visible: pane.localGame;text: checked ? "收起匹配设置" : "匹配与记录设置";checkable: true }

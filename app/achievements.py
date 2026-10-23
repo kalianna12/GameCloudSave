@@ -21,6 +21,7 @@ class Repository:
     """Accessed only on the single achievements worker, independent of Store writes."""
     def __init__(self, profile):
         self.root = Path(profile) / 'achievements'; self.configs = None; self.records = None
+        self.health = {}
 
     def load(self):
         if self.configs is not None: return
@@ -71,7 +72,11 @@ class Repository:
             if states is not None:
                 from achievement_files import empty_record
                 config['record_empty']=not states and empty_record(config['source'])
-                merge_progress(self.record(game['id'], config), canonical_states(states,config.get('schema',[])))
+                record=self.record(game['id'], config)
+                # SSE CRCs cannot be named before definitions arrive. Keep the
+                # initial raw baseline so later matching doesn't replay history.
+                if not record.get('initialized') and any(k.startswith('crc32:') for k in states): record['pending_baseline']=states
+                merge_progress(record, canonical_states(states,config.get('schema',[])))
         self.save(); return config
 
     def view(self, ident, message=''):
@@ -105,6 +110,7 @@ class Repository:
         elif not matched:record_status='记录与成就 ID 不匹配 · 请检查游戏版本'
         else:record_status=f'已读取 {len(states)} 项 · 对应定义 {matched} 项'
         return {**{k: v for k, v in config.items() if k != 'schema'}, 'ident': ident, 'rows': rows,
+                'monitor_status': '监听已关闭' if config.get('enabled') is False else self.health.get(ident, '后台同步记录（约每秒）；游戏写入后更新' if config.get('source') else '等待可读取的成就记录'),
                 'record_status':record_status,'record_entries':len(states),'record_matched':matched,
                 'total': len(valid), 'has_schema': bool(schema), 'unlocked': len(valid&set(unlocks)), 'message': message, 'busy': False,
                 'icons_done':sum(bool(self.icon_path(row)) for row in schema.values()),'icons_total':sum(bool(row.get('icon')) for row in schema.values())}
@@ -169,6 +175,7 @@ class Achievements(QObject):
         self._fetch_serial = {}
         self._state = {'busy': False, 'ident': '', 'message': '选择一款本地游戏以匹配成就', 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0}
         self._serial = 0; self.closed = False; self.sessions = {}; self.polling = False
+        self._passive = {}
         from achievement_overlay import AchievementOverlay
         self.overlay = AchievementOverlay(self)
         self.completed.connect(self.receive); self.polled.connect(self.receivePoll)
@@ -176,6 +183,7 @@ class Achievements(QObject):
         self.searchReady.connect(self.receiveSearch)
         self.catalogReady.connect(self.receiveCatalog);self.batchReady.connect(self.receiveBatch);self.iconProgress.connect(self.receiveIcons)
         self.timer = QTimer(self); self.timer.setInterval(1000); self.timer.timeout.connect(self.poll)
+        self.timer.start()
         QTimer.singleShot(0,self.refreshCatalog)
 
     @Property('QVariantMap', notify=changed)
@@ -556,54 +564,35 @@ class Achievements(QObject):
     def poll(self):
         if self.closed or self.polling: return
         self.polling = True; sessions = list(self.sessions.values()); selected = self._state.get('ident', '')
+        games = {g['id']: deepcopy(g) for g in self.store.games}
+        local = deepcopy(self.store.local)
         def run():
             events = []; ended = []; changed = False;any_changed=False
-            for session in sessions:
-                target = dict(session['target']); ident = session['ident']
-                if not target:
-                    if time.monotonic()-session['created'] > 360: ended.append((ident, session['created']))
-                    continue
-                try:
-                    import psutil
-                    try:
-                        process = psutil.Process(target['pid'])
-                        if process.create_time() != target.get('created', process.create_time()): ended.append((ident, session['created'])); continue
-                    except psutil.NoSuchProcess:
-                        # Read once more after exit: some games flush the final
-                        # achievement immediately before their process terminates.
-                        ended.append((ident, session['created']))
-                    config = self.repository.config(ident)
-                    if not config.get('enabled', True): continue
-                    source = config.get('source', '')
-                    if not source and time.monotonic()-session['discovery'] > 8:
-                        # Discovery never baselines a newly generated file during a game.
-                        found = discover(session['game'], dict(session['local'],achievement_roots=config.get('roots',[])), config.get('appid', ''))
-                        session['discovery'] = time.monotonic(); config['sources'] = found['sources']
-                        if len(found['sources']) == 1:
-                            source = config['source'] = found['sources'][0]
-                            self.repository.record(ident, config)['initialized'] = True
-                            self.repository.save()
-                    if not source: continue
-                    path = Path(source); stat = path.stat(); signature = (config.get('appid'), source, stat.st_mtime_ns, stat.st_size)
-                    if signature == session['signature']: continue
-                    states = canonical_states(parse_state(path),config.get('schema',[]))
-                    # Empty/partial transient writes do not erase remembered progress.
-                    if not states and stat.st_size == 0: continue
-                    record = self.repository.record(ident, config)
-                    keys, dirty = merge_progress(record, states, notify=True)
-                    session['signature'] = signature
-                    if dirty: self.repository.save(); changed = changed or ident == selected;any_changed=True
-                    schema = {r['id']: r for r in config.get('schema', [])}
-                    if config.get('notifications', True) and session['game'].get('platform')!='steam':
-                        for key in keys:
-                            row = dict(schema.get(key) or {'id': key, 'name': key, 'description': ''})
-                            row.update(game_id=ident, game_name=session['game']['name'], icon_path=self.repository.icon_path(row))
-                            events.append((row, target))
-                except psutil.NoSuchProcess: ended.append((ident, session['created']))
-                except Exception: continue  # Writing/atomic replace/file missing: retry, preserve history.
-            view = self.repository.view(selected) if changed else None
-            if not self.closed: self.polled.emit({'events': events, 'ended': ended, 'view': view})
-            if any_changed:self.publish()
+            view = None
+            try:
+                from achievement_monitor import check
+                self.repository.load()
+                active = {s['ident'] for s in sessions}
+                for ident, config in list(self.repository.configs.items()):
+                    if ident in active or ident not in games or config.get('enabled') is False: continue
+                    # Only selected unmatched games scan. Idle games merely stat
+                    # their configured record; never rescan the entire library.
+                    if not config.get('source') and ident != selected: continue
+                    state = self._passive.setdefault(ident, {'signature': None, 'discovery': 0})
+                    sessions.append(dict(state, ident=ident, game=games[ident], local=local.get(ident, {}), target={}, passive=True, _state=state))
+                for session in sessions:
+                    updated, rows, finished = check(self.repository, session)
+                    if finished: ended.append((session['ident'], session['created']))
+                    if session.get('passive'):
+                        session['_state'].update(signature=session.get('signature'), discovery=session.get('discovery', 0))
+                    events.extend(rows)
+                    changed = changed or updated and session['ident'] == selected
+                    any_changed = any_changed or updated
+                if changed and selected: view = self.repository.view(selected)
+                if any_changed:self.publish()
+            finally:
+                # A failed check must never wedge the in-flight guard forever.
+                if not self.closed: self.polled.emit({'events': events, 'ended': ended, 'view': view})
         self.pool.submit(run)
 
     @Slot(object)
@@ -626,9 +615,12 @@ class Achievements(QObject):
             self.overlay.enqueue(row, target)
         if result.get('fetch') and tuple(result['fetch']) not in self._auto_attempted:
             self._auto_attempted.add(tuple(result['fetch']));self.fetchSchema(*result['fetch'])
-        if result['view'] and result['view']['ident'] == self._state.get('ident') and not self._state.get('busy'):
-            self._state = result['view']; self.changed.emit()
-        if not self.sessions: self.timer.stop()
+        if result['view'] and result['view']['ident'] == self._state.get('ident'):
+            # A search may still be running. Update progress without clearing
+            # its busy flag, candidates or message, and never drop the refresh.
+            self._state.update({k:v for k,v in result['view'].items() if k not in ('busy','message','candidates')})
+            if not self._state.get('busy') and not self._state.get('candidates'): self._state['message'] = result['view']['message']
+            self.changed.emit()
 
     def shutdown(self):
         self.closed = True; self.timer.stop(); self.overlay.shutdown()
