@@ -230,7 +230,7 @@ class Achievements(QObject):
             definitions={r['id']:r for r in config.get('schema',[])}
             for key,stamp in self.repository.record(ident,config).get('unlocks',{}).items():
                 if stamp>0 and key in definitions:
-                    recent.append({'game_id':ident,'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp,'iconUrl':QUrl.fromLocalFile(self.repository.icon_path(definitions[key])).toString() if self.repository.icon_path(definitions[key]) else ''})
+                    recent.append({'game_id':ident,'achievement_id':key,'game':game['name'],'name':definitions[key]['name'],'time':time.strftime('%Y-%m-%d %H:%M',time.localtime(stamp)),'stamp':stamp,'iconUrl':QUrl.fromLocalFile(self.repository.icon_path(definitions[key])).toString() if self.repository.icon_path(definitions[key]) else ''})
             if value['total']:summaries[ident]=value
             rows.append(dict(value,id=ident,name=game['name'],coverUrl=covers.get(ident,''),platform=game.get('platform') or 'local',
                              supported=game.get('platform') in ('local','steam','',None),

@@ -5,7 +5,7 @@ import "AchievementStyle.js" as Style
 
 ItemDelegate {
     id: entry
-    property var record: ({})
+    required property var record
     property bool revealHidden: false
     property bool selected: false
     property bool compact: false

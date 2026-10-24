@@ -20,15 +20,23 @@ ApplicationWindow {
     readonly property int selectedCount: visibleGames.filter(function(g) { return !!selected[g.id] }).length
     readonly property var chartStatistics: { var revision=backend.achievements.summaryRevision;return backend.achievements.statistics(chartGame,chartDays) }
     readonly property var catalog: backend.achievements.overview
+    readonly property var rankedGames: catalog.filter(function(g) { return g.total>0 && (!window.chartGame || g.id===window.chartGame) })
+    readonly property var recentEntries: backend.achievements.recent.map(function(row) { return Object.assign({},row,{id:JSON.stringify([row.game_id,row.achievement_id || row.name,row.stamp])}) })
     readonly property var visibleGames: catalog.filter(function(g) {
         return g.supported && (!scopeIds.length || scopeIds.indexOf(g.id)>=0) && (!search.text || g.name.toLowerCase().indexOf(search.text.toLowerCase())>=0) &&
             (kind.currentIndex===0 || kind.currentIndex===1 && g.platform==="local" || kind.currentIndex===2 && g.platform==="steam" || kind.currentIndex===3 && !g.has_schema || kind.currentIndex===4 && !g.has_record || kind.currentIndex===5 && g.total>0 && g.unlocked===g.total)
     })
     function openFor(ids) { scopeIds=ids || [];backend.achievements.refreshCatalog();show();raise();requestActivate();Qt.callLater(function() { if(!detail.gameId && window.visibleGames.length) window.selectGame(Math.max(0,window.visibleGames.findIndex(function(g) { return g.has_schema }))) }) }
-    function selectGame(index) { if(index>=0 && index<visibleGames.length) { games.currentIndex=index;chartGame=visibleGames[index].id;if(detail.gameId!==visibleGames[index].id) detail.loadFor(visibleGames[index].id) } }
+    function selectGame(index) { if(index>=0 && index<visibleGames.length) { games.currentIndex=index;if(index<gameRecords.count) games.positionViewAtIndex(index,ListView.Contain);chartGame=visibleGames[index].id;if(detail.gameId!==visibleGames[index].id) detail.loadFor(visibleGames[index].id) } }
     function choose(id,value) { var next=Object.assign({},selected);next[id]=value;selected=next }
     function selectVisible() { var next=Object.assign({},selected);visibleGames.forEach(function(g) { next[g.id]=true });selected=next }
-    function reconcileGames() { var index=visibleGames.findIndex(function(g) { return g.id===detail.gameId });games.currentIndex=index;if(index<0) { detail.gameId="";if(visible && visibleGames.length) selectGame(0);else chartGame="" } }
+    AchievementRecords { id: gameRecords;objectName: "achievementGameRecords" }
+    AchievementRecords { id: statsRecords }
+    AchievementRecords { id: recentRecords }
+    function syncAuxiliary() { statsRecords.updateRecords(rankedGames);recentRecords.updateRecords(recentEntries) }
+    onRankedGamesChanged: Qt.callLater(syncAuxiliary)
+    onRecentEntriesChanged: Qt.callLater(syncAuxiliary)
+    function reconcileGames() { gameRecords.updateRecords(visibleGames);var index=gameRecords.findId(detail.gameId);if(games.currentIndex!==index) games.currentIndex=index;if(index<0) { detail.gameId="";if(visible && visibleGames.length) selectGame(0);else chartGame="" } }
     function jumpToGame(ident) { search.clear();kind.currentIndex=0;scopeIds=[];pages.currentIndex=0;Qt.callLater(function() { window.selectGame(window.visibleGames.findIndex(function(g) { return g.id===ident }));games.forceActiveFocus() }) }
     function start(force) {
         var ids=visibleGames.filter(function(g) { return selected[g.id] }).map(function(g) { return g.id })
@@ -46,7 +54,7 @@ ApplicationWindow {
         if(browsing && browsing.activeFocus) {
             if(command==="up" && browsing.currentIndex<=0) { (pages.currentIndex===2 ? recentTab : statsGame).forceActiveFocus();return true }
             if(command==="up" || command==="down") { browsing.currentIndex=Math.max(0,Math.min(browsing.count-1,browsing.currentIndex+(command==="up" ? -1 : 1)));browsing.positionViewAtIndex(browsing.currentIndex,ListView.Contain);return true }
-            if(command==="activate" && browsing.currentIndex>=0 && browsing.count) { window.jumpToGame(pages.currentIndex===2 ? browsing.model[browsing.currentIndex].game_id : browsing.model[browsing.currentIndex].id);return true }
+            if(command==="activate" && browsing.currentIndex>=0 && browsing.count) { window.jumpToGame(pages.currentIndex===2 ? recentRecords.get(browsing.currentIndex).record.game_id : statsRecords.get(browsing.currentIndex).record.id);return true }
         }
         if(inside(focus,detail)) { if(command==="left" && detail.listFocused) { games.forceActiveFocus();return true };return detail.controllerInput(command) }
         if(games.activeFocus) {
@@ -111,12 +119,13 @@ ApplicationWindow {
             visible: pages.currentIndex===0;Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumHeight: 200;spacing: 18
             ListView {
                 id: games;objectName: "achievementsGameList";Layout.preferredWidth: window.width<1100 ? 244 : 294;Layout.fillHeight: true
-                model: window.visibleGames;clip: true;spacing: 4;currentIndex: -1;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
+                model: gameRecords;clip: true;spacing: 4;currentIndex: -1;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: AchievementScrollBar { objectName: "achievementGameScrollBar" }
                 header: Label { width: games.width;height: 30;text: "游戏收藏  "+games.count;font.pixelSize: 12;color: Theme.secondary }
                 Label { anchors.centerIn: parent;width: parent.width-24;visible: !games.count;text: "没有找到游戏\n试试其他名称或筛选条件";horizontalAlignment: Text.AlignHCenter;wrapMode: Text.Wrap;color: Theme.secondary }
                 delegate: Rectangle {
-                    required property var modelData
+                    required property var record
+                    readonly property var modelData: record
                     required property int index
                     width: games.width;height: 104;radius: Theme.controlRadius
                     color: games.currentIndex===index ? Theme.selection : rowHover.hovered ? Theme.surface : "transparent";border.color: games.activeFocus && games.currentIndex===index ? Theme.accent : "transparent"
@@ -182,9 +191,9 @@ ApplicationWindow {
             Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "时间未知的历史解锁计入完成度，不计入日期曲线。稀有度使用数据源的全球解锁率，没有来源的数据归为未知。";color: Theme.secondary;font.pixelSize: 12 }
             Label { text: "游戏进度";font.pixelSize: 14;font.weight: Font.DemiBold }
             ListView {
-                id: statsList;objectName: "achievementStatisticsGames";Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumHeight: 62;clip: true;spacing: 6;model: window.catalog.filter(function(g) { return g.total>0 && (!window.chartGame || g.id===window.chartGame) });ScrollBar.vertical: ScrollBar {}
+                id: statsList;objectName: "achievementStatisticsGames";Layout.fillWidth: true;Layout.fillHeight: true;Layout.minimumHeight: 62;clip: true;spacing: 6;model: statsRecords;boundsBehavior: Flickable.StopAtBounds;ScrollBar.vertical: AchievementScrollBar { objectName: "achievementStatsScrollBar" }
                 delegate: Rectangle {
-                    required property var modelData;required property int index;width: ListView.view.width;height: 62;radius: Theme.controlRadius;color: Theme.surface;border.color: statsList.activeFocus && statsList.currentIndex===index ? Theme.accent : "transparent"
+                    required property var record;readonly property var modelData: record;required property int index;width: ListView.view.width;height: 62;radius: Theme.controlRadius;color: Theme.surface;border.color: statsList.activeFocus && statsList.currentIndex===index ? Theme.accent : "transparent"
                     TapHandler { onTapped: window.jumpToGame(modelData.id) }
                     RowLayout { anchors.fill: parent;anchors.margins: 12;spacing: 16
                         Image { source: modelData.coverUrl || "";Layout.preferredWidth: 28;Layout.preferredHeight: 40;asynchronous: true;fillMode: Image.PreserveAspectCrop;sourceSize.width: 80 }
@@ -197,6 +206,7 @@ ApplicationWindow {
         }
         ScrollView {
             id: sourceView;visible: pages.currentIndex===1;Layout.fillWidth: true;Layout.fillHeight: true;clip: true;contentWidth: availableWidth
+            ScrollBar.vertical: AchievementScrollBar {}
             ColumnLayout {
                 width: Math.min(860,sourceView.availableWidth);spacing: 18
                 Label { text: "成就定义来源";font.pixelSize: 20;font.bold: true }
@@ -218,11 +228,11 @@ ApplicationWindow {
         }
         ListView {
             id: recentList;objectName: "achievementRecentList";visible: pages.currentIndex===2;Layout.fillWidth: true;Layout.fillHeight: true;clip: true;spacing: 6;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
-            model: backend.achievements.recent;ScrollBar.vertical: ScrollBar {}
+            model: recentRecords;ScrollBar.vertical: AchievementScrollBar { objectName: "achievementRecentScrollBar" }
             header: Label { width: recentList.width;height: 38;text: "最近解锁  "+recentList.count+" 项";font.pixelSize: 16;font.weight: Font.DemiBold }
             Label { anchors.centerIn: parent;visible: !recentList.count;text: "还没有带日期的解锁记录\n继续游玩，新的成就会出现在这里。";horizontalAlignment: Text.AlignHCenter;color: Theme.secondary }
             delegate: ItemDelegate {
-                required property var modelData;required property int index;width: ListView.view.width;height: 84
+                required property var record;readonly property var modelData: record;required property int index;width: ListView.view.width;height: 84
                 hoverEnabled: !backend.controllerMode;onClicked: window.jumpToGame(modelData.game_id)
                 background: Rectangle { color: parent.hovered ? Theme.hover : Theme.surface;radius: Theme.controlRadius;border.color: recentList.activeFocus && recentList.currentIndex===index ? Theme.accent : "transparent" }
                 RowLayout {

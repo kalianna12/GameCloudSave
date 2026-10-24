@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-design
                 window.grabWindow().save(str(output/'statistics-900.png'));pages.setProperty('currentIndex',0);spin(.08)
         # A gamepad enters the achievement list directly and opens full details.
         games.forceActiveFocus();invoke(window,'controllerInput','right');spin(.06);assert entries.hasActiveFocus()
-        model=entries.property('model');model=model.toVariant() if hasattr(model,'toVariant') else model
+        model=pane.property('filteredRows');model=model.toVariant() if hasattr(model,'toVariant') else model
         entries.setProperty('currentIndex',next(i for i,row in enumerate(model) if row['id']==definitions['design-2680010'][0]['id']))
         invoke(window,'controllerInput','activate');spin(.12)
         dialog=pane.findChild(QObject,'achievementEntryDialog');assert dialog.property('visible')
@@ -108,7 +108,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-design
         source=sources['design-2680010'];data=json.loads(source.read_text());data[definitions['design-2680010'][30]['id']]=dict(earned=True,earned_time=time.time());source.write_text(json.dumps(data))
         until(lambda:manager.summary('design-2680010').get('unlocked')==20);spin(.1)
         assert entries.property('navigationId')==anchor
-        model=entries.property('model');model=model.toVariant() if hasattr(model,'toVariant') else model
+        model=pane.property('filteredRows');model=model.toVariant() if hasattr(model,'toVariant') else model
         assert model[entries.property('currentIndex')]['id']==anchor
         invoke(window,'controllerInput','left');assert games.hasActiveFocus()
         # Empty results distinguish an actual unmatched game from a filter.

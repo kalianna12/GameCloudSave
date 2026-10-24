@@ -17,6 +17,20 @@ ScrollView {
     readonly property bool entryOpen: entryDialog.visible
     readonly property bool listFocused: list.activeFocus
     property var activeEntry: ({})
+    readonly property var filteredRows: {
+        if(pane.info.ident!==pane.gameId) return []
+        var q=achievementSearch.text.trim().toLowerCase(),rows=(pane.info.rows || []).filter(function(r) { return (filter.currentIndex===0 || filter.currentIndex===1 && !r.unlocked || filter.currentIndex===2 && r.unlocked) && (!q || ((hiddenToggle.checked ? r.secret_name+" "+r.secret_description : r.name+" "+r.description).toLowerCase().indexOf(q)>=0)) })
+        if(sort.currentIndex===1) rows.sort(function(a,b) { return b.unlocked_time-a.unlocked_time })
+        if(sort.currentIndex===2) rows.sort(function(a,b) { return (Style.known(a) ? a.rarity : 101)-(Style.known(b) ? b.rarity : 101) })
+        return rows
+    }
+    AchievementRecords { id: entryRecords;objectName: "achievementEntryRecords" }
+    function syncEntries() {
+        entryRecords.updateRecords(filteredRows)
+        var index=entryRecords.findId(list.navigationId)
+        if(index>=0 && list.currentIndex!==index) list.currentIndex=index
+    }
+    onFilteredRowsChanged: syncEntries()
     function showEntry(row) { list.navigationId=row.id;activeEntry=row;entryDialog.open() }
     function focusEntries() { if(list.count) { list.currentIndex=Math.max(0,list.currentIndex);Form.reveal(list,pane);list.positionViewAtIndex(list.currentIndex,ListView.Contain) } else Form.reveal(setup,pane) }
     readonly property bool steamGame: backend.libraryGame(gameId).platform==="steam"
@@ -24,14 +38,15 @@ ScrollView {
     property string achievementQuery: ""
     clip: true
     contentWidth: availableWidth
+    ScrollBar.vertical: AchievementScrollBar { objectName: "achievementPaneScrollBar" }
     function loadFor(ident) { if(ident!==gameId) { list.navigationId="";list.currentIndex=-1 };gameId=ident;loaded=false;dirty=false;query.text=backend.libraryGame(ident).name || "";backend.achievements.openFor(ident);Qt.callLater(function() { if(pane.contentItem && pane.contentItem.contentY!==undefined) pane.contentItem.contentY=0 }) }
     function save() { dirty=false;backend.achievements.save(gameId,{enabled:enabledToggle.checked,notifications:notifications.checked,source:source.text,provider:backend.achievements.providers[provider.currentIndex].id}) }
     function controllerInput(command) {
         if(entryDialog.visible) { if(command==="back" || command==="activate") entryDialog.close();else if(command==="up" || command==="down") { var flick=descriptionView.contentItem;flick.contentY=Math.max(0,Math.min(Math.max(0,flick.contentHeight-flick.height),flick.contentY+(command==="up" ? -60 : 60))) };return true }
         if(list.activeFocus) {
             if(command==="up" && list.currentIndex<=0) { Form.reveal(preview,pane);return true }
-            if(command==="up" || command==="down") { list.currentIndex=Math.max(0,Math.min(list.count-1,list.currentIndex+(command==="up" ? -1 : 1)));if(list.count) list.navigationId=list.model[list.currentIndex].id;list.positionViewAtIndex(list.currentIndex,ListView.Contain);return true }
-            if(command==="activate" && list.currentIndex>=0 && list.currentIndex<list.count) { showEntry(list.model[list.currentIndex]);return true }
+            if(command==="up" || command==="down") { list.currentIndex=Math.max(0,Math.min(list.count-1,list.currentIndex+(command==="up" ? -1 : 1)));if(list.count) list.navigationId=entryRecords.get(list.currentIndex).record.id;list.positionViewAtIndex(list.currentIndex,ListView.Contain);return true }
+            if(command==="activate" && list.currentIndex>=0 && list.currentIndex<list.count) { showEntry(entryRecords.get(list.currentIndex).record);return true }
             return true
         }
         if(command==="down" && pane.Window.window.activeFocusItem===preview && list.count) { list.currentIndex=0;Form.reveal(list,pane);return true }
@@ -133,26 +148,18 @@ ScrollView {
     ListView {
         id: list;objectName: "achievementList";Layout.fillWidth: true;Layout.preferredHeight: Math.max(180,pane.availableHeight-list.y-12);clip: true;spacing: 4
         property string navigationId: ""
-        Keys.onReturnPressed: if(currentIndex>=0 && currentIndex<count) pane.showEntry(model[currentIndex])
-        Keys.onEnterPressed: if(currentIndex>=0 && currentIndex<count) pane.showEntry(model[currentIndex])
+        Keys.onReturnPressed: if(currentIndex>=0 && currentIndex<count) pane.showEntry(entryRecords.get(currentIndex).record)
+        Keys.onEnterPressed: if(currentIndex>=0 && currentIndex<count) pane.showEntry(entryRecords.get(currentIndex).record)
         Keys.onUpPressed: pane.controllerInput("up")
         Keys.onDownPressed: pane.controllerInput("down")
-        onModelChanged: Qt.callLater(function() { if(!list.navigationId) return;var index=list.model.findIndex(function(r) { return r.id===list.navigationId });if(index>=0) { list.currentIndex=index;list.positionViewAtIndex(index,ListView.Contain) } })
-        model: {
-            if(pane.info.ident!==pane.gameId) return []
-            var q=achievementSearch.text.trim().toLowerCase(),rows=(pane.info.rows || []).filter(function(r) { return (filter.currentIndex===0 || filter.currentIndex===1 && !r.unlocked || filter.currentIndex===2 && r.unlocked) && (!q || ((hiddenToggle.checked ? r.secret_name+" "+r.secret_description : r.name+" "+r.description).toLowerCase().indexOf(q)>=0)) })
-            if(sort.currentIndex===1) rows.sort(function(a,b) { return b.unlocked_time-a.unlocked_time })
-            if(sort.currentIndex===2) rows.sort(function(a,b) { return (Style.known(a) ? a.rarity : 101)-(Style.known(b) ? b.rarity : 101) })
-            return rows
-        }
+        model: entryRecords
         currentIndex: -1;reuseItems: true;boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {}
+        ScrollBar.vertical: AchievementScrollBar { objectName: "achievementEntryScrollBar" }
         delegate: AchievementEntry {
-            required property var modelData
             required property int index
             objectName: "achievementEntry";width: list.width;height: implicitHeight
-            record: modelData;compact: pane.compact;revealHidden: hiddenToggle.checked;selected: list.activeFocus && list.currentIndex===index
-            onClicked: { list.currentIndex=index;pane.showEntry(modelData) }
+            compact: pane.compact;revealHidden: hiddenToggle.checked;selected: list.activeFocus && list.currentIndex===index
+            onClicked: { list.currentIndex=index;pane.showEntry(record) }
         }
         Label { anchors.centerIn: parent;width: parent.width-30;wrapMode: Text.Wrap;horizontalAlignment: Text.AlignHCenter;visible: !list.count;text: pane.info.has_schema ? "没有符合筛选条件的成就\n试试其他关键词，或重置筛选。" : "还没有成就列表\n展开匹配与记录设置，选择游戏版本后查看。";color: Theme.secondary }
     }
@@ -183,6 +190,7 @@ ScrollView {
             Rectangle { Layout.fillWidth: true;implicitHeight: 1;color: Theme.outline }
             ScrollView {
                 id: descriptionView;objectName: "achievementDescriptionScroll";Layout.fillWidth: true;Layout.preferredHeight: Math.min(200,entryDescription.implicitHeight);clip: true;contentWidth: availableWidth
+                ScrollBar.vertical: AchievementScrollBar { objectName: "achievementDescriptionScrollBar" }
                 Label { id: entryDescription;objectName: "achievementEntryDescription";text: Style.description(pane.activeEntry,hiddenToggle.checked) || "暂无说明";textFormat: Text.PlainText;width: descriptionView.availableWidth;wrapMode: Text.Wrap;font.pixelSize: 14;lineHeight: 1.4 }
             }
             ProgressBar { visible: pane.activeEntry.max>0 && !pane.activeEntry.unlocked;Layout.fillWidth: true;from: 0;to: Math.max(1,pane.activeEntry.max || 0);value: pane.activeEntry.progress || 0 }
