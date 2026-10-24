@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 ApplicationWindow {
+    ControlFocus {}
     id: covers; width: 920; height: 720; minimumWidth: 800; minimumHeight: 600; title: "搜索封面"
     color: Theme.background; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent; font.family: "Microsoft YaHei UI"
     property string scope: "game"

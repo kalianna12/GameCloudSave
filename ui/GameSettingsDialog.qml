@@ -42,7 +42,7 @@ Dialog {
     function controllerInput(command) {
         if(tabs.currentIndex===4 && achievementsPane.entryOpen) return achievementsPane.controllerInput(command)
         if(command==="back") { close();return true }
-        if(command==="previous" || command==="next") { tabs.currentIndex=Math.max(0,Math.min(4,tabs.currentIndex+(command==="previous" ? -1 : 1)));return true }
+        if(command==="previous" || command==="next") { tabs.currentIndex=Math.max(0,Math.min(4,tabs.currentIndex+(command==="previous" ? -1 : 1)));tabs.itemAt(tabs.currentIndex).forceActiveFocus();return true }
         if(command==="menu") { if(saveButton.visible && saveButton.enabled) saveButton.clicked();return true }
         if(tabs.currentIndex===3) return graphicsPane.controllerInput(command)
         if(tabs.currentIndex===4) return achievementsPane.controllerInput(command)

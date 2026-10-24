@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Material
 import QtQuick.Window
 ApplicationWindow {
+    ControlFocus {}
     id: window;objectName: "inputMappingWindow"
     width: 1360;height: 980;minimumWidth: 1040;minimumHeight: 700
     title: "手柄映射";color: Theme.background;font.family: "Microsoft YaHei UI"

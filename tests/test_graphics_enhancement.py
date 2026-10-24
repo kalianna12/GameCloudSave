@@ -10,7 +10,7 @@ from unittest.mock import patch
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
-from graphics_enhancement import DEFAULT, Engine, GraphicsEnhancement, make_config, normalize, extract_verified
+from graphics_enhancement import DEFAULT, Engine, GraphicsEnhancement, make_config, normalize, extract_verified,intensity_profile
 from services import ROOT, Store, write_json
 from PySide6.QtWidgets import QApplication
 
@@ -26,6 +26,18 @@ def spin_until(predicate, timeout=5):
 
 
 class GraphicsTests(unittest.TestCase):
+    def test_intensity_preserves_output_and_high_uses_full_anime_sharpness(self):
+        base=normalize(dict(enabled=True,preset='anime-fast',display='windowed',window_scale=3,fps=120,capture=3))
+        for level,sharpness,preset in [('low',35,'anime-fast'),('medium',70,'anime-quality'),('high',100,'anime-quality')]:
+            changes=intensity_profile('anime-quality',level)
+            self.assertEqual(changes,dict(preset=preset,sharpness=sharpness))
+            profile=normalize(dict(base,**changes));self.assertEqual((profile['display'],profile['window_scale'],profile['fps'],profile['capture']),('windowed',3,120,3))
+        config=make_config(dict(base,**intensity_profile('anime-fast','high')),'x','Y','High')
+        effects=config['scalingModes'][0]['effects'];self.assertTrue(effects[0]['name'].endswith('_L'));self.assertEqual(effects[-1]['parameters']['sharpness'],1)
+        self.assertEqual(intensity_profile('fsr','high'),dict(preset='fsr',sharpness=100))
+        self.assertEqual(intensity_profile('nearest','high')['sharpness'],0)
+        for preset,level in [('invalid','low'),('anime-fast','invalid')]:
+            with self.assertRaises(ValueError):intensity_profile(preset,level)
     def test_strict_numeric_and_choice_validation(self):
         self.assertEqual(normalize({}), DEFAULT)
         for value in ({'fps': float('nan')}, {'sharpness': True}, {'capture': 1},

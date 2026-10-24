@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 ApplicationWindow {
+    ControlFocus {}
     id: personal; width: 820; height: 720; minimumWidth: 540; minimumHeight: 480
     title: "个性化"; color: Theme.background; font.family: "Microsoft YaHei UI"
     Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent

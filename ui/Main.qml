@@ -6,6 +6,7 @@ import QtQuick.Controls.Material
 import "LibraryFilters.js" as Filters
 
 ApplicationWindow {
+    ControlFocus {}
     id: win
     visible: true
     width: 1440; height: 940
@@ -206,7 +207,7 @@ ApplicationWindow {
             if(command==="up" || command==="down") {
                 var destination=rowIndex+(command==="up" ? -1 : 1)
                 if(destination>=0 && destination<rows.length) focusToolbar(closestToolbarItem(rows[destination],toolbarColumnX),true)
-                else if(command==="down") focusContent()
+                else if(command==="down") { focusContent();backend.navigationMoved() }
                 return true
             }
             if(command==="left" || command==="previous" || command==="right" || command==="next") {
@@ -451,6 +452,7 @@ ApplicationWindow {
             }
             Switch {
                 id: watchControl; objectName: "watchControl"; text: "自动监听"; checked: backend.settings.watch; enabled: !backend.busy
+                readonly property bool focusOutlineProvided: true
                 onToggled: backend.saveSettings({watch:checked})
                 ToolTip.visible: !backend.controllerMode && hovered; ToolTip.text: backend.watchInfo.message
                 Rectangle { objectName: "watchFocusRing"; anchors.fill: parent; anchors.margins: -3; z: 10; color: "transparent"; radius: 6; border.width: 3; border.color: Theme.accent; visible: watchControl.activeFocus }
@@ -469,6 +471,7 @@ ApplicationWindow {
                 id: filtersFlow;spacing: 8
                 CheckBox {
                     id: installedControl; objectName: "installedFilter"; text: "仅已安装"; checked: installedOnly
+                    readonly property bool focusOutlineProvided: true
                     height: 38
                     onToggled: { installedOnly=checked; saveLayout() }
                     Rectangle {

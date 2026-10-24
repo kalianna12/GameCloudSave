@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 ApplicationWindow {
+    ControlFocus {}
     id: setup; width: 1020; height: 760; minimumWidth: 900; minimumHeight: 650
     title: "首次使用设置"; color: Theme.background; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent; font.family: "Microsoft YaHei UI"; modality: Qt.ApplicationModal
     property int step: 0

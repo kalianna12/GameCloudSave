@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 ApplicationWindow {
+    ControlFocus {}
     id: manager; width: 1220; height: 800; minimumWidth: 1020; minimumHeight: 650
     title: "分类与系列"; color: Theme.background; font.family: "Microsoft YaHei UI"; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
     property var selected: ({})

@@ -42,10 +42,10 @@ DEFAULT = {'enabled': False, 'auto_start': True, 'preset': 'anime-fast',
            'sharpness': 20, 'display': 'fullscreen', 'fit': 'fit',
            'window_scale': 2.0, 'capture': 0, 'fps': 60, 'game_3d': False}
 QUICK_PROFILES = [
-    {'name':'Galgame 全屏','values':{'enabled':True,'preset':'anime-fast','sharpness':15}},
-    {'name':'动漫精细','values':{'enabled':True,'preset':'anime-quality','sharpness':10}},
-    {'name':'3D 游戏全屏','values':{'enabled':True,'preset':'fsr','sharpness':45,'game_3d':True}},
-    {'name':'通用清晰','values':{'enabled':True,'preset':'lanczos','sharpness':25}},
+    {'name':'Galgame 全屏 · 中','values':{'enabled':True,'preset':'anime-quality','sharpness':70}},
+    {'name':'动漫精细 · 高','values':{'enabled':True,'preset':'anime-quality','sharpness':100}},
+    {'name':'3D 游戏全屏','values':{'enabled':True,'preset':'fsr','sharpness':65,'game_3d':True}},
+    {'name':'通用清晰','values':{'enabled':True,'preset':'lanczos','sharpness':60}},
     {'name':'像素 2 倍窗口','values':{'enabled':True,'preset':'nearest','sharpness':0,'display':'windowed','window_scale':2.0}},
     {'name':'关闭增强','values':{'enabled':False}},
 ]
@@ -55,6 +55,13 @@ REQUIRED = ('Magpie.exe', 'Microsoft.UI.Xaml.dll', 'resources.pri',
             'effects/Anime4K/Anime4K_Upscale_Denoise_S.hlsl',
             'effects/Anime4K/Anime4K_Upscale_Denoise_L.hlsl')
 SCALING_CLASS = 'Window_Magpie_967EB565-6F73-4E94-AE53-00CC42592A22'
+
+
+def intensity_profile(preset, level):
+    if preset not in {p['id'] for p in PRESETS} or level not in ('low','medium','high'):
+        raise ValueError('增强强度选项无效')
+    if preset.startswith('anime-'):preset='anime-fast' if level=='low' else 'anime-quality'
+    return {'preset':preset,'sharpness':0 if preset=='nearest' else {'low':35,'medium':70,'high':100}[level]}
 
 
 def architecture():
@@ -324,6 +331,9 @@ class GraphicsEnhancement(QObject):
 
     @Slot(int,result='QVariantMap')
     def quickProfile(self,index):return normalize(QUICK_PROFILES[index]['values']) if 0<=index<len(QUICK_PROFILES) else dict(DEFAULT)
+
+    @Slot(str,str,result='QVariantMap')
+    def intensityProfile(self,preset,level):return intensity_profile(preset,level)
 
     @Property('QVariantMap', notify=changed)
     def state(self): return {**self._state, 'busy': self._busy, 'supported': supported(), 'version': VERSION}

@@ -3,6 +3,7 @@ import QtQuick.Controls as C
 
 C.ComboBox {
     id: control
+    readonly property bool focusOutlineProvided: true
     property int controllerIndex: 0
     property bool controllerBrowsing: false
     property bool wrapOptions: false

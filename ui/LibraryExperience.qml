@@ -72,7 +72,7 @@ FocusScope {
         var controls=toolbarControls.filter(function(c) { return c.visible && c.enabled }),focus=Window.window ? Window.window.activeFocusItem : null,index=-1
         while(focus) { if(index<0) index=controls.indexOf(focus);focus=focus.parent }
         if(index>=0) {
-            if(command==="down") focusContent()
+            if(command==="down") { focusContent();backend.navigationMoved() }
             else if(command==="up") boundaryRequested("up")
             else if(command==="left" || command==="right") { var n=index+(command==="left" ? -1 : 1);if(n<0) boundaryRequested("left");else controls[Math.min(controls.length-1,n)].forceActiveFocus() }
             else if(command==="activate" && controls[index]===dice) { dice.animateRoll();randomGame() }

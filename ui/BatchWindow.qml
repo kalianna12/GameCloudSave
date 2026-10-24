@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Material
 import "SaveFilters.js" as SaveFilters
 ApplicationWindow {
+    ControlFocus {}
     id: batch; width: 1180; height: 800; minimumWidth: 980; minimumHeight: 650
     title: "批量确认存档"; color: Theme.background; font.family: "Microsoft YaHei UI"; Material.theme: Theme.dark ? Material.Dark : Material.Light; Material.accent: Theme.accent
     property var selected: ({})

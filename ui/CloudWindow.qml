@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 ApplicationWindow {
+    ControlFocus {}
     id: cloud
     width: 1180; height: 820; minimumWidth: 920; minimumHeight: 680
     title: "云端存储"

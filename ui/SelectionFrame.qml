@@ -1,5 +1,6 @@
 import QtQuick
 Rectangle {
+    readonly property bool focusOutlineDecoration: true
     property bool selected: false
     anchors.fill: parent
     z: 100

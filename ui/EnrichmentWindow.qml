@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Material
 
 ApplicationWindow {
+    ControlFocus {}
     id: window
     objectName: "enrichmentWindow"
     width: 1160; height: 820; minimumWidth: 900; minimumHeight: 650

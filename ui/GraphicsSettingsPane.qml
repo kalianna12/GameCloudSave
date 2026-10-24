@@ -11,6 +11,15 @@ ScrollView {
     property bool dirty: false
     property bool saving: false
     readonly property var core: backend.graphics.state
+    readonly property string intensity: {
+        var id=backend.graphics.presets[algorithm.currentIndex].id,n=Math.round(sharpness.value),anime=id.indexOf("anime-")===0
+        return n===35 && (!anime || id==="anime-fast") ? "low" : n===70 && (!anime || id==="anime-quality") ? "medium" : n===100 && (!anime || id==="anime-quality") ? "high" : "custom"
+    }
+    function applyIntensity(level) {
+        var next=backend.graphics.intensityProfile(backend.graphics.presets[algorithm.currentIndex].id,level)
+        algorithm.currentIndex=backend.graphics.presets.map(function(p) { return p.id }).indexOf(next.preset)
+        sharpness.value=next.sharpness;dirty=true
+    }
     clip: true
     contentWidth: availableWidth
     function loadFor(ident) {
@@ -24,7 +33,7 @@ ScrollView {
         fit.currentIndex=p.fit==="stretch" ? 1 : 0;windowScale.value=Math.round(p.window_scale*100)
         capture.currentIndex=p.capture===3 ? 1 : 0;fps.value=p.fps;mode3d.checked=p.game_3d
     }
-    function controllerInput(command) { return Form.handle([quickChoice,applyQuick,enabledToggle,algorithm,sharpness,display,fit,windowScale,fps,automatic,mode3d,capture,installButton,importButton,downloadButton,applyButton,stopButton,logsButton],Window.window.activeFocusItem,command,pane) }
+    function controllerInput(command) { return Form.handle([quickChoice,applyQuick,enabledToggle,algorithm,intensityLow,intensityMedium,intensityHigh,sharpness,display,fit,windowScale,fps,automatic,mode3d,capture,installButton,importButton,downloadButton,applyButton,stopButton,logsButton],Window.window.activeFocusItem,command,pane) }
     function values() {
         return {enabled:enabledToggle.checked,auto_start:automatic.checked,
             preset:backend.graphics.presets[algorithm.currentIndex].id,sharpness:Math.round(sharpness.value),
@@ -93,6 +102,14 @@ ScrollView {
             AppComboBox { id: algorithm; objectName: "graphicsAlgorithm"; Layout.fillWidth: true; model: backend.graphics.presets; textRole: "name"; onActivated: pane.dirty=true }
             Label { text: backend.graphics.presets[algorithm.currentIndex].description; color: Theme.secondary; wrapMode: Text.Wrap; Layout.fillWidth: true }
             RowLayout {
+                Layout.fillWidth: true;visible: algorithm.currentIndex!==4;spacing: 8
+                Label { text: "增强强度";Layout.preferredWidth: 130 }
+                AppButton { id: intensityLow;objectName: "graphicsIntensityLow";text: "低 · 35%";Layout.fillWidth: true;highlighted: pane.intensity==="low";onClicked: pane.applyIntensity("low") }
+                AppButton { id: intensityMedium;objectName: "graphicsIntensityMedium";text: "中 · 70%";Layout.fillWidth: true;highlighted: pane.intensity==="medium";onClicked: pane.applyIntensity("medium") }
+                AppButton { id: intensityHigh;objectName: "graphicsIntensityHigh";text: "高 · 100%";Layout.fillWidth: true;highlighted: pane.intensity==="high";onClicked: pane.applyIntensity("high") }
+            }
+            Label { visible: algorithm.currentIndex!==4;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;font.pixelSize: 12;text: "Anime4K 低档使用轻量算法，中／高档使用精细算法。可继续微调锐化；强度不改变输出分辨率。" }
+            RowLayout {
                 Layout.fillWidth: true; visible: algorithm.currentIndex!==4
                 Label { text: "锐化（非分辨率）"; Layout.preferredWidth: 130 }
                 Slider { id: sharpness; objectName: "graphicsSharpness"; Layout.fillWidth: true; from: 0; to: 100; stepSize: 1; onMoved: pane.dirty=true; Accessible.name: "锐化强度" }
@@ -108,7 +125,7 @@ ScrollView {
                 AppComboBox { id: fit; Layout.fillWidth: true; visible: display.currentIndex===0; model: ["保持比例（推荐）","拉伸铺满"]; onActivated: pane.dirty=true }
                 SpinBox { id: windowScale; Layout.fillWidth: true; visible: display.currentIndex===1; from: 125; to: 400; stepSize: 25; value: 200; textFromValue: function(v) { return (v/100).toFixed(2)+"×" }; onValueModified: pane.dirty=true; Accessible.name: "窗口放大倍数" }
                 Label { text: "输出帧率上限" }
-                SpinBox { id: fps; Layout.fillWidth: true; from: 30; to: 240; stepSize: 10; value: 60; editable: true; onValueModified: pane.dirty=true; Accessible.name: "输出帧率上限" }
+                SpinBox { id: fps;objectName: "graphicsFps"; Layout.fillWidth: true; from: 30; to: 240; stepSize: 10; value: 60; editable: true; onValueModified: pane.dirty=true; Accessible.name: "输出帧率上限" }
             }
             Label { text: "帧率上限用于控制 GPU 开销，不会增加游戏帧数。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 12 }
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.outline }

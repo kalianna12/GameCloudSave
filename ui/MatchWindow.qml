@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Controls.Material
 import "SaveFilters.js" as SaveFilters
 ApplicationWindow {
+    ControlFocus {}
     id: matcher
     width: 1240; height: 860; minimumWidth: 960; minimumHeight: 700
     title: "查找存档"; color: Theme.background

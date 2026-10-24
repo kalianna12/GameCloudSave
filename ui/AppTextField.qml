@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Templates as T
 T.TextField {
     id: control
+    readonly property bool focusOutlineProvided: true
     implicitWidth: 180; implicitHeight: 38
     leftPadding: 11; rightPadding: 11; topPadding: 8; bottomPadding: 8
     color: Theme.text; selectionColor: Theme.accent; selectedTextColor: Theme.onAccent

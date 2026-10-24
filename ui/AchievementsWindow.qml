@@ -6,6 +6,7 @@ import QtQuick.Controls.Material
 import "ControllerForm.js" as Form
 
 ApplicationWindow {
+    ControlFocus {}
     id: window
     objectName: "achievementsWindow"
     title: "成就管理";width: 1280;height: 880;minimumWidth: 900;minimumHeight: 650
