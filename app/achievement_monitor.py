@@ -75,6 +75,8 @@ def check(repository, session):
                     for key in keys:
                         row = dict(schema.get(key) or {'id': key, 'name': key, 'description': ''})
                         row.update(game_id=ident, game_name=session['game']['name'], icon_path=repository.icon_path(row))
+                        from achievement_overlay import read_toast_icon
+                        row['_toast_icon'] = read_toast_icon(row['icon_path'])
                         events.append((row, target))
             repository.health[ident] = '正在监听记录（约每秒）；等待游戏写入' if target else '后台同步记录（约每秒）；游戏内弹窗需从游戏库启动并识别窗口'
     except Exception as exc:

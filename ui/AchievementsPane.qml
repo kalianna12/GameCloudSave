@@ -61,7 +61,8 @@ ScrollView {
         function onChanged() {
             if(pane.info.ident!==pane.gameId || pane.info.busy) return
             if(!pane.loaded) { setup.checked=!pane.info.has_schema;pane.loaded=true }
-            if(!pane.dirty) { enabledToggle.checked=pane.info.enabled!==false;notifications.checked=!pane.steamGame && pane.info.notifications!==false;source.text=pane.info.source || "";appid.text=pane.info.appid || "";provider.currentIndex=Math.max(0,backend.achievements.providers.map(function(p) { return p.id }).indexOf(pane.info.provider || "auto")) }
+            enabledToggle.checked=pane.info.enabled!==false;notifications.checked=!pane.steamGame && pane.info.notifications!==false
+            if(!pane.dirty) { source.text=pane.info.source || "";appid.text=pane.info.appid || "";provider.currentIndex=Math.max(0,backend.achievements.providers.map(function(p) { return p.id }).indexOf(pane.info.provider || "auto")) }
         }
     }
     ColumnLayout {
@@ -72,9 +73,10 @@ ScrollView {
         Layout.fillWidth: true
         AppButton { id: setup;objectName: "achievementSetup";visible: pane.localGame;text: checked ? "收起设置" : "匹配与记录";checkable: true;flat: true }
         Item { Layout.fillWidth: true }
-        Switch { id: enabledToggle;objectName: "achievementEnabled";text: "监听";enabled: pane.localGame && !pane.info.busy;onToggled: pane.dirty=true }
-        Switch { id: notifications;objectName: "achievementNotifications";text: pane.steamGame ? "使用 Steam 弹窗" : "游戏内弹窗";enabled: pane.localGame && !pane.steamGame && !pane.info.busy;onToggled: pane.dirty=true }
+        Switch { id: enabledToggle;objectName: "achievementEnabled";text: "监听";enabled: pane.localGame && backend.achievements.enabled;onToggled: backend.achievements.setSwitches(pane.gameId,{enabled:checked}) }
+        Switch { id: notifications;objectName: "achievementNotifications";text: pane.steamGame ? "使用 Steam 弹窗" : "游戏内弹窗";enabled: pane.localGame && !pane.steamGame && backend.achievements.enabled;onToggled: backend.achievements.setSwitches(pane.gameId,{notifications:checked}) }
     }
+    Label { visible: !backend.achievements.enabled;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "成就总开关已关闭，可在成就管理页面重新开启。" }
     Label { visible: setup.checked;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.steamGame ? "使用 Steam 的解锁提示，本程序同步本机记录。" : "新解锁可显示在普通窗口、无边框与 Anime4K 画面上方。";font.pixelSize: 12 }
     Label { objectName: "achievementRecordStatus";visible: setup.checked || !pane.info.has_record;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.record_status || "尚未检测记录";font.pixelSize: 12 }
     Label { objectName: "achievementMonitorStatus";visible: setup.checked || String(pane.info.monitor_status || "").indexOf("重试")>=0;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.monitor_status || "等待检测监听状态";font.pixelSize: 12 }
@@ -143,7 +145,7 @@ ScrollView {
         Label { objectName: "achievementResultCount";text: list.count+" 项";font.pixelSize: 11;color: Theme.secondary }
         Item { Layout.fillWidth: true }
         AppButton { id: resetFilter;objectName: "achievementResetFilters";text: "重置筛选";flat: true;visible: !!achievementSearch.text || filter.currentIndex!==0 || sort.currentIndex!==0 || hiddenToggle.checked;onClicked: { achievementSearch.clear();filter.currentIndex=0;sort.currentIndex=0;hiddenToggle.checked=false } }
-        AppButton { id: preview;objectName: "achievementPreview";text: "预览弹窗";flat: true;implicitHeight: 28;topPadding: 4;bottomPadding: 4;onClicked: backend.achievements.preview() }
+        AppButton { id: preview;objectName: "achievementPreview";text: "预览弹窗";enabled: backend.achievements.enabled;flat: true;implicitHeight: 28;topPadding: 4;bottomPadding: 4;onClicked: backend.achievements.preview() }
     }
     ListView {
         id: list;objectName: "achievementList";Layout.fillWidth: true;Layout.preferredHeight: Math.max(180,pane.availableHeight-list.y-12);clip: true;spacing: 4

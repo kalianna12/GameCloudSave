@@ -149,6 +149,9 @@ class Repository:
 
 
 class Achievements(QObject):
+    enabledChanged = Signal()
+    enableSaved = Signal(int, str)
+    switchesSaved = Signal(str, int, object, str)
     changed = Signal()
     completed = Signal(int, str, object, str)
     polled = Signal(object)
@@ -175,19 +178,92 @@ class Achievements(QObject):
         self._fetch_serial = {}
         self._state = {'busy': False, 'ident': '', 'message': '选择一款本地游戏以匹配成就', 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0}
         self._serial = 0; self.closed = False; self.sessions = {}; self.polling = False
+        self._enabled = bool(store.settings.get('achievements_enabled', True));self._enable_serial=0
+        self._policies={};self._policy_pending={};self._policy_versions={};self._policy_serial=0;self._poll_epoch=0;self._paused_sessions=[]
+        self.controls = ThreadPoolExecutor(max_workers=1,thread_name_prefix='achievement-controls')
         self._passive = {}
         from achievement_overlay import AchievementOverlay
         self.overlay = AchievementOverlay(self)
+        self.overlay.set_enabled(self._enabled)
+        self.enableSaved.connect(self.receiveEnabled);self.switchesSaved.connect(self.receiveSwitches)
         self.completed.connect(self.receive); self.polled.connect(self.receivePoll)
         self.schemaReady.connect(self.receiveSchema); self.iconsReady.connect(self.refreshView)
         self.searchReady.connect(self.receiveSearch)
         self.catalogReady.connect(self.receiveCatalog);self.batchReady.connect(self.receiveBatch);self.iconProgress.connect(self.receiveIcons)
         self.timer = QTimer(self); self.timer.setInterval(1000); self.timer.timeout.connect(self.poll)
-        self.timer.start()
+        if self._enabled:self.timer.start()
         QTimer.singleShot(0,self.refreshCatalog)
 
     @Property('QVariantMap', notify=changed)
     def state(self): return self._state
+
+    @Property(bool, notify=enabledChanged)
+    def enabled(self):return self._enabled and not self.closed
+
+    @Slot(bool)
+    def setEnabled(self, enabled):
+        if self.closed or enabled==self._enabled:return
+        self._applyEnabled(enabled);self._enable_serial+=1;serial=self._enable_serial
+        def persist():
+            error=''
+            try:self.store.save_settings({'achievements_enabled':enabled})
+            except Exception as exc:error=str(exc)[:180]
+            if not self.closed:self.enableSaved.emit(serial,error)
+        self.controls.submit(persist)
+
+    def _applyEnabled(self, enabled):
+        self._enabled=enabled;self._poll_epoch+=1;self.overlay.set_enabled(enabled)
+        if enabled:
+            self.timer.start();paused=self._paused_sessions;self._paused_sessions=[]
+            for session in paused:
+                self.begin(session['ident'])
+                target=session.get('target',{})
+                if target and not target.get('cache_only'):self.attach(session['ident'],target['pid'],target['hwnd'])
+        else:
+            self.timer.stop();self._paused_sessions=list(self.sessions.values());self.sessions.clear();self._passive.clear();self._batch_cancel.set()
+        self.enabledChanged.emit()
+
+    @Slot(int,str)
+    def receiveEnabled(self, serial, error):
+        if self.closed or serial!=self._enable_serial:return
+        if error:
+            self._applyEnabled(bool(self.store.settings.get('achievements_enabled',True)))
+            self._state['message']='成就总开关保存失败：'+error;self.changed.emit()
+        owner=self.parent()
+        if owner and hasattr(owner,'settingsChanged'):owner.settingsChanged.emit()
+
+    @Slot(str,'QVariantMap')
+    def setSwitches(self, ident, values):
+        game=self.game(ident)
+        if self.closed or not game:return
+        values={k:v for k,v in values.items() if k in ('enabled','notifications')}
+        if not values or any(type(v)!=bool for v in values.values()):return
+        if game.get('platform')=='steam':values['notifications']=False
+        resuming=values.get('enabled') is True and self._policies.get(ident,{}).get('enabled') is False
+        local=deepcopy(self.store.local.get(ident,{}))
+        self._policy_serial+=1;serial=self._policy_serial;self._policy_pending[ident]=serial
+        self._policy_versions[ident]=serial
+        self._policies.setdefault(ident,{}).update(values)
+        if not self._policies[ident].get('enabled',True) or not self._policies[ident].get('notifications',True):self.overlay.discard(ident)
+        def persist():
+            error=''
+            try:
+                self.repository.config(ident).update(values)
+                if resuming:self.repository.setup(game,local)
+                self.repository.save()
+            except Exception as exc:error=str(exc)[:180]
+            flags={k:self.repository.config(ident).get(k,True) for k in ('enabled','notifications')}
+            if not self.closed:self.switchesSaved.emit(ident,serial,flags,error)
+        self.pool.submit(persist)
+
+    @Slot(str,int,object,str)
+    def receiveSwitches(self, ident, serial, flags, error):
+        if self.closed or self._policy_pending.get(ident)!=serial:return
+        self._policy_pending.pop(ident,None);self._policies[ident]=flags
+        if self._state.get('ident')==ident:
+            self._state.update(flags)
+            if error:self._state['message']='成就开关保存失败：'+error
+            self.changed.emit()
 
     @Property(int,notify=catalogChanged)
     def summaryRevision(self):return self._catalog_revision
@@ -321,6 +397,8 @@ class Achievements(QObject):
 
     @Slot(int, str, object, str)
     def receive(self, serial, ident, result, error):
+        if not self.closed and not error and result and ident not in self._policy_pending:
+            self._policies[ident]={k:result.get(k,True) for k in ('enabled','notifications')}
         if self.closed or serial != self._serial or ident != self._state.get('ident'): return
         if error: self._state.update(busy=False, message='成就：'+error)
         else: self._state = result
@@ -526,12 +604,14 @@ class Achievements(QObject):
 
     @Slot()
     def preview(self):
+        if not self.enabled:return
         self.overlay.enqueue({'name': '新的冒险', 'description': '弹窗不会抢走游戏焦点，也不会拦截鼠标。'}, {}, True)
 
     def begin(self, ident):
         """Called before launch; baseline reads on the same serial worker as polling."""
         game = self.game(ident)
-        if self.closed or not game or game.get('platform') not in ('local','steam', '', None): return
+        if not self.enabled or not game or game.get('platform') not in ('local','steam', '', None): return
+        if game.get('platform') != 'steam': self.overlay.prepare()
         session = {'ident': ident, 'game': game, 'local': deepcopy(self.store.local.get(ident, {})), 'target': {}, 'created': time.monotonic(), 'primed': False, 'signature': None, 'discovery': 0}
         if game.get('platform')=='steam':
             # Steam may launch through an already-running client, without a
@@ -562,8 +642,9 @@ class Achievements(QObject):
             self.sessions[ident]['target'] = target
 
     def poll(self):
-        if self.closed or self.polling: return
-        self.polling = True; sessions = list(self.sessions.values()); selected = self._state.get('ident', '')
+        if not self.enabled or self.polling: return
+        epoch=self._poll_epoch;policies=dict(self._policy_versions);blocked={ident for ident,p in self._policies.items() if p.get('enabled') is False}
+        self.polling = True; sessions = [s for s in self.sessions.values() if s['ident'] not in blocked]; selected = self._state.get('ident', '')
         games = {g['id']: deepcopy(g) for g in self.store.games}
         local = deepcopy(self.store.local)
         def run():
@@ -574,13 +655,14 @@ class Achievements(QObject):
                 self.repository.load()
                 active = {s['ident'] for s in sessions}
                 for ident, config in list(self.repository.configs.items()):
-                    if ident in active or ident not in games or config.get('enabled') is False: continue
+                    if ident in active or ident in blocked or ident not in games or config.get('enabled') is False: continue
                     # Only selected unmatched games scan. Idle games merely stat
                     # their configured record; never rescan the entire library.
                     if not config.get('source') and ident != selected: continue
                     state = self._passive.setdefault(ident, {'signature': None, 'discovery': 0})
                     sessions.append(dict(state, ident=ident, game=games[ident], local=local.get(ident, {}), target={}, passive=True, _state=state))
                 for session in sessions:
+                    if self.closed or not self._enabled or epoch!=self._poll_epoch:break
                     updated, rows, finished = check(self.repository, session)
                     if finished: ended.append((session['ident'], session['created']))
                     if session.get('passive'):
@@ -592,16 +674,21 @@ class Achievements(QObject):
                 if any_changed:self.publish()
             finally:
                 # A failed check must never wedge the in-flight guard forever.
-                if not self.closed: self.polled.emit({'events': events, 'ended': ended, 'view': view})
+                if not self.closed: self.polled.emit({'events': events, 'ended': ended, 'view': view,'epoch':epoch,'policies':policies})
         self.pool.submit(run)
 
     @Slot(object)
     def receivePoll(self, result):
         self.polling = False
-        if self.closed: return
+        if not self.enabled or result.get('epoch',self._poll_epoch)!=self._poll_epoch: return
+        ended=set()
         for ident, created in result['ended']:
-            if ident in self.sessions and self.sessions[ident]['created'] == created: self.sessions.pop(ident)
+            if ident in self.sessions and self.sessions[ident]['created'] == created:
+                self.sessions.pop(ident);self.overlay.discard(ident);ended.add(ident)
         for row, target in result['events']:
+            ident=row.get('game_id');policy=self._policies.get(ident,{})
+            if ident in ended or policy.get('enabled') is False or policy.get('notifications') is False:continue
+            if 'policies' in result and result['policies'].get(ident,0)!=self._policy_versions.get(ident,0):continue
             # Bound to the exact owned scaler and its source, never any Magpie window.
             graphics = getattr(self.parent(), '_graphics', None)
             if graphics and graphics.engine.target and graphics.engine.target[0] == target['pid']:
@@ -619,12 +706,18 @@ class Achievements(QObject):
             # A search may still be running. Update progress without clearing
             # its busy flag, candidates or message, and never drop the refresh.
             self._state.update({k:v for k,v in result['view'].items() if k not in ('busy','message','candidates')})
+            self._state.update(self._policies.get(self._state.get('ident'),{}))
             if not self._state.get('busy') and not self._state.get('candidates'): self._state['message'] = result['view']['message']
             self.changed.emit()
 
     def shutdown(self):
+        if self.closed:return
         self.closed = True; self.timer.stop(); self.overlay.shutdown()
-        self.pool.shutdown(wait=False, cancel_futures=True)
+        self.sessions.clear();self._paused_sessions=[];self._passive.clear();self.polling=False;self._poll_epoch+=1
+        self.controls.shutdown(wait=False,cancel_futures=False)
+        # Already-queued switch writes must persist even on an immediate Quit.
+        # All notification delivery is blocked above before any worker finishes.
+        self.pool.shutdown(wait=False, cancel_futures=False)
         self.network.shutdown(wait=False, cancel_futures=True)
         self.icons.shutdown(wait=False, cancel_futures=True)
         self._batch_cancel.set();self.batch_pool.shutdown(wait=False,cancel_futures=True)

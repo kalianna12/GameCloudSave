@@ -537,8 +537,9 @@ class Bridge(QObject):
         values=self._audio_values;self._audio_values={};path=self.store.profile/'settings.json'
         def persist():
             try:
-                saved=read_json(path,{})
-                write_json(path,{**saved,**values})
+                with self.store.settings_lock:
+                    saved=read_json(path,{})
+                    write_json(path,{**saved,**values})
             except (OSError,ValueError) as error:self.audioSaveFailed.emit(str(error))
         self.pool.submit(persist)
     @Slot(str)
@@ -1657,12 +1658,12 @@ class Bridge(QObject):
         self._exit_queue.retry();self.refreshWatchInfo();self.drainAutoBackups()
 
     def shutdownWatch(self):
+        self._achievements.shutdown()
         self.searchIme.end()
         self.favoriteTimer.stop();self.flushFavorites()
         self.flushAudioSettings()
         self._mapping.shutdown()
         self._graphics.shutdown()
-        self._achievements.shutdown()
         self._recommendations.shutdown()
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
@@ -1747,6 +1748,7 @@ def main():
     bridge = Bridge(Store())
     from input_feedback import InputFeedback
     bridge.input_feedback=InputFeedback(app,bridge,RESOURCES)
+    app.aboutToQuit.connect(bridge.achievements.shutdown)
     app.aboutToQuit.connect(bridge.cancelMatching)
     app.aboutToQuit.connect(bridge.cancelEnrichment)
     app.aboutToQuit.connect(bridge.shutdownWatch)

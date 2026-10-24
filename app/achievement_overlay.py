@@ -5,9 +5,29 @@ import ctypes
 from ctypes import wintypes as W
 import os
 import time
-from PySide6.QtCore import QObject, Qt, QTimer, QRectF
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap, QGuiApplication
+from functools import lru_cache
+from pathlib import Path
+from PySide6.QtCore import QObject, Qt, QTimer, QRectF, QSize
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QImageReader, QPainter, QPainterPath, QPen, QPixmap, QGuiApplication
 from PySide6.QtWidgets import QWidget
+
+
+@lru_cache(maxsize=64)
+def _decode_icon(path, modified, size):
+    reader = QImageReader(path)
+    bounds = reader.size()
+    if bounds.isValid(): reader.setScaledSize(bounds.scaled(QSize(120, 120), Qt.KeepAspectRatio))
+    return reader.read()
+
+
+def read_toast_icon(path):
+    """Worker-only disk access/decoding. QPixmap creation stays on the GUI thread."""
+    if path:
+        try:
+            stamp = Path(path).stat()
+            return _decode_icon(str(path), stamp.st_mtime_ns, stamp.st_size)
+        except (OSError, ValueError): pass
+    return QImage()
 
 
 def valid_target(target):
@@ -56,19 +76,26 @@ class Toast(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.NoFocus)
         self.resize(400, 112); self.row = {}; self.icon = QPixmap()
+        self.ensurePolished()
+        # Create the native surface and resolve fonts before gameplay, not on
+        # the first unlock. Keep it hidden and excluded from scaler capture.
+        handle = int(self.winId())
+        if os.name == 'nt':
+            user = ctypes.windll.user32
+            user.SetWindowDisplayAffinity.argtypes = [W.HWND, W.DWORD]
+            user.SetWindowDisplayAffinity(handle, 0x11)
+        for size in (9, 12):
+            font = QFont('Microsoft YaHei UI', size); font.setBold(size == 12)
+            QFontMetrics(font).horizontalAdvance('成就已解锁 Achievement')
 
     def present(self, row, target):
-        self.row = row; self.icon = QPixmap(row.get('icon_path', '')) if row.get('icon_path') else QPixmap()
+        self.row = row
+        image = row.get('_toast_icon')
+        self.icon = QPixmap.fromImage(image) if isinstance(image, QImage) and not image.isNull() else QPixmap()
         screen = target_screen(target); area = screen.availableGeometry()
         self.resize(min(400, area.width() - 32), 112)
         self.move(area.right() - self.width() - 20, area.bottom() - self.height() - 20)
         self.show(); self.update(); self.keep_above()
-        if os.name == 'nt':
-            user = ctypes.windll.user32
-            user.SetWindowDisplayAffinity.argtypes = [W.HWND, W.DWORD]
-            # Don't appear inside desktop capture: no duplicated/recursive toast.
-            # The compositor still shows it above the scaler on the real monitor.
-            user.SetWindowDisplayAffinity(int(self.winId()), 0x11)
 
     def keep_above(self):
         if os.name == 'nt':
@@ -99,17 +126,30 @@ class Toast(QWidget):
 class AchievementOverlay(QObject):
     def __init__(self, parent=None):
         super().__init__(parent); self.toast = None; self.queue = deque(maxlen=100)
-        self.current = None; self.remaining = 0; self.last = 0; self.closed = False
+        self.current = None; self.remaining = 0; self.last = 0; self.closed = False; self.enabled = True
         self.timer = QTimer(self); self.timer.setInterval(150); self.timer.timeout.connect(self.tick)
 
+    def prepare(self):
+        if not self.closed and self.enabled and self.toast is None: self.toast = Toast()
+
+    def set_enabled(self, enabled):
+        self.enabled = bool(enabled)
+        if not self.enabled: self.clear()
+
+    def clear(self):
+        self.timer.stop(); self.queue.clear(); self.current = None; self.remaining = 0
+        if self.toast: self.toast.hide()
+
     def enqueue(self, row, target, preview=False):
-        if self.closed: return
+        if self.closed or not self.enabled: return
         # Drop stale queued notifications after a session rather than show them
         # over another application or over a later game session.
         self.queue.append((dict(row, preview=preview), dict(target or {}), time.monotonic(), preview))
         if not self.timer.isActive(): self.last = time.monotonic(); self.timer.start(); self.tick()
 
     def tick(self):
+        if self.closed or not self.enabled:
+            self.clear(); return
         now = time.monotonic(); elapsed = now-self.last; self.last = now
         if self.current:
             row, target, created, preview = self.current
@@ -117,9 +157,11 @@ class AchievementOverlay(QObject):
                 self.current = None
                 if self.toast: self.toast.hide()
             elif preview or game_foreground(target):
-                if not self.toast: self.toast = Toast()
+                self.prepare()
                 if not self.toast.isVisible(): self.toast.present(row, target)
-                self.toast.keep_above(); self.remaining -= elapsed
+                # Showing/resuming already establishes z-order. Reasserting it
+                # every 150 ms needlessly wakes the desktop compositor.
+                self.remaining -= elapsed
                 if self.remaining <= 0: self.toast.hide(); self.current = None
             elif self.toast: self.toast.hide()
         if not self.current:
@@ -136,5 +178,5 @@ class AchievementOverlay(QObject):
             if self.toast: self.toast.hide()
 
     def shutdown(self):
-        self.closed = True; self.timer.stop(); self.queue.clear(); self.current = None
+        self.closed = True; self.clear()
         if self.toast: self.toast.close(); self.toast.deleteLater(); self.toast = None

@@ -66,7 +66,7 @@ ApplicationWindow {
             return true
         }
         if(command==="down" && focus===search) { games.forceActiveFocus();if(games.currentIndex<0) selectGame(0);return true }
-        return Form.handle([gamesTab,sourcesTab,recentTab,statsTab,search,kind,tools,selectAll,clearSelection,provider,refresh,full,stop,inlineCharts,chartAll,chartCurrent,chartPeriod,chartLine,statsGame,statsPeriod,statsLine,statsList,recentList,save,closeButton],focus,command,null)
+        return Form.handle([systemToggle,gamesTab,sourcesTab,recentTab,statsTab,search,kind,tools,selectAll,clearSelection,provider,refresh,full,stop,inlineCharts,chartAll,chartCurrent,chartPeriod,chartLine,statsGame,statsPeriod,statsLine,statsList,recentList,save,closeButton],focus,command,null)
     }
     onVisibleGamesChanged: Qt.callLater(reconcileGames)
     Shortcut { sequence: StandardKey.Find;context: Qt.WindowShortcut;enabled: window.active && !detail.entryOpen;onActivated: { pages.currentIndex=0;search.forceActiveFocus();search.selectAll() } }
@@ -79,6 +79,7 @@ ApplicationWindow {
                 Label { text: "成就管理";font.pixelSize: 26;font.bold: true }
                 Label { text: window.catalog.filter(function(g) { return g.total>0 }).length+" 款游戏已收录成就";color: Theme.secondary;font.pixelSize: 12 }
             }
+            Switch { id: systemToggle;objectName: "achievementSystemEnabled";text: "成就系统";checked: backend.achievements.enabled;onToggled: backend.achievements.setEnabled(checked) }
             Item { Layout.fillWidth: true }
             ColumnLayout { spacing: 4
                 Label { text: window.catalog.reduce(function(n,g) { return n+g.unlocked },0)+" / "+window.catalog.reduce(function(n,g) { return n+g.total },0)+" 已解锁";font.pixelSize: 16;Layout.alignment: Qt.AlignRight;color: Theme.accent }
@@ -94,6 +95,7 @@ ApplicationWindow {
             TabButton { id: recentTab;text: "最近解锁" }
             TabButton { id: statsTab;text: "统计总览" }
         }
+        Label { visible: !backend.achievements.enabled;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "成就系统已关闭：停止后台监听与弹窗，保留已收录的成就和进度。" }
         RowLayout {
             visible: pages.currentIndex===0;Layout.fillWidth: true
             AppTextField { id: search;objectName: "achievementsLibrarySearch";Layout.fillWidth: true;placeholderText: "搜索游戏" }

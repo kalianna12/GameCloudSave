@@ -80,7 +80,7 @@ class Store:
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
                     'match_network':True,'match_web_search':True,'match_workers':2,'match_ai_review':True,'match_ai_weight':75,'guide_dismissed':False,
                     'recommendations_enabled':True,'recommendations_steam':True,'recommendations_xbox':True,
-                    'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5}
+                    'close_to_tray':True,'watch_interval':5,'auto_snapshot_keep':5,'achievements_enabled':True}
         defaults.update({'setup_completed':False,'cover_source':'steam','custom_cover_url':'','theme':'dark','accent_color':'','animations':True,'tray_notifications':True,'gamepad_enabled':True,'navigation_sounds':True,'navigation_sound_style':'clear','navigation_volume':80,'controller_tilt':True,'fullscreen':False})
         defaults.update(home_cover_size=176,home_gap=14,home_recent_preview=True,library_design='classic',experience_group='category',shelf_arrangement='covers',shelf_wood='walnut',shelf_sunlight=True,atlas_order='release_asc',achievement_badges='hover')
         from audio_settings import DEFAULTS
@@ -98,13 +98,18 @@ class Store:
         self.identities = read_json(self.profile/'ai-identities.json',{})
         self.network_cache=read_json(self.root/'network-identities.json',{})
         import threading
+        self.settings_lock=threading.RLock()
         self.match_lock=threading.RLock()
 
     def save_settings(self, values):
+        with self.settings_lock:self._save_settings(values)
+
+    def _save_settings(self, values):
         values = dict(values)
         from audio_settings import DEFAULTS,validate
         values.update(validate({key:value for key,value in values.items() if key in DEFAULTS}))
         if 'controller_tilt' in values and type(values['controller_tilt'])!=bool:raise ValueError('摇杆倾斜设置无效')
+        if 'achievements_enabled' in values and type(values['achievements_enabled'])!=bool:raise ValueError('成就总开关无效')
         if 'achievement_badges' in values and values['achievement_badges'] not in ('hover','always','hidden'):raise ValueError('成就徽标显示方式无效')
         for key in ('recommendations_enabled','recommendations_steam','recommendations_xbox'):
             if key in values and type(values[key])!=bool:raise ValueError('推荐设置无效')
