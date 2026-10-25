@@ -35,4 +35,5 @@ for name in cases:
     print(('PASS' if code==0 else 'FAIL')+' '+name+' '+str(row['seconds'])+'s',flush=True)
     if code:
         print(content[-6000:],flush=True);sys.exit(code)
+(out/(args.phase+'-results.json')).write_text(json.dumps(results,indent=2),encoding='utf-8')
 print('PASS '+args.phase+': '+str(len(results))+' processes, '+str(sum(row['tests'] or 0 for row in results))+' unittest cases',flush=True)
