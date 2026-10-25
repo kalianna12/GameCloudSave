@@ -40,17 +40,17 @@ ScrollView {
     contentWidth: availableWidth
     ScrollBar.vertical: AchievementScrollBar { objectName: "achievementPaneScrollBar" }
     function loadFor(ident) { if(ident!==gameId) { list.navigationId="";list.currentIndex=-1 };gameId=ident;loaded=false;dirty=false;query.text=backend.libraryGame(ident).name || "";backend.achievements.openFor(ident);Qt.callLater(function() { if(pane.contentItem && pane.contentItem.contentY!==undefined) pane.contentItem.contentY=0 }) }
-    function save() { dirty=false;backend.achievements.save(gameId,{enabled:enabledToggle.checked,notifications:notifications.checked,source:source.text,provider:backend.achievements.providers[provider.currentIndex].id}) }
+    function save() { dirty=false;backend.achievements.save(gameId,{enabled:enabledToggle.checked,source:source.text,provider:backend.achievements.providers[provider.currentIndex].id}) }
     function controllerInput(command) {
         if(entryDialog.visible) { if(command==="back" || command==="activate") entryDialog.close();else if(command==="up" || command==="down") { var flick=descriptionView.contentItem;flick.contentY=Math.max(0,Math.min(Math.max(0,flick.contentHeight-flick.height),flick.contentY+(command==="up" ? -60 : 60))) };return true }
         if(list.activeFocus) {
-            if(command==="up" && list.currentIndex<=0) { Form.reveal(preview,pane);return true }
+            if(command==="up" && list.currentIndex<=0) { Form.reveal(resetFilter.visible ? resetFilter : achievementSearch,pane);return true }
             if(command==="up" || command==="down") { list.currentIndex=Math.max(0,Math.min(list.count-1,list.currentIndex+(command==="up" ? -1 : 1)));if(list.count) list.navigationId=entryRecords.get(list.currentIndex).record.id;list.positionViewAtIndex(list.currentIndex,ListView.Contain);return true }
             if(command==="activate" && list.currentIndex>=0 && list.currentIndex<list.count) { showEntry(entryRecords.get(list.currentIndex).record);return true }
             return true
         }
-        if(command==="down" && pane.Window.window.activeFocusItem===preview && list.count) { list.currentIndex=0;Form.reveal(list,pane);return true }
-        return Form.handle([enabledToggle,notifications,setup,query,searchButton,aiSearch,candidates,chooseCandidate,provider,appid,matchButton,source,sourceChoice,pickSource,rootButton,diagnostics,importSchema,refreshButton,exportSchema,achievementSearch,filter,sort,hiddenToggle,resetFilter,preview],pane.Window.window.activeFocusItem,command,pane)
+        if(command==="down" && pane.Window.window.activeFocusItem===resetFilter && list.count) { list.currentIndex=0;Form.reveal(list,pane);return true }
+        return Form.handle([enabledToggle,setup,query,searchButton,aiSearch,candidates,chooseCandidate,provider,appid,matchButton,source,sourceChoice,pickSource,rootButton,diagnostics,importSchema,refreshButton,exportSchema,achievementSearch,filter,sort,hiddenToggle,resetFilter,list],pane.Window.window.activeFocusItem,command,pane)
     }
     Connections {
         target: pane.Window.window
@@ -61,12 +61,12 @@ ScrollView {
         function onChanged() {
             if(pane.info.ident!==pane.gameId || pane.info.busy) return
             if(!pane.loaded) { setup.checked=!pane.info.has_schema;pane.loaded=true }
-            enabledToggle.checked=pane.info.enabled!==false;notifications.checked=!pane.steamGame && pane.info.notifications!==false
+            enabledToggle.checked=pane.info.enabled!==false
             if(!pane.dirty) { source.text=pane.info.source || "";appid.text=pane.info.appid || "";provider.currentIndex=Math.max(0,backend.achievements.providers.map(function(p) { return p.id }).indexOf(pane.info.provider || "auto")) }
         }
     }
     ColumnLayout {
-    width: pane.availableWidth
+    width: Math.max(0,pane.availableWidth-16)
     spacing: 10
     AchievementHero { Layout.fillWidth: true;game: pane.game;info: pane.info;compact: pane.compact }
     RowLayout {
@@ -74,13 +74,11 @@ ScrollView {
         AppButton { id: setup;objectName: "achievementSetup";visible: pane.localGame;text: checked ? "收起设置" : "匹配与记录";checkable: true;flat: true }
         Item { Layout.fillWidth: true }
         Switch { id: enabledToggle;objectName: "achievementEnabled";text: "监听";enabled: pane.localGame && backend.achievements.enabled;onToggled: backend.achievements.setSwitches(pane.gameId,{enabled:checked}) }
-        Switch { id: notifications;objectName: "achievementNotifications";text: pane.steamGame ? "使用 Steam 弹窗" : "游戏内弹窗";enabled: pane.localGame && !pane.steamGame && backend.achievements.enabled;onToggled: backend.achievements.setSwitches(pane.gameId,{notifications:checked}) }
     }
     Label { visible: !backend.achievements.enabled;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "成就总开关已关闭，可在成就管理页面重新开启。" }
-    Label { visible: setup.checked;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.steamGame ? "使用 Steam 的解锁提示，本程序同步本机记录。" : "新解锁可显示在普通窗口、无边框与 Anime4K 画面上方。";font.pixelSize: 12 }
+    Label { visible: setup.checked;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "同步游戏的本机成就记录";font.pixelSize: 12 }
     Label { objectName: "achievementRecordStatus";visible: setup.checked || !pane.info.has_record;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.record_status || "尚未检测记录";font.pixelSize: 12 }
     Label { objectName: "achievementMonitorStatus";visible: setup.checked || String(pane.info.monitor_status || "").indexOf("重试")>=0;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: pane.info.monitor_status || "等待检测监听状态";font.pixelSize: 12 }
-    Label { visible: setup.checked;Layout.fillWidth: true;wrapMode: Text.Wrap;font.pixelSize: 12;color: Theme.secondary;text: "需要游戏生成可读取的成就记录；只有成就列表不能自动判定解锁。部分独占全屏请改为无边框。" }
     RowLayout {
         visible: pane.localGame && setup.checked;Layout.fillWidth: true
         AppTextField { id: query;objectName: "achievementSearch";Layout.fillWidth: true;placeholderText: "搜索游戏名称";onAccepted: backend.achievements.search(pane.gameId,text) }
@@ -145,7 +143,6 @@ ScrollView {
         Label { objectName: "achievementResultCount";text: list.count+" 项";font.pixelSize: 11;color: Theme.secondary }
         Item { Layout.fillWidth: true }
         AppButton { id: resetFilter;objectName: "achievementResetFilters";text: "重置筛选";flat: true;visible: !!achievementSearch.text || filter.currentIndex!==0 || sort.currentIndex!==0 || hiddenToggle.checked;onClicked: { achievementSearch.clear();filter.currentIndex=0;sort.currentIndex=0;hiddenToggle.checked=false } }
-        AppButton { id: preview;objectName: "achievementPreview";text: "预览弹窗";enabled: backend.achievements.enabled;flat: true;implicitHeight: 28;topPadding: 4;bottomPadding: 4;onClicked: backend.achievements.preview() }
     }
     ListView {
         id: list;objectName: "achievementList";Layout.fillWidth: true;Layout.preferredHeight: Math.max(180,pane.availableHeight-list.y-12);clip: true;spacing: 4

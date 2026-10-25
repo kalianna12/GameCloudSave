@@ -22,7 +22,7 @@ shutil.copy2(ROOT/'docs/安装与便携使用说明.txt',release/'使用说明.t
 shutil.copy2(ROOT/('docs/V'+args.version+'发布说明.md'),release/'更新说明.md')
 licenses=release/'licenses';licenses.mkdir(exist_ok=True)
 versions={}
-for package in ('PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','psutil','Pillow','PyInstaller','vgamepad'):
+for package in ('PySide6','PySide6_Essentials','PySide6_Addons','shiboken6','psutil','pypinyin','Pillow','PyInstaller','vgamepad'):
     try:distribution=metadata.distribution(package)
     except metadata.PackageNotFoundError:
         if package=='Pillow':continue
@@ -51,11 +51,6 @@ license_urls={
 with ThreadPoolExecutor(max_workers=3) as pool:list(pool.map(license_download,license_urls.items()))
 python_license=Path(sys.base_prefix)/'LICENSE.txt'
 if python_license.is_file():shutil.copy2(python_license,licenses/'Python-LICENSE.txt')
-rclone=shutil.which('rclone')
-license_output=subprocess.run([rclone,'version'],capture_output=True,text=True,encoding='utf-8').stdout
-(licenses/'rclone-version.txt').write_text(license_output,encoding='utf-8')
-rclone_tag=license_output.splitlines()[0].split()[-1]
-license_download(('rclone-LICENSE.txt',['https://raw.githubusercontent.com/rclone/rclone/'+rclone_tag+'/COPYING','https://raw.githubusercontent.com/rclone/rclone/master/COPYING']))
 (licenses/'versions.json').write_text(json.dumps(versions,indent=2),encoding='utf-8')
 source_paths=subprocess.check_output(['git','ls-files','-z','--cached','--others','--exclude-standard'],cwd=ROOT).decode('utf-8').split('\0')
 with zipfile.ZipFile(release/'source.zip','w',zipfile.ZIP_DEFLATED) as zipped:
@@ -65,7 +60,7 @@ with zipfile.ZipFile(release/'source.zip','w',zipfile.ZIP_DEFLATED) as zipped:
         if not source.is_relative_to(ROOT) or not source.is_file():continue
         if source.suffix.lower() not in ('.py','.qml','.js','.svg','.json','.md','.ps1','.bat','.txt','.toml','.yaml','.ico','.wav') and source.name not in ('LICENSE','.gitignore'):continue
         zipped.write(source,name)
-with zipfile.ZipFile(output/'payload.zip','w',zipfile.ZIP_STORED) as zipped:
+with zipfile.ZipFile(output/'payload.zip','w',zipfile.ZIP_DEFLATED,compresslevel=9) as zipped:
     for file in release.rglob('*'):
         relative=file.relative_to(release)
         if relative.parts[0] in ('data','test-data'):continue

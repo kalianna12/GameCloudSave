@@ -8,7 +8,7 @@ Playnite 游戏库只读，不修改原库；本地扫描不运行候选文件�
 
 密码、DeepSeek Key 使用当前 Windows 用户的 DPAPI 保存。开启联网功能时，会向所选服务发送搜索名称或候选目录/文件名，不发送存档内容给 AI。上传云端由用户设置和操作控制。
 
-Qt / PySide6 / Shiboken6 遵循其 LGPL/GPL 等许可，使用可替换的独立运行库，未修改这些库。Python、rclone、psutil、Pillow 及其依赖遵循各自许可。完整第三方文本随安装目录 licenses 提供。
+Qt / PySide6 / Shiboken6 使用可替换的独立运行库。Python、psutil、pypinyin 及其他组件遵循各自许可，完整文本位于 licenses。音效逐项许可与来源位于 ui/sounds/sources/CREDITS.md。
 
 拼音与首字母搜索使用 pypinyin 0.55.0（MIT，mozillazg，https://github.com/mozillazg/python-pinyin）。中文录入调用 Windows 上已安装的输入法。
 

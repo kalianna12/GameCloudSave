@@ -26,7 +26,7 @@ with zipfile.ZipFile(target/'source.zip') as zipped:
     names=zipped.namelist();assert 'app/themes.py' in names and 'installer/setup.py' in names and 'docs/theme.schema.json' in names
     assert zipped.read('ui/sounds/navigation.wav') == (ROOT/'ui/sounds/navigation.wav').read_bytes()
     assert zipped.read('app/input_feedback.py') == (ROOT/'app/input_feedback.py').read_bytes()
-    for name in ('app/library_enrichment.py','app/catalog_match.py','app/time_display.py','app/game_watcher.py','app/input_mapping.py','app/mapping_templates.py','app/recommendations.py','ui/MappingGamepad.qml','ui/MappingChordEditor.qml','ui/LibraryShelf.qml','ui/GameSettingsDialog.qml','ui/EnrichmentWindow.qml','ui/ControllerKeyboard.qml','ui/Main.qml','ui/ExperienceData.js','ui/WoodMaterials.js','ui/InlineImageBrowser.qml','ui/CinemaVideo.qml'):
+    for name in ('app/library_enrichment.py','app/catalog_match.py','app/time_display.py','app/game_watcher.py','app/input_mapping.py','app/mapping_templates.py','app/recommendations.py','ui/MappingGamepad.qml','ui/MappingChordEditor.qml','ui/LibraryShelf.qml','ui/GameSettingsDialog.qml','ui/EnrichmentWindow.qml','ui/ControllerKeyboard.qml','ui/Main.qml','ui/ExperienceData.js','ui/WoodMaterials.js','app/image_search.py','app/cloud_transport.py','app/steam_cloud_paths.py','app/library_installations.py','ui/AchievementChart.qml','ui/InputMappingWindow.qml','ui/CinemaVideo.qml'):
         assert zipped.read(name)==(ROOT/name).read_bytes(),name+' is stale in the source archive'
     assert not any(name.startswith(('data/','test-data/','.venv/','dist/','build/')) or name.endswith('.dpapi') for name in names)
 report['uninstall_seconds']=run([target/'Uninstall.exe','--silent','--report',test/'uninstall.json'])

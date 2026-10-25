@@ -49,6 +49,7 @@ class Bridge(QObject):
     launchReady=Signal(str,object)
     artworkReady=Signal(str,object,bool,str)
     favoriteStored=Signal(object,str)
+    installationsReady=Signal(object)
 
     def __init__(self, store):
         super().__init__()
@@ -111,6 +112,13 @@ class Bridge(QObject):
         self._playing=threading.Event();self._auto_active=False;self._launched_recent={}
         self._watch_sampled=False
         self._watch_closed=False
+        self._installation_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='installation-check')
+        self._installation_pending=False;self._installation_last=0.;self._installation_read_playnite=False
+        self.installationsReady.connect(self.receiveInstallations)
+        QTimer.singleShot(500,self.refreshInstallations)
+        application=QCoreApplication.instance()
+        if hasattr(application,'applicationStateChanged'):
+            application.applicationStateChanged.connect(self.installationActivation)
         self._watch_message='等待游戏启动';self._watch_ready_count=0;self._watch_last_info={}
         self._games_cache = None
         self._favorite_pending={};self._favorite_overrides={}
@@ -180,6 +188,47 @@ class Bridge(QObject):
     def refreshWatchInfo(self):
         info=self.watchInfo
         if info!=self._watch_last_info:self._watch_last_info=info;self.watchStateChanged.emit()
+
+    @Slot(Qt.ApplicationState)
+    def installationActivation(self,state):
+        if state==Qt.ApplicationActive:self.refreshInstallations()
+
+    @Slot()
+    def refreshInstallations(self):
+        if self._watch_closed or not self.store.games or self._installation_pending or time.monotonic()-self._installation_last<15:return
+        self._installation_pending=True;self._installation_last=time.monotonic()
+        games=[dict(game) for game in self.store.games];local={key:dict(value) for key,value in self.store.local.items()}
+        read=not self._installation_read_playnite and any(game.get('import_source')=='playnite' or game.get('source')=='Playnite' for game in games)
+        self._installation_read_playnite=True
+        def work():
+            from library_installations import probe
+            rows=[]
+            if read:
+                try:rows=self.store.read_playnite()
+                except (ValueError,OSError):pass
+            return probe(games,local,rows,self.store.settings.get('playnite',''))
+        def done(future):
+            try:result=future.result()
+            except Exception:result={}
+            if not self._watch_closed:self.installationsReady.emit(result)
+        self._installation_pool.submit(work).add_done_callback(done)
+
+    @Slot(object)
+    def receiveInstallations(self,changes):
+        self._installation_pending=False
+        if self._watch_closed:return
+        changed=False
+        known={game['id'] for game in self.store.games}
+        for ident,row in changes.items():
+            if ident not in known:continue
+            current=self.store.local.setdefault(ident,{})
+            # A manual edit made while the filesystem check ran wins.
+            if any(current.get(key)!=row['before'].get(key) for key in ('exe','install_dir','launch_mode','arguments','working_dir')):continue
+            current.update(row['values']);changed=True
+        if changed:
+            from services import write_json
+            write_json(self.store.profile/'games.json',self.store.local)
+            self._games_cache=None;self.gamesChanged.emit()
 
     @Property('QVariantList', notify=gamesChanged)
     def games(self):
@@ -328,6 +377,9 @@ class Bridge(QObject):
         self.searchTargetArtwork(scope,ident,query,provider,'cover',use_ai)
 
     @Property(str,notify=changed)
+    def artworkError(self):return getattr(self,'_artwork_error','')
+
+    @Property(str,notify=changed)
     def artworkKind(self):return self._artwork_kind
 
     @Property(bool,notify=changed)
@@ -347,7 +399,7 @@ class Bridge(QObject):
     @Slot(str,object,bool,str)
     def receiveArtwork(self,token,rows,done,error):
         if self._artwork_closed or not token or token!=self._image_token:return
-        self._cover_results=rows;self._artwork_searching=not done
+        self._cover_results=rows;self._artwork_searching=not done;self._artwork_error=error
         if not self._busy:self._status=error or (f'找到 {len(rows)} 个图片结果' if done else f'已找到 {len(rows)} 个候选，正在并行查询横幅与资料…')
         self.changed.emit()
 
@@ -357,7 +409,7 @@ class Bridge(QObject):
         from artwork_search import search
         import uuid
         self.stopArtwork();self._artwork_cancel=cancel=threading.Event();self._image_token=token=uuid.uuid4().hex
-        self._artwork_kind=kind;self._cover_target=scope+':'+ident if scope else '';self._cover_results=[];self._artwork_searching=True
+        self._artwork_kind=kind;self._cover_target=scope+':'+ident if scope else '';self._cover_results=[];self._artwork_searching=True;self._artwork_error=''
         self._status='正在搜索图片…';self.changed.emit()
         def work():
             def publish(rows):
@@ -368,27 +420,6 @@ class Bridge(QObject):
             except Exception as error:
                 if not cancel.is_set():self.artworkReady.emit(token,[],True,str(error) if isinstance(error,ValueError) else '图片搜索失败，请重试或更换来源')
         self._artwork_future=self._artwork_pool.submit(work)
-
-    @Slot(str,str,str,str,result=str)
-    def beginInlineImages(self,scope,ident,provider,kind):
-        from cover_sources import PROVIDERS
-        if self._busy or kind not in ('cover','background') or not any(p['id']==provider and p['kind']=='browser' for p in PROVIDERS):return ''
-        import uuid
-        self.stopArtwork()
-        self._image_token=uuid.uuid4().hex;self._artwork_kind=kind;self._cover_target=scope+':'+ident;self._cover_results=[]
-        self._status='正在当前页面加载图片搜索';self.changed.emit();return self._image_token
-
-    @Property(str,constant=True)
-    def imageCaptureScript(self):return (RESOURCES/'ui/ImageCapture.js').read_text(encoding='utf-8')
-
-    @Slot(str,str,'QVariantList',result=int)
-    def receiveInlineImages(self,token,provider,rows):
-        if not token or token!=self._image_token:return 0
-        from artwork_search import web_rows
-        self._cover_results=web_rows(list(rows),provider,self._artwork_kind)
-        self._status=f'已采集 {len(self._cover_results)} 张图片' if self._cover_results else '本页尚未找到图片，可在页内完成验证、点开图片后重新采集'
-        self.changed.emit()
-        return len(self._cover_results)
 
     @Slot(str,str,str)
     def previewEnrichmentArtwork(self,ident,result_id,kind):
@@ -425,7 +456,7 @@ class Bridge(QObject):
 
     @Property('QVariantMap', notify=settingsChanged)
     def settings(self):
-        return {**self.store.settings, 'machine_id': self.store.identity, 'has_password': (self.store.profile / 'credential.dpapi').exists(),
+        return {**self.store.settings, 'machine_id': self.store.identity, 'has_password': (self.store.profile / 'credential.dpapi').exists(), 'has_github_token':(self.store.profile/'github-token.dpapi').is_file(),
                 'has_ai_key': (self.store.profile / 'ai-key.dpapi').exists()}
 
     @Property(str, notify=changed)
@@ -680,7 +711,7 @@ class Bridge(QObject):
             return False
         self._busy = True
         self._status = {'import': '正在导入 Playnite 游戏与封面…', 'cloud': '先创建本地快照，再尝试上传…',
-                        'list': '正在连接 DAV 并读取目录…', 'watch': '检查游戏运行状态…',
+                        'list': '正在连接云端并读取目录…', 'watch': '检查游戏运行状态…',
                         'cloud-organize':'正在整理旧备份并校验文件…','cloud-mkdir':'正在创建文件夹…',
                         'cloud-download':'正在下载文件…','match':'正在查找存档…',
                         'workflow':'正在备份存档…','playnite-test':'正在检查 Playnite…',
@@ -741,7 +772,7 @@ class Bridge(QObject):
             self._dirs = result['entries']
             self._cloud_path = result['path']
             self._preview = {}
-            self._status = f'DAV 已连接 · {len(self._dirs)} 个目录与文件'
+            self._status = f'云端已连接 · {len(self._dirs)} 个目录与文件'
             self.directoriesChanged.emit()
             self.cloudChanged.emit()
         elif action == 'preview':
@@ -1217,13 +1248,11 @@ class Bridge(QObject):
     def launch(self, ident):
         if self._busy or self._launch_state['phase'] in ('starting','waiting','ready'):return
         if not any(g['id']==ident for g in self.store.games):return
-        achievement_baseline=self._achievements.begin(ident)
         import uuid
         self._launch_cancel.set();self._launch_cancel=threading.Event();self._launch_token=uuid.uuid4().hex
         self._launch_context={'ident':ident,'local':dict(self.store.local.get(ident,{})),'pid':None}
         self._launch_state={'phase':'starting','ident':ident,'message':'正在启动游戏'};self.launchChanged.emit()
         def launch():
-            if achievement_baseline is not None:achievement_baseline.result()
             pid=self.store.launch(ident);self._launched_recent[ident]=time.monotonic()
             return pid
         self.job('launch',launch)
@@ -1249,9 +1278,8 @@ class Bridge(QObject):
     def receiveLaunchReady(self,token,result):
         if token!=self._launch_token or self._launch_cancel.is_set():return
         self._launch_state.update(result)
-        if result['phase']=='ready':self._achievements.attach(self._launch_state['ident'],result.get('pid'),result.get('hwnd'))
-        if result['phase']!='ready':self.releaseLaunchPresentation()
-        if result['phase']=='launcher' and not self._launch_abandoned:
+        self.releaseLaunchPresentation()
+        if result['phase'] in ('launcher','ready') and result.get('hwnd') and result.get('pid') and not self._launch_abandoned:
             from launch_ready import activate
             activate(result['hwnd'],result['pid'])
         self.launchChanged.emit()
@@ -1260,14 +1288,14 @@ class Bridge(QObject):
     def continueLaunchWait(self):
         if self._launch_state['phase']=='timeout' and self._launch_context:
             from launch_ready import pin
-            if self._launch_host and not self._launch_abandoned:pin(int(self._launch_host.winId()),True)
+            if self._launch_host and not self._launch_abandoned:pin(int(self._launch_host.winId()),False)
             self.startLaunchWait()
 
     @Slot(QObject)
     def beginLaunchPresentation(self,window):
         from launch_ready import pin
         self._launch_host=window;self._launch_abandoned=False;self._launch_probe=None
-        pin(int(window.winId()),True)
+        pin(int(window.winId()),False)
 
     @Slot()
     def releaseLaunchPresentation(self):
@@ -1488,40 +1516,61 @@ class Bridge(QObject):
 
     @Slot('QVariantList')
     def applyMatches(self, selections):
+        self.job('apply-matches',lambda:self._applyMatchesWork(selections))
+
+    def _applyMatchesWork(self,selections):
+        from save_groups import complete_directory
+        reports={row['id']:row for row in self._matches}
+        prepared=[]; occupied={}
+        selected={item['id'] for item in selections}
+        for ident,local in self.store.local.items():
+            if ident not in selected and local.get('save_dir'):
+                occupied[str(complete_directory(local['save_dir']).resolve()).casefold()]=ident
+        for item in selections:
+            ident=item['id']; path=item['path']; row=reports.get(ident,{})
+            if not any(game['id']==ident for game in self.store.games):raise ValueError('游戏条目已不存在')
+            row={**next(game for game in self.store.games if game['id']==ident),**row}
+            row.setdefault('candidates',[]);row.setdefault('checked',[])
+            if path not in [c['path'] for c in row.get('candidates',[])] and path not in self._picked_save_folders and path!=self.store.local.get(ident,{}).get('save_dir'):
+                raise ValueError('选中的目录已不在候选结果中，请重新选择')
+            if not Path(path).is_dir():raise ValueError('选中的目录已不存在，请重新查找')
+            complete=str(complete_directory(path).resolve())
+            key=complete.casefold()
+            if key in occupied and occupied[key]!=ident:
+                raise ValueError('多个游戏使用同一存档目录，请分别核对后确认')
+            if any(other!=ident and (Path(complete).is_relative_to(Path(other_path)) or Path(other_path).is_relative_to(Path(complete))) for other_path,other in occupied.items()):
+                raise ValueError('所选存档目录有包含关系，请分别核对后确认')
+            occupied[key]=ident; prepared.append((ident,complete,row))
+        rows=[]
+        updated_local={ident:dict(value) for ident,value in self.store.local.items()}
+        for ident,path,row in prepared:
+            updated_local[ident]={**updated_local.get(ident,{}),'save_dir':path}
+            updated={**row,'status':'applied','applied_path':path,'message':'已设置存档目录：'+path}
+            reports[ident]=updated; rows.append(updated)
+        from services import write_json
+        write_json(self.store.profile/'games.json',updated_local)
+        self.store.local=updated_local
+        self.store.save_match_report(list(reports.values()))
+        return {'rows':rows,'message':f'已确认 {len(rows)} 款游戏的存档目录'}
+
+    @Slot('QVariantList')
+    def applyRecommendedMatches(self,ids):
         def apply():
-            from save_groups import complete_directory
-            reports={row['id']:row for row in self._matches}
-            prepared=[]; occupied={}
-            selected={item['id'] for item in selections}
-            for ident,local in self.store.local.items():
-                if ident not in selected and local.get('save_dir'):
-                    occupied[str(complete_directory(local['save_dir']).resolve()).casefold()]=ident
-            for item in selections:
-                ident=item['id']; path=item['path']; row=reports.get(ident,{})
-                if not any(game['id']==ident for game in self.store.games):raise ValueError('游戏条目已不存在')
-                row={**next(game for game in self.store.games if game['id']==ident),**row}
-                row.setdefault('candidates',[]);row.setdefault('checked',[])
-                if path not in [c['path'] for c in row.get('candidates',[])] and path not in self._picked_save_folders and path!=self.store.local.get(ident,{}).get('save_dir'):
-                    raise ValueError('选中的目录已不在候选结果中，请重新选择')
-                if not Path(path).is_dir():raise ValueError('选中的目录已不存在，请重新查找')
-                complete=str(complete_directory(path).resolve())
-                key=complete.casefold()
-                if key in occupied and occupied[key]!=ident:
-                    raise ValueError('多个游戏使用同一存档目录，请分别核对后确认')
-                if any(other!=ident and (Path(complete).is_relative_to(Path(other_path)) or Path(other_path).is_relative_to(Path(complete))) for other_path,other in occupied.items()):
-                    raise ValueError('所选存档目录有包含关系，请分别核对后确认')
-                occupied[key]=ident; prepared.append((ident,complete,row))
-            rows=[]
-            updated_local={ident:dict(value) for ident,value in self.store.local.items()}
-            for ident,path,row in prepared:
-                updated_local[ident]={**updated_local.get(ident,{}),'save_dir':path}
-                updated={**row,'status':'applied','applied_path':path,'message':'已设置存档目录：'+path}
-                reports[ident]=updated; rows.append(updated)
-            from services import write_json
-            write_json(self.store.profile/'games.json',updated_local)
-            self.store.local=updated_local
-            self.store.save_match_report(list(reports.values()))
-            return {'rows':rows,'message':f'已确认 {len(rows)} 款游戏的存档目录'}
+            from save_workflow import select_candidate
+            from save_groups import complete_directory,paths_overlap
+            allowed=set(ids) if ids else None;proposed=[]
+            occupied=[v['save_dir'] for v in self.store.local.values() if v.get('save_dir')]
+            for row in self._matches:
+                ident=row['id']
+                if allowed is not None and ident not in allowed or self.store.local.get(ident,{}).get('save_dir'):continue
+                chosen=select_candidate(row)
+                if not chosen:continue
+                path=str(complete_directory(chosen['path']).resolve())
+                if any(paths_overlap(path,other) for other in occupied):continue
+                proposed.append({'id':ident,'path':path})
+            selections=[row for row in proposed if not any(other['id']!=row['id'] and paths_overlap(row['path'],other['path']) for other in proposed)]
+            if not selections:return {'rows':[],'message':'暂无可直接应用的结果；多个候选或目录冲突可在批量确认中核对'}
+            return self._applyMatchesWork(selections)
         self.job('apply-matches',apply)
 
     @Slot(str,result=str)
@@ -1668,6 +1717,7 @@ class Bridge(QObject):
         self._artwork_closed=True;self.stopArtwork();self._artwork_pool.shutdown(wait=False,cancel_futures=True)
         self._launch_cancel.set();self.releaseLaunchPresentation();self._launch_pool.shutdown(wait=False,cancel_futures=True)
         self._watch_closed=True;self.timer.stop();self._watch_pool.shutdown(wait=False,cancel_futures=True)
+        self._installation_pool.shutdown(wait=False,cancel_futures=True)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -1715,7 +1765,8 @@ def main():
             assert json.loads((save / 'data.json').read_text(encoding='utf-8')) == {'进度':42}
             fixture.save_settings({'password':'packaged-dummy'})
             assert fixture.password() == 'packaged-dummy'
-            assert run_process([fixture.settings['rclone'],'version'], timeout=10).returncode == 0
+            from cloud_transport import WebDAV,GitHub
+            assert WebDAV and GitHub
             from library_sources import scan
             from cloud_history import digest
             launch_folder=Path(temporary)/'ScanFixture';launch_folder.mkdir()
@@ -1729,7 +1780,7 @@ def main():
                 assert importlib.util.find_spec('vgamepad') is not None
                 ctypes.CDLL(str(RESOURCES/'vgamepad/win/vigem/client/x64/ViGEmClient.dll'))
             gc.collect()
-        Path(args.self_test).write_text('PASS: packaged backup/restore, SQLite, Chinese JSON, DPAPI, rclone, launcher scan, cloud hash, mapping templates and bundled client DLL',encoding='utf-8')
+        Path(args.self_test).write_text('PASS: packaged backup/restore, SQLite, Chinese JSON, DPAPI, native cloud, launcher scan, cloud hash, mapping templates and bundled client DLL',encoding='utf-8')
         return 0
     app = QApplication(sys.argv)
     app.setApplicationName('GameCloudSave')

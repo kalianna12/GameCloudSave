@@ -213,7 +213,10 @@ def import_rows(store,rows,skip_duplicates=False):
         existing[game_id]=game
         local={**store.local.get(game_id,{}),'install_dir':row['install_dir'],'installed':row.get('installed',True)}
         exe=row.get('exe','')
-        if exe and Path(exe).is_file():local.update(exe=exe,launch_mode='direct',arguments=row.get('arguments',''))
+        if exe and Path(exe).is_file():
+            local.update(exe=exe,launch_mode='direct',arguments=row.get('arguments',''))
+            if row.get('working_dir'):local['working_dir']=row['working_dir']
+            if row.get('launch_origin'):local['launch_origin']=row['launch_origin']
         elif row.get('launch_uri'):local.update(launch_uri=row['launch_uri'],launch_mode='platform')
         elif row.get('playnite'):local.setdefault('launch_mode','playnite')
         store.local[game_id]=local;count+=1

@@ -69,7 +69,7 @@ ApplicationWindow {
         return Form.handle([systemToggle,gamesTab,sourcesTab,recentTab,statsTab,search,kind,tools,selectAll,clearSelection,provider,refresh,full,stop,inlineCharts,chartAll,chartCurrent,chartPeriod,chartLine,statsGame,statsPeriod,statsLine,statsList,recentList,save,closeButton],focus,command,null)
     }
     onVisibleGamesChanged: Qt.callLater(reconcileGames)
-    Shortcut { sequence: StandardKey.Find;context: Qt.WindowShortcut;enabled: window.active && !detail.entryOpen;onActivated: { pages.currentIndex=0;search.forceActiveFocus();search.selectAll() } }
+    Shortcut { sequences: [StandardKey.Find];context: Qt.WindowShortcut;enabled: window.active && !detail.entryOpen;onActivated: { pages.currentIndex=0;search.forceActiveFocus();search.selectAll() } }
     ColumnLayout {
         anchors.fill: parent;anchors.margins: 20;spacing: 8
         RowLayout {
@@ -95,7 +95,7 @@ ApplicationWindow {
             TabButton { id: recentTab;text: "最近解锁" }
             TabButton { id: statsTab;text: "统计总览" }
         }
-        Label { visible: !backend.achievements.enabled;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "成就系统已关闭：停止后台监听与弹窗，保留已收录的成就和进度。" }
+        Label { visible: !backend.achievements.enabled;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "同步已暂停，已收录的成就和进度保留。" }
         RowLayout {
             visible: pages.currentIndex===0;Layout.fillWidth: true
             AppTextField { id: search;objectName: "achievementsLibrarySearch";Layout.fillWidth: true;placeholderText: "搜索游戏" }
@@ -132,7 +132,6 @@ ApplicationWindow {
                     required property int index
                     width: games.width;height: 104;radius: Theme.controlRadius
                     color: games.currentIndex===index ? Theme.selection : rowHover.hovered ? Theme.surface : "transparent";border.color: games.activeFocus && games.currentIndex===index ? Theme.accent : "transparent"
-                    Behavior on color { ColorAnimation { duration: Theme.motion ? 120 : 0 } }
                     HoverHandler { id: rowHover }
                     Rectangle { x: 0;y: 13;width: 3;height: parent.height-26;radius: 2;color: Theme.accent;visible: games.currentIndex===index }
                     TapHandler { onTapped: window.selectGame(index) }
@@ -155,7 +154,7 @@ ApplicationWindow {
             Item {
                 Layout.fillWidth: true;Layout.fillHeight: true
                 AchievementsPane { id: detail;objectName: "achievementsLibraryDetail";anchors.fill: parent;visible: !!gameId;compact: true }
-                Label { visible: !detail.gameId;anchors.centerIn: parent;width: parent.width-30;text: "从左侧选择游戏，查看成就、数据源与记录检测详情。\n批量补全会复用已有列表，下载缺失图标；Steam 游戏只统计，不重复弹窗。";wrapMode: Text.Wrap;horizontalAlignment: Text.AlignHCenter;color: Theme.secondary }
+                Label { visible: !detail.gameId;anchors.centerIn: parent;width: parent.width-30;text: "选择游戏，查看成就与完成进度";wrapMode: Text.Wrap;horizontalAlignment: Text.AlignHCenter;color: Theme.secondary }
             }
         }
         ColumnLayout {
@@ -224,7 +223,7 @@ ApplicationWindow {
                     }
                 }
                 Label { text: "本机进度来源";font.pixelSize: 20;font.bold: true }
-                Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "Steam：定位账号对应的 UserGameStats BIN，配对 Schema 解析位掩码。多个账号不会自动合并；Steam 条目统计成就，不重复弹窗。\n\n本地：支持 Goldberg / GSE JSON、CODEX / RUNE 兼容 INI、TENOKE 的 ACHIEVEMENTS 节以及部分文本记录。Count=0 是有效的空成就容器，会等待首次解锁；UserStats 的普通数值不是解锁标记。\n\nSmartSteamEmu stats.bin：按独立的 24 字节条目格式读取，CRC32 必须与定义内部 ID 唯一对应，普通统计不能充当成就。\n\nGOG Galaxy 数据库、模拟器奖杯及游戏私有存档尚需各自适配。来源名称相同也可能存在版本差异；没有可读输出的游戏不能只凭列表判定解锁。\n\n在“匹配与记录设置 → 检测详情”查看检查目录和原因；记录首次出现时会自动发现。";color: Theme.secondary }
+                Label { Layout.fillWidth: true;wrapMode: Text.Wrap;text: "Steam：定位账号对应的 UserGameStats BIN，配对 Schema 解析位掩码。多个账号分别读取。\n\n本地：支持 Goldberg / GSE JSON、CODEX / RUNE 兼容 INI、TENOKE 的 ACHIEVEMENTS 节以及部分文本记录。Count=0 是有效的空成就容器，会等待首次解锁；UserStats 的普通数值不是解锁标记。\n\nSmartSteamEmu stats.bin：按独立的 24 字节条目格式读取，CRC32 必须与定义内部 ID 唯一对应，普通统计不能充当成就。\n\nGOG Galaxy 数据库、模拟器奖杯及游戏私有存档尚需各自适配。来源名称相同也可能存在版本差异；没有可读输出的游戏不能只凭列表判定解锁。\n\n在“匹配与记录设置 → 检测详情”查看检查目录和原因；选择记录后自动同步。";color: Theme.secondary }
                 Label { text: "开源参考：PlayniteAchievements · Justin Delano · MIT";color: Theme.secondary }
                 AppButton { text: "查看上游项目";onClicked: Qt.openUrlExternally("https://github.com/justin-delano/PlayniteAchievements") }
             }

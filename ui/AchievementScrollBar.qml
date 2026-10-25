@@ -5,6 +5,8 @@ ScrollBar {
     id: bar
     width: 12;implicitWidth: 12;padding: 2
     interactive: true;hoverEnabled: true;policy: ScrollBar.AsNeeded
+    anchors.right: parent.right;anchors.top: parent.top;anchors.bottom: parent.bottom
+    visible: policy===ScrollBar.AlwaysOn || policy===ScrollBar.AsNeeded && size<.999
     minimumSize: Math.min(1,28/Math.max(1,height))
     z: 20
     contentItem: Rectangle {

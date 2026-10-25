@@ -11,12 +11,12 @@ from catalog_match import titles,score
 
 HOSTS={'shared.fastly.steamstatic.com','cdn.akamai.steamstatic.com','cdn.cloudflare.steamstatic.com','s.vndb.org','t.vndb.org'}
 PROVIDERS=[{'id':'steam','label':'Steam Store','kind':'api'},{'id':'vndb','label':'VNDB','kind':'api'},
- {'id':'google','label':'Google 图片','kind':'browser','url':'https://www.google.com/search?tbm=isch&q={query}'},
- {'id':'bing','label':'Bing 图片','kind':'browser','url':'https://www.bing.com/images/search?q={query}'},
- {'id':'ign','label':'IGN','kind':'browser','url':'https://www.ign.com/search?q={query}'},
- {'id':'steamgriddb','label':'SteamGridDB','kind':'browser','url':'https://www.steamgriddb.com/search/grids?term={query}'},
- {'id':'gog','label':'GOG 商店','kind':'browser','url':'https://www.gog.com/en/games?query={query}'},
- {'id':'epic','label':'Epic 商店','kind':'browser','url':'https://store.epicgames.com/en-US/browse?q={query}'},
+ {'id':'google','label':'Google 图片','kind':'scrape','url':'https://www.google.com/search?tbm=isch&q={query}'},
+ {'id':'bing','label':'Bing 图片','kind':'scrape','url':'https://www.bing.com/images/search?q={query}'},
+ {'id':'ign','label':'IGN','kind':'scrape','url':'https://www.ign.com/search?q={query}'},
+ {'id':'steamgriddb','label':'SteamGridDB','kind':'scrape','url':'https://www.steamgriddb.com/search/grids?term={query}'},
+ {'id':'gog','label':'GOG 商店','kind':'scrape','url':'https://www.gog.com/en/games?query={query}'},
+ {'id':'epic','label':'Epic 商店','kind':'scrape','url':'https://store.epicgames.com/en-US/browse?q={query}'},
  {'id':'custom','label':'自定义 JSON 来源','kind':'api'}]
 def fetch_json(url,data=None,headers=None):
     request=Request(url,data=data,headers={'User-Agent':'GameCloudSave/2.2',**(headers or {})})
@@ -88,7 +88,9 @@ def search(store,query,provider='steam',use_ai=False,cancel=None):
         for index,item in enumerate(data.get('items',[])[:30]):
             if not isinstance(item,dict) or not isinstance(item.get('name'),str) or urlparse(item.get('image','')).scheme not in ('http','https'):continue
             rows.append({'id':'custom:'+str(item.get('id',index)),'name':item['name'],'provider':'custom','image':item['image'],'fallback':'','page':item.get('page',''),'user_authorized':True})
-    elif any(source['id']==provider and source['kind']=='browser' for source in PROVIDERS):raise ValueError('此来源通过浏览器搜索，选好后可粘贴图片地址或导入本地图片')
+    elif any(source['id']==provider and source['kind']=='scrape' for source in PROVIDERS):
+        from image_search import search as scrape
+        rows=scrape(store,query,provider,'cover',cancel)
     else:raise ValueError('未知封面来源')
     for row in rows:
         row['score']=round(score([query,original],row),3)

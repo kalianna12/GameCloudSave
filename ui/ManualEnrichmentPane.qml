@@ -30,12 +30,8 @@ Item {
         if(!dirtyFields.series) series.text=fields.series || game.series || ""
         if(!dirtyFields.category) category.currentIndex=Math.max(0,category.model.indexOf(fields.category || game.category || "其他"))
     }
-    function search() {
-        if(browser) {
-            browserToken=backend.beginInlineImages("enrichment",record.id,provider.currentValue,artKind)
-            browserUrl=backend.artworkBrowserUrl(query.text,provider.currentValue,artKind);browserOpen=!!browserToken
-        } else { browserOpen=false;backend.searchTargetArtwork("enrichment",record.id,query.text,provider.currentValue,artKind,false) }
-    }
+    function resetSearch() { if(backend.coverSearchTarget==="enrichment:"+pane.record.id) backend.clearCoverSearch() }
+    function search() { browserOpen=false;backend.searchTargetArtwork("enrichment",record.id,query.text,provider.currentValue,artKind,false) }
     onVisibleChanged: if(!visible) { browserOpen=false;backend.cancelArtworkSearch("enrichment",record.id || "") }
     function stage() {
         backend.previewEnrichmentValues(record.id,{release_date:date.text.trim(),category:category.currentText,tags:tagText.text.split(/[,，]/).map(function(t) { return t.trim() }).filter(Boolean),series:series.text.trim(),cover:cover.text.trim(),background:background.text.trim()})
@@ -50,7 +46,7 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             AppTextField { id: query; objectName: "manualQuery"; Layout.fillWidth: true; placeholderText: "游戏原名或别名"; onAccepted: if(!backend.busy) pane.search() }
-            AppComboBox { id: provider; objectName: "manualProvider"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 170; onCurrentIndexChanged: pane.browserOpen=false }
+            AppComboBox { id: provider; objectName: "manualProvider"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 170; onCurrentIndexChanged: pane.resetSearch() }
             AppButton { objectName: "manualSearch"; text: "搜索图片与资料"; highlighted: true; enabled: !backend.busy && !!query.text.trim(); onClicked: pane.search() }
         }
         RowLayout {
@@ -85,14 +81,9 @@ Item {
             }
             ColumnLayout {
                 Layout.fillWidth: true; Layout.fillHeight: true
-                TabBar { id: imageKind; objectName: "manualImageKind"; Layout.fillWidth: true; onCurrentIndexChanged: pane.browserOpen=false; TabButton { text: "封面" } TabButton { text: "横幅" } }
+                TabBar { id: imageKind; objectName: "manualImageKind"; Layout.fillWidth: true; onCurrentIndexChanged: pane.resetSearch(); TabButton { text: "封面" } TabButton { text: "横幅" } }
                 Label { text: [pane.record.fields && pane.record.fields.cover ? "已选封面" : "",pane.record.fields && pane.record.fields.background ? "已选横幅" : ""].filter(Boolean).join(" / "); visible: !!text; color: Theme.accent; Layout.fillWidth: true }
                 ProgressBar { visible: backend.artworkSearching && backend.coverSearchTarget==="enrichment:"+pane.record.id; indeterminate: true; Layout.fillWidth: true; Layout.preferredHeight: 3 }
-                Loader {
-                    id: webSearch; Layout.fillWidth: true; Layout.fillHeight: true; visible: pane.browserOpen; active: pane.visible && pane.browserOpen; source: active ? "InlineImageBrowser.qml" : ""
-                    onLoaded: { item.token=Qt.binding(function() { return pane.browserToken });item.providerId=Qt.binding(function() { return provider.currentValue });item.searchUrl=Qt.binding(function() { return pane.browserUrl }) }
-                    Connections { target: webSearch.item; function onCollected(count) { pane.browserOpen=false } function onDismissed() { pane.browserOpen=false } }
-                }
                 ArtworkResults {
                     id: candidates; objectName: "manualCandidates"; visible: !pane.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     targetKey: "enrichment:"+pane.record.id; completion: true; kind: pane.artKind

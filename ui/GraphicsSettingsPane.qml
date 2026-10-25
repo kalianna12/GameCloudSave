@@ -59,7 +59,7 @@ ScrollView {
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 4
                 Label { text: "为这款游戏增强画质"; font.pixelSize: 19; font.bold: true }
-                Label { text: "方案单独保存，不改变游戏文件。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { text: "每款游戏独立保存方案。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap }
             }
             Switch { id: enabledToggle; objectName: "graphicsEnabled"; enabled: pane.core.supported && !pane.core.busy; onToggled: pane.dirty=true; Accessible.name: "启用本游戏画质增强" }
         }

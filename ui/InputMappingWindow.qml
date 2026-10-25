@@ -25,10 +25,9 @@ ApplicationWindow {
     readonly property var captureCancelItem: captureCancel
     property bool prepared: false
     readonly property bool editorReady: editorLoader.status===Loader.Ready
-    Timer { interval: 600;running: !window.prepared && Qt.application.state===Qt.ApplicationActive && backend.watchInfo.running===0;onTriggered: window.prepared=true }
     signal returnRequested()
     onClosing: { mapper.setEditorVisible(false);returnRequested() }
-    onVisibleChanged: { if(window.visible) mapper.bindWindow(window);mapper.setPreviewActive(window.active);mapper.setEditorVisible(window.visible && window.visibility!==Window.Minimized) }
+    onVisibleChanged: { if(window.visible) { prepared=true;mapper.bindWindow(window) };mapper.setPreviewActive(window.active);mapper.setEditorVisible(window.visible && window.visibility!==Window.Minimized) }
     onVisibilityChanged: function(nextVisibility) { mapper.setEditorVisible(window.visible && nextVisibility!==Window.Minimized) }
     onActiveChanged: { mapper.setPreviewActive(window.active);if(window.active) backend.setControllerMode(false) }
     function openMapping() { backend.setControllerMode(false);mapper.bindWindow(window);show();raise();requestActivate() }
@@ -117,7 +116,7 @@ ApplicationWindow {
         }
     }
     Loader {
-        id: editorLoader;anchors.fill: parent;active: window.visible || window.prepared;asynchronous: !window.visible
+        id: editorLoader;anchors.fill: parent;active: window.visible || window.prepared;asynchronous: true
         sourceComponent: Component {
             ColumnLayout {
                 anchors.fill: parent;anchors.margins: 24;spacing: 12

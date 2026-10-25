@@ -1,4 +1,4 @@
-"""Local achievements: serialized background file I/O and foreground-safe toasts."""
+"""Local achievements: serialized background file I/O and background progress synchronization."""
 from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -11,7 +11,7 @@ import time
 import threading
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
-from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl
+from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl, QFileSystemWatcher
 from PySide6.QtWidgets import QFileDialog
 from achievement_files import (discover, identify, merge_progress, namespace,
                                normalize_schema, parse_state, read_text, steam_schema,canonical_states)
@@ -29,6 +29,7 @@ class Repository:
         configs = read_json(self.root / 'config.json', {})
         records = read_json(self.root / 'progress.json', {})
         if not isinstance(configs, dict) or not isinstance(records, dict): raise ValueError('成就缓存格式错误，请保留文件以便修复')
+        for config in configs.values():config.pop('notifications',None)
         self.configs = configs; self.records = records
 
     def save(self):
@@ -37,7 +38,7 @@ class Repository:
         write_json(self.root / 'progress.json', self.records)
 
     def config(self, ident):
-        self.load(); return self.configs.setdefault(ident, {'enabled': True, 'notifications': True, 'appid': '', 'source': '', 'schema': [], 'sources': []})
+        self.load(); return self.configs.setdefault(ident, {'enabled': True, 'appid': '', 'source': '', 'schema': [], 'sources': []})
 
     def record(self, ident, config):
         key = ident + ':' + namespace(config.get('appid', ''), config.get('source', ''))
@@ -46,7 +47,6 @@ class Repository:
     def setup(self, game, local, refresh=False, baseline=True):
         config = self.config(game['id'])
         config['platform']=game.get('platform') or 'local'
-        if config['platform']=='steam':config['notifications']=False
         appid = identify(game, local, config.get('appid', ''))
         scan_local=dict(local,achievement_roots=config.get('roots',[]))
         found = discover(game, scan_local, appid)
@@ -177,21 +177,22 @@ class Achievements(QObject):
         self._wanted = {}
         self._fetch_serial = {}
         self._state = {'busy': False, 'ident': '', 'message': '选择一款本地游戏以匹配成就', 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0}
-        self._serial = 0; self.closed = False; self.sessions = {}; self.polling = False
+        self._serial = 0; self.closed = False; self.polling = False
         self._enabled = bool(store.settings.get('achievements_enabled', True));self._enable_serial=0
-        self._policies={};self._policy_pending={};self._policy_versions={};self._policy_serial=0;self._poll_epoch=0;self._paused_sessions=[]
+        self._policies={};self._policy_pending={};self._policy_versions={};self._policy_serial=0;self._poll_epoch=0
         self.controls = ThreadPoolExecutor(max_workers=1,thread_name_prefix='achievement-controls')
         self._passive = {}
-        from achievement_overlay import AchievementOverlay
-        self.overlay = AchievementOverlay(self)
-        self.overlay.set_enabled(self._enabled)
         self.enableSaved.connect(self.receiveEnabled);self.switchesSaved.connect(self.receiveSwitches)
         self.completed.connect(self.receive); self.polled.connect(self.receivePoll)
         self.schemaReady.connect(self.receiveSchema); self.iconsReady.connect(self.refreshView)
         self.searchReady.connect(self.receiveSearch)
         self.catalogReady.connect(self.receiveCatalog);self.batchReady.connect(self.receiveBatch);self.iconProgress.connect(self.receiveIcons)
-        self.timer = QTimer(self); self.timer.setInterval(1000); self.timer.timeout.connect(self.poll)
-        if self._enabled:self.timer.start()
+        self.timer = QTimer(self); self.timer.setInterval(10000); self.timer.timeout.connect(self.poll)
+        self.watcher=QFileSystemWatcher(self)
+        self.fileDelay=QTimer(self);self.fileDelay.setSingleShot(True);self.fileDelay.setInterval(80);self.fileDelay.timeout.connect(self.poll)
+        self._poll_pending=False
+        self.watcher.fileChanged.connect(self.schedulePoll)
+        self.watcher.directoryChanged.connect(self.directoryChanged)
         QTimer.singleShot(0,self.refreshCatalog)
 
     @Property('QVariantMap', notify=changed)
@@ -212,16 +213,43 @@ class Achievements(QObject):
         self.controls.submit(persist)
 
     def _applyEnabled(self, enabled):
-        self._enabled=enabled;self._poll_epoch+=1;self.overlay.set_enabled(enabled)
+        self._enabled=enabled;self._poll_epoch+=1
         if enabled:
-            self.timer.start();paused=self._paused_sessions;self._paused_sessions=[]
-            for session in paused:
-                self.begin(session['ident'])
-                target=session.get('target',{})
-                if target and not target.get('cache_only'):self.attach(session['ident'],target['pid'],target['hwnd'])
+            self.syncWatches()
+            if self.polling:self._poll_pending=True
+            else:self.poll()
         else:
-            self.timer.stop();self._paused_sessions=list(self.sessions.values());self.sessions.clear();self._passive.clear();self._batch_cancel.set()
+            self.timer.stop();self.fileDelay.stop();self._poll_pending=False;self._passive.clear();self._batch_cancel.set()
+            paths=self.watcher.files()+self.watcher.directories()
+            if paths:self.watcher.removePaths(paths)
         self.enabledChanged.emit()
+
+    def syncWatches(self):
+        if not self.enabled:return
+        wanted=set()
+        for row in self._overview:
+            if not row.get('source') or row.get('enabled') is False:continue
+            path=Path(row['source'])
+            if path.is_file():wanted.add(str(path))
+            if path.parent.is_dir():wanted.add(str(path.parent))
+            if path.suffix.casefold()=='.bin' and path.name.startswith('UserGameStats_'):
+                from achievement_steam import progress_schema_path
+                schema=progress_schema_path(path)
+                if schema.is_file():wanted.add(str(schema))
+        current=set(self.watcher.files()+self.watcher.directories())
+        if current-wanted:self.watcher.removePaths(list(current-wanted))
+        if wanted-current:self.watcher.addPaths(list(wanted-current))
+        if wanted:self.timer.start()
+        else:self.timer.stop()
+
+    def schedulePoll(self, path=''):
+        if not self.enabled:return
+        if self.polling:self._poll_pending=True
+        elif not self.fileDelay.isActive():self.fileDelay.start()
+
+    def directoryChanged(self, path):
+        watched=set(self.watcher.files())
+        if any(row.get('source') and str(Path(row['source'])) not in watched for row in self._overview):self.schedulePoll()
 
     @Slot(int,str)
     def receiveEnabled(self, serial, error):
@@ -236,15 +264,13 @@ class Achievements(QObject):
     def setSwitches(self, ident, values):
         game=self.game(ident)
         if self.closed or not game:return
-        values={k:v for k,v in values.items() if k in ('enabled','notifications')}
+        values={k:v for k,v in values.items() if k=='enabled'}
         if not values or any(type(v)!=bool for v in values.values()):return
-        if game.get('platform')=='steam':values['notifications']=False
         resuming=values.get('enabled') is True and self._policies.get(ident,{}).get('enabled') is False
         local=deepcopy(self.store.local.get(ident,{}))
         self._policy_serial+=1;serial=self._policy_serial;self._policy_pending[ident]=serial
         self._policy_versions[ident]=serial
         self._policies.setdefault(ident,{}).update(values)
-        if not self._policies[ident].get('enabled',True) or not self._policies[ident].get('notifications',True):self.overlay.discard(ident)
         def persist():
             error=''
             try:
@@ -252,7 +278,7 @@ class Achievements(QObject):
                 if resuming:self.repository.setup(game,local)
                 self.repository.save()
             except Exception as exc:error=str(exc)[:180]
-            flags={k:self.repository.config(ident).get(k,True) for k in ('enabled','notifications')}
+            flags={k:self.repository.config(ident).get(k,True) for k in ('enabled',)}
             if not self.closed:self.switchesSaved.emit(ident,serial,flags,error)
         self.pool.submit(persist)
 
@@ -264,6 +290,7 @@ class Achievements(QObject):
             self._state.update(flags)
             if error:self._state['message']='成就开关保存失败：'+error
             self.changed.emit()
+        self.refreshCatalog()
 
     @Property(int,notify=catalogChanged)
     def summaryRevision(self):return self._catalog_revision
@@ -327,6 +354,7 @@ class Achievements(QObject):
         if result['summaries']==self._summaries and result['rows']==self._overview and result['recent']==self._recent and result.get('analytics',[])==self._analytics:return
         if result.get('analytics',[])!=self._analytics:self._statistics_cache.clear()
         self._summaries=result['summaries'];self._overview=result['rows'];self._recent=result['recent'];self._analytics=result.get('analytics',[]);self._catalog_revision+=1;self.catalogChanged.emit()
+        self.syncWatches()
 
     @Slot('QVariantList',str,bool)
     def batch(self,ids,provider='auto',force=False):
@@ -341,7 +369,7 @@ class Achievements(QObject):
                     if self.closed or self._batch_cancel.is_set():break
                     ident=game['id'];message=''
                     try:
-                        config=deepcopy(self.pool.submit(self.repository.setup,game,local.get(ident,{}),False,ident not in self.sessions).result())
+                        config=deepcopy(self.pool.submit(self.repository.setup,game,local.get(ident,{}),False,True).result())
                         appid=config.get('appid','')
                         if not appid and provider!='local':
                             from network_metadata import lookup
@@ -356,7 +384,7 @@ class Achievements(QObject):
                                 current=self.repository.config(ident)
                                 if current.get('appid')!=appid:current.update(source='',sources=[])
                                 current.update(appid=appid,schema=rows,schema_source=label,provider=provider,last_error='')
-                                self.repository.setup(game,local.get(ident,{}),baseline=ident not in self.sessions)
+                                self.repository.setup(game,local.get(ident,{}),baseline=True)
                                 if failures:current['source_notes']=failures
                                 self.repository.save();return deepcopy(current)
                             config=self.pool.submit(apply).result()
@@ -398,13 +426,12 @@ class Achievements(QObject):
     @Slot(int, str, object, str)
     def receive(self, serial, ident, result, error):
         if not self.closed and not error and result and ident not in self._policy_pending:
-            self._policies[ident]={k:result.get(k,True) for k in ('enabled','notifications')}
+            self._policies[ident]={k:result.get(k,True) for k in ('enabled',)}
         if self.closed or serial != self._serial or ident != self._state.get('ident'): return
         if error: self._state.update(busy=False, message='成就：'+error)
         else: self._state = result
         self.changed.emit()
         self.refreshCatalog()
-        if not error and (result.get('enabled') is False or result.get('notifications') is False): self.overlay.discard(ident)
         needs_schema=not error and (not result.get('has_schema') or result.get('platform')=='steam' and result.get('provider','auto')=='auto' and not result.get('schema_source','').startswith('Steam 公开'))
         if needs_schema and result.get('appid') and not result.get('candidates') and (ident,result['appid']) not in self._auto_attempted:
             self._auto_attempted.add((ident,result['appid']));self.fetchSchema(ident, result['appid'])
@@ -420,7 +447,7 @@ class Achievements(QObject):
         self._serial += 1; self._state = {'ident': ident, 'busy': False, 'rows': [], 'sources': [], 'total': 0, 'unlocked': 0}
         local = deepcopy(self.store.local.get(ident, {}))
         def work():
-            config=self.repository.setup(game, local, baseline=ident not in self.sessions)
+            config=self.repository.setup(game, local, baseline=True)
             self.cacheAll(ident,config.get('schema',[]))
             return self.repository.view(ident)
         self.submit(ident, work)
@@ -494,7 +521,7 @@ class Achievements(QObject):
                 changed_identity = config.get('appid') != appid
                 if changed_identity: config.update(source='', schema=[], sources=[])
                 config.update(appid=appid, schema=rows, schema_source=rows[0].get('_definition_source','Steam 公开成就资料'),provider=self._providers.get(ident,'auto'),last_error='')
-                self.repository.setup(game, local, baseline=ident not in self.sessions or changed_identity); self.repository.save()
+                self.repository.setup(game, local, baseline=True); self.repository.save()
                 view = self.repository.view(ident)
                 if not self.closed: self.completed.emit(serial, ident, view, '')
                 self.publish()
@@ -542,11 +569,10 @@ class Achievements(QObject):
     def save(self, ident, values):
         def work():
             config = deepcopy(self.repository.config(ident))
-            for key in ('enabled', 'notifications'):
+            for key in ('enabled',):
                 if key in values:
                     if type(values[key]) is not bool: raise ValueError('成就开关无效')
                     config[key] = values[key]
-            if (self.game(ident) or {}).get('platform')=='steam':config['notifications']=False
             if 'provider' in values:
                 from achievement_sources import PROVIDERS
                 if values['provider'] not in {p['id'] for p in PROVIDERS}:raise ValueError('成就来源不存在')
@@ -563,7 +589,7 @@ class Achievements(QObject):
             if source != config.get('source'): config['source'] = source
             if source and Path(source).is_file(): merge_progress(self.repository.record(ident, config), canonical_states(parse_state(source),config.get('schema',[])))
             self.repository.configs[ident] = config
-            self.repository.save(); return self.repository.view(ident, '方案已保存；已有进度已导入，不重复弹出')
+            self.repository.save(); return self.repository.view(ident, '成就方案已保存，进度已同步')
         self.submit(ident, work)
 
     @Slot(str)
@@ -598,108 +624,48 @@ class Achievements(QObject):
         game=self.game(ident);local=deepcopy(self.store.local.get(ident,{}))
         def work():
             config=self.repository.config(ident);config['roots']=list(dict.fromkeys(config.get('roots',[])+[root]))[-10:]
-            self.repository.setup(game,local,baseline=ident not in self.sessions)
+            self.repository.setup(game,local,baseline=True)
             return self.repository.view(ident)
         self.submit(ident,work)
 
-    @Slot()
-    def preview(self):
-        if not self.enabled:return
-        self.overlay.enqueue({'name': '新的冒险', 'description': '弹窗不会抢走游戏焦点，也不会拦截鼠标。'}, {}, True)
-
-    def begin(self, ident):
-        """Called before launch; baseline reads on the same serial worker as polling."""
-        game = self.game(ident)
-        if not self.enabled or not game or game.get('platform') not in ('local','steam', '', None): return
-        if game.get('platform') != 'steam': self.overlay.prepare()
-        session = {'ident': ident, 'game': game, 'local': deepcopy(self.store.local.get(ident, {})), 'target': {}, 'created': time.monotonic(), 'primed': False, 'signature': None, 'discovery': 0}
-        if game.get('platform')=='steam':
-            # Steam may launch through an already-running client, without a
-            # detectable child window. Silent cache statistics can still sync.
-            import psutil
-            session['target']={'pid':os.getpid(),'hwnd':0,'created':psutil.Process().create_time(),'cache_only':True}
-        self.sessions[ident] = session
-        def prime():
-            try:
-                self.repository.setup(game, session['local'])
-                session['primed'] = True
-                config = self.repository.config(ident)
-                self.cacheAll(ident,config.get('schema',[]))
-                if config.get('enabled', True) and config.get('appid') and not config.get('schema'):
-                    # Signal to GUI; network work never holds the monitoring worker.
-                    if not self.closed:self.polled.emit({'events': [], 'ended': [], 'view': None, 'fetch': (ident, config['appid'])})
-            except Exception: session['primed'] = True
-        baseline = self.pool.submit(prime); self.timer.start(); return baseline
-
-    def attach(self, ident, pid, hwnd):
-        if ident not in self.sessions: self.begin(ident)
-        if ident in self.sessions:
-            target = {'pid': pid, 'hwnd': hwnd}
-            try:
-                import psutil
-                target['created'] = psutil.Process(pid).create_time()
-            except Exception: pass
-            self.sessions[ident]['target'] = target
-
     def poll(self):
         if not self.enabled or self.polling: return
-        epoch=self._poll_epoch;policies=dict(self._policy_versions);blocked={ident for ident,p in self._policies.items() if p.get('enabled') is False}
-        self.polling = True; sessions = [s for s in self.sessions.values() if s['ident'] not in blocked]; selected = self._state.get('ident', '')
+        epoch=self._poll_epoch;blocked={ident for ident,p in self._policies.items() if p.get('enabled') is False}
+        self.polling = True; checks = []; selected = self._state.get('ident', '')
         games = {g['id']: deepcopy(g) for g in self.store.games}
         local = deepcopy(self.store.local)
         def run():
-            events = []; ended = []; changed = False;any_changed=False
+            changed = False;any_changed=False
             view = None
             try:
                 from achievement_monitor import check
                 self.repository.load()
-                active = {s['ident'] for s in sessions}
                 for ident, config in list(self.repository.configs.items()):
-                    if ident in active or ident in blocked or ident not in games or config.get('enabled') is False: continue
+                    if ident in blocked or ident not in games or config.get('enabled') is False: continue
                     # Only selected unmatched games scan. Idle games merely stat
                     # their configured record; never rescan the entire library.
                     if not config.get('source') and ident != selected: continue
                     state = self._passive.setdefault(ident, {'signature': None, 'discovery': 0})
-                    sessions.append(dict(state, ident=ident, game=games[ident], local=local.get(ident, {}), target={}, passive=True, _state=state))
-                for session in sessions:
+                    checks.append(dict(state, ident=ident, game=games[ident], local=local.get(ident, {}), _state=state))
+                for session in checks:
                     if self.closed or not self._enabled or epoch!=self._poll_epoch:break
-                    updated, rows, finished = check(self.repository, session)
-                    if finished: ended.append((session['ident'], session['created']))
-                    if session.get('passive'):
-                        session['_state'].update(signature=session.get('signature'), discovery=session.get('discovery', 0))
-                    events.extend(rows)
+                    updated = check(self.repository, session)
+                    session['_state'].update(signature=session.get('signature'), discovery=session.get('discovery', 0))
                     changed = changed or updated and session['ident'] == selected
                     any_changed = any_changed or updated
                 if changed and selected: view = self.repository.view(selected)
                 if any_changed:self.publish()
             finally:
                 # A failed check must never wedge the in-flight guard forever.
-                if not self.closed: self.polled.emit({'events': events, 'ended': ended, 'view': view,'epoch':epoch,'policies':policies})
+                if not self.closed: self.polled.emit({'view': view,'epoch':epoch})
         self.pool.submit(run)
 
     @Slot(object)
     def receivePoll(self, result):
         self.polling = False
+        if self._poll_pending:self._poll_pending=False;self.schedulePoll()
         if not self.enabled or result.get('epoch',self._poll_epoch)!=self._poll_epoch: return
-        ended=set()
-        for ident, created in result['ended']:
-            if ident in self.sessions and self.sessions[ident]['created'] == created:
-                self.sessions.pop(ident);self.overlay.discard(ident);ended.add(ident)
-        for row, target in result['events']:
-            ident=row.get('game_id');policy=self._policies.get(ident,{})
-            if ident in ended or policy.get('enabled') is False or policy.get('notifications') is False:continue
-            if 'policies' in result and result['policies'].get(ident,0)!=self._policy_versions.get(ident,0):continue
-            # Bound to the exact owned scaler and its source, never any Magpie window.
-            graphics = getattr(self.parent(), '_graphics', None)
-            if graphics and graphics.engine.target and graphics.engine.target[0] == target['pid']:
-                try:
-                    from graphics_enhancement import SCALING_CLASS
-                    from ctypes import wintypes as W
-                    import ctypes
-                    user = ctypes.windll.user32; user.FindWindowW.argtypes = [W.LPCWSTR, W.LPCWSTR]; user.FindWindowW.restype = W.HWND
-                    target['scaler'] = int(user.FindWindowW(SCALING_CLASS, None) or 0)
-                except Exception: pass
-            self.overlay.enqueue(row, target)
+        self.syncWatches()
         if result.get('fetch') and tuple(result['fetch']) not in self._auto_attempted:
             self._auto_attempted.add(tuple(result['fetch']));self.fetchSchema(*result['fetch'])
         if result['view'] and result['view']['ident'] == self._state.get('ident'):
@@ -712,11 +678,12 @@ class Achievements(QObject):
 
     def shutdown(self):
         if self.closed:return
-        self.closed = True; self.timer.stop(); self.overlay.shutdown()
-        self.sessions.clear();self._paused_sessions=[];self._passive.clear();self.polling=False;self._poll_epoch+=1
+        self.closed=True;self.timer.stop();self.fileDelay.stop()
+        paths=self.watcher.files()+self.watcher.directories()
+        if paths:self.watcher.removePaths(paths)
+        self._passive.clear();self.polling=False;self._poll_epoch+=1
         self.controls.shutdown(wait=False,cancel_futures=False)
         # Already-queued switch writes must persist even on an immediate Quit.
-        # All notification delivery is blocked above before any worker finishes.
         self.pool.shutdown(wait=False, cancel_futures=False)
         self.network.shutdown(wait=False, cancel_futures=True)
         self.icons.shutdown(wait=False, cancel_futures=True)

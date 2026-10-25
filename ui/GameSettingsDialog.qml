@@ -82,10 +82,10 @@ Dialog {
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
                 Label { text: "云端连接"; font.bold: true }
                 Label { text: "所有游戏共用此连接。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                Label { text: backend.settings.dav_url || "尚未配置云端连接"; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
+                Label { text: backend.settings.cloud_provider==="github" ? "GitHub · "+(backend.settings.github_repo || "尚未选择仓库") : backend.settings.dav_url || "尚未配置云端连接"; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                 Label { text: "备份文件夹："+(backend.settings.cloud_folder || "尚未选择"); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere; color: Theme.secondary }
-                AppButton { text: "设置 DAV 连接与文件夹"; enabled: !backend.busy; onClicked: dialog.cloudRequested() }
-                Label { text: "AList 示例：http://服务器:5244/dav/，地址需以 /dav/ 结尾。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                AppButton { text: "设置云端连接与文件夹"; enabled: !backend.busy; onClicked: dialog.cloudRequested() }
+                Label { visible: backend.settings.cloud_provider!=="github";text: "AList 示例：http://服务器:5244/dav/，地址需以 /dav/ 结尾。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
                 Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
                 AppButton { id: advanced; text: checked ? "收起启动与监听设置" : "启动与监听设置（无法识别进程时展开）"; checkable: true }
                 ColumnLayout {

@@ -77,6 +77,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             AppButton { text: "DeepSeek / API Key"; checkable: true; checked: matcher.showConnection; onToggled: matcher.showConnection=checked }
             AppButton { text: "批量确认"; onClicked: matcher.batchRequested() }
+            AppButton { objectName: "applyRecommendedSaves";text: "一键应用可靠结果";highlighted: true;enabled: !backend.busy && resultModel.count>0 && matcher.scopeTargets.length>0;onClicked: backend.applyRecommendedMatches(matcher.scopeTargets) }
         }
         Rectangle {
             visible: matcher.showConnection

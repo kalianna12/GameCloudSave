@@ -17,7 +17,7 @@ else:
            'test_input_mapping_ui.py','test_mapping_capture_ui.py','test_mapping_performance_ui.py','test_mapping_model_geometry_ui.py',
            'test_mapping_templates_ui.py','test_save_ui.py','test_async_artwork.py','test_inline_artwork_ui.py',
            'test_immersive_controls.py','test_library_experiences.py','test_launch_ui.py','test_cinema_backdrop.py','test_ui_enrichment.py',
-           'test_time_ui.py','test_save_rclone.py']
+           'test_time_ui.py','test_save_rclone.py','test_achievement_realtime.py','test_achievement_design.py','test_achievement_library.py','test_achievement_scrolling.py','test_release_v27_ui.py','test_installation_refresh_ui.py']
 previous=json.loads((out/(args.phase+'-results.json')).read_text()) if args.resume and (out/(args.phase+'-results.json')).exists() else []
 passed={row['script']:row for row in previous if row['exit_code']==0}
 results=[]

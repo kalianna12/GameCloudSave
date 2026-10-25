@@ -31,10 +31,13 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     engine=QQmlApplicationEngine();install_incubator(engine);engine.rootContext().setContextProperty('backend',bridge);engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')))
     root=engine.rootObjects()[0];root.requestActivate();window=root.findChild(QObject,'inputMappingWindow');result={}
     try:
-        spin(1800);assert window.property('editorReady'),'Idle preload must complete without opening a hidden window';frames=[];window.frameSwapped.connect(lambda:frames.append(time.perf_counter()))
+        spin(1800);assert not window.property('editorReady'),'An unopened editor must not allocate its model and controls';frames=[];window.frameSwapped.connect(lambda:frames.append(time.perf_counter()))
         started=time.perf_counter();QMetaObject.invokeMethod(window,'openMapping')
         while not frames and time.perf_counter()-started<3:spin(2)
         assert frames;result['first_open_frame_ms']=round((frames[-1]-started)*1000,1);spin(100)
+        while not window.property('editorReady') and time.perf_counter()-started<5:spin(4)
+        assert window.property('editorReady'),'First-open asynchronous editor load timed out'
+        result['first_editor_ready_ms']=round((time.perf_counter()-started)*1000,1)
         def keys():return {item.property('token'):shiboken6.getCppPointer(item)[0] for item in walk(window.contentItem()) if (item.property('token') or '').startswith('P:')}
         original=keys();assert len(original)>=16
         pad=window.findChild(QObject,'mappingPadModel');deadline=time.perf_counter()+2

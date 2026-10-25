@@ -113,4 +113,16 @@ def activate(hwnd,pid=None):
         current=W.DWORD();user.GetWindowThreadProcessId(hwnd,ctypes.byref(current))
         if pid and current.value!=pid:return
         if user.IsIconic(hwnd):user.ShowWindow(hwnd,9)
-        user.SetForegroundWindow(hwnd)
+        # A launch originates in the foreground library. Hand the foreground
+        # permission to its child, without keyboard simulation or permanent pin.
+        user.AllowSetForegroundWindow(current.value)
+        own=ctypes.windll.kernel32.GetCurrentThreadId()
+        front=user.GetWindowThreadProcessId(foreground()[0],None)
+        target=user.GetWindowThreadProcessId(hwnd,None);attached=[]
+        try:
+            for thread in {front,target}-{0,own}:
+                if user.AttachThreadInput(own,thread,True):attached.append(thread)
+            user.BringWindowToTop.argtypes=[W.HWND]
+            user.BringWindowToTop(hwnd);user.SetForegroundWindow(hwnd)
+        finally:
+            for thread in reversed(attached):user.AttachThreadInput(own,thread,False)

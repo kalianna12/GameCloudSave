@@ -30,5 +30,5 @@ GridView {
         onChosen: function(kind) { grid.chosen(candidate.id,kind) }
     }
     ScrollBar.vertical: ScrollBar {}
-    Label { visible: grid.count===0; anchors.centerIn: parent; width: Math.max(0,parent.width-30); text: backend.artworkSearching && backend.coverSearchTarget===grid.targetKey ? "正在搜索…" : "输入名称并搜索，候选图片会显示在这里"; color: Theme.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
+    Label { visible: grid.count===0; anchors.centerIn: parent; width: Math.max(0,parent.width-30); text: backend.coverSearchTarget===grid.targetKey && backend.artworkSearching ? "正在搜索…" : backend.coverSearchTarget===grid.targetKey && backend.artworkError ? backend.artworkError : "输入名称并搜索，候选图片会显示在这里"; color: Theme.secondary; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
 }

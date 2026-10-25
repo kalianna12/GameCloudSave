@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     output=ROOT/'test-data/enrichment-ui';output.mkdir(exist_ok=True)
     invoke(root,'openGame',backend.games[0]);spin(300)
     dialog=root.findChild(QObject,'gameDialog');tabs=dialog.findChild(QObject,'gameSettingsTabs')
-    assert dialog.property('visible') and tabs.property('count')==4
+    assert dialog.property('visible') and tabs.property('count')==5
     root.grabWindow().save(str(output/'game-save.png'))
     tabs.setProperty('currentIndex',1);spin(300);root.grabWindow().save(str(output/'game-cover.png'))
     tabs.setProperty('currentIndex',2);spin(300);root.grabWindow().save(str(output/'game-metadata.png'))

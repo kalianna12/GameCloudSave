@@ -8,6 +8,11 @@ def search(store,query,provider,kind='cover',use_ai=False,cancel=None,on_results
     from cover_sources import search as catalog
     from library_enrichment import cached_lookup
     if cancel and cancel.is_set():return []
+    from cover_sources import PROVIDERS
+    if any(p['id']==provider and p['kind'] in ('browser','scrape') for p in PROVIDERS):
+        from image_search import search as scrape
+        rows=scrape(store,query,provider,kind,cancel)
+        on_results(rows);return rows
     rows=[dict(row,artwork_kind=kind,background_state='loading' if row.get('provider')=='steam' and row.get('appid') else 'available' if row.get('background_url') else 'none') for row in catalog(store,query,provider,use_ai,cancel)[:16]]
     if cancel and cancel.is_set():return []
     on_results([dict(row) for row in rows])

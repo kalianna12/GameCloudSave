@@ -63,11 +63,10 @@ class Iteration(unittest.TestCase):
     def test_dav_listing_includes_files_and_folders(self):
         self.store.save_settings({'password':'dummy','dav_url':'https://dav.invalid/fixture'})
         rows=[{'Name':'save.zip','IsDir':False,'Size':12},{'Name':'folder','IsDir':True,'Size':-1}]
-        responses=[subprocess.CompletedProcess([],0,'obscured',''),subprocess.CompletedProcess([],0,json.dumps(rows),'')]
-        with patch('services.run_process',side_effect=responses) as run:
+        with patch('cloud_transport.WebDAV.list',return_value=rows) as run:
             result=self.store.rclone('list')
         self.assertEqual([r['Name'] for r in result],['folder','save.zip'])
-        self.assertNotIn('--dirs-only',run.call_args.args[0])
+        run.assert_called_once_with('')
     def test_text_preview_is_bounded(self):
         with patch.object(self.store,'rclone',return_value='{"进度":42}') as run:
             result=self.store.preview_cloud('电脑',{'Name':'save.json','Size':12,'IsDir':False})

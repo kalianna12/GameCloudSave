@@ -74,7 +74,7 @@ class Store:
         defaults = {'computer': platform.node(), 'playnite': str(detected_playnite) if (detected_playnite/'LiteDB.dll').is_file() else '',
                     'library': str(detected_library) if (detected_library/'games.db').is_file() else '',
                     'snapshots': str(self.profile / 'snapshots'), 'rclone': str(RESOURCES / 'tools/rclone.exe') if (RESOURCES / 'tools/rclone.exe').exists() else shutil.which('rclone') or 'rclone',
-                    'dav_url': '', 'dav_user': '', 'cloud_folder': '',
+                    'dav_url': '', 'dav_user': '', 'cloud_folder': '', 'cloud_provider':'webdav', 'github_repo':'', 'github_branch':'',
                     'cover_size': 210, 'columns': 0, 'gap': 22, 'installed_only': False, 'watch': False,
                     'ai_enabled': False, 'ai_model': 'deepseek-flash',
                     'cloud_separate_computer':False,'cloud_retries':1,'cloud_timeout':20,'watch_upload':True,
@@ -106,6 +106,7 @@ class Store:
 
     def _save_settings(self, values):
         values = dict(values)
+        if 'cloud_provider' in values and values['cloud_provider'] not in ('webdav','github'):raise ValueError('云端来源无效')
         from audio_settings import DEFAULTS,validate
         values.update(validate({key:value for key,value in values.items() if key in DEFAULTS}))
         if 'controller_tilt' in values and type(values['controller_tilt'])!=bool:raise ValueError('摇杆倾斜设置无效')
@@ -127,6 +128,8 @@ class Store:
         if 'shelf_sunlight' in values and type(values['shelf_sunlight'])!=bool:raise ValueError('日光设置无效')
         password = values.pop('password', '')
         ai_key = values.pop('ai_key', '')
+        token = values.pop('github_token', '')
+        if token:(self.profile/'github-token.dpapi').write_bytes(protect(token.encode('utf-8')))
         values.pop('igdb_secret',None)
         if ai_key:
             (self.profile / 'ai-key.dpapi').write_bytes(protect(ai_key.encode('utf-8')))
@@ -140,6 +143,10 @@ class Store:
         self.settings.update(values)
         write_json(self.profile / 'settings.json', self.settings)
         if 'match_ai_weight' in values:self.reweight_matches()
+
+    def github_token(self):
+        path=self.profile/'github-token.dpapi'
+        return protect(path.read_bytes(),True).decode('utf-8') if path.is_file() else ''
 
     def password(self):
         path = self.profile / 'credential.dpapi'
@@ -159,10 +166,15 @@ class Store:
 
     def save_game(self, ident, values):
         values=dict(values)
+        if any(key in values and values[key]!=self.local.get(ident,{}).get(key) for key in ('exe','arguments','working_dir','launch_mode')):
+            values['launch_origin']='manual'
         if values.get('save_dir'):
             from save_groups import complete_directory
             values['save_dir']=str(complete_directory(values['save_dir']))
         self.local[ident] = {**self.local.get(ident, {}), **values}
+        if any(key in values for key in ('exe','install_dir')):
+            from library_installations import installation
+            self.local[ident]['installed']=installation(self.local[ident])
         write_json(self.profile / 'games.json', self.local)
 
     def update_library(self,updates):
@@ -232,6 +244,8 @@ class Store:
         for game in self.games:
             raw=raw_by_id.get(game['id'])
             if raw is None:continue
+            self.local.setdefault(game['id'],{})['install_dir']=raw.get('InstallDirectory') or ''
+            self.update_launch_actions(raw,game['id'])
             fields=playnite_metadata(raw)
             last=max(game.get('last_played') or '',fields.get('last_played') or '')
             merge_metadata(game,fields)
@@ -249,6 +263,7 @@ class Store:
         if count:
             self.groups=sorted(set(self.groups)|{game.get('category','其他') for game in self.games})
             write_json(self.root/'library.json',self.games);write_json(self.root/'groups.json',self.groups)
+            write_json(self.profile/'games.json',self.local)
         return count
 
     def edit_group(self,old,new):
@@ -306,7 +321,9 @@ class Store:
             platform=platform_for(raw); external=str(raw.get('GameId',''))
             row=candidate(raw.get('Name','未命名'),platform,external,raw.get('InstallDirectory') or '')
             row.update(playnite_metadata(raw))
-            row.update(id=str(uuid.UUID(raw['_id']['$guid'])),playnite=True,installed=bool(raw.get('IsInstalled')),raw=raw)
+            from library_installations import launch_fields,installation
+            row.update(launch_fields(raw,self.settings.get('playnite','')))
+            row.update(id=str(uuid.UUID(raw['_id']['$guid'])),playnite=True,installed=installation(row),raw=raw)
             relative=raw.get('CoverImage') or ''
             if relative:
                 cover=safe_child(library/'files',relative.replace('\\','/'))
@@ -350,6 +367,7 @@ class Store:
             # Installation paths are specific to the importing computer.
             self.local[ident] = {**self.local.get(ident, {}), 'install_dir': row.get('InstallDirectory') or '', 'installed':bool(row.get('IsInstalled'))}
             self.update_launch_actions(row,ident)
+            existing[ident]['installed']=self.local[ident]['installed']
             count += 1
         self.games = sorted(existing.values(), key=lambda g: (not g['installed'], g['name'].casefold()))
         write_json(self.root / 'library.json', self.games)
@@ -358,21 +376,12 @@ class Store:
         return count
 
     def update_launch_actions(self,row,ident):
-        direct=[]
-        installation=row.get('InstallDirectory') or ''
-        for action in row.get('GameActions') or []:
-            if not action.get('IsPlayAction',False) or action.get('Type','File')!='File': continue
-            path=(action.get('Path') or '').replace('{InstallDir}',installation)
-            arguments=(action.get('Arguments') or '').replace('{InstallDir}',installation)
-            if '{' in path or '{' in arguments: continue
-            if path and not Path(path).is_absolute() and installation: path=str(Path(installation)/path)
-            if path.lower().endswith('.exe') and Path(path).is_file():
-                direct.append({'exe':path,'arguments':arguments,
-                               'working_dir':(action.get('WorkingDir') or installation).replace('{InstallDir}',installation)})
-        if len(direct)==1 and not any(row.get(field) for field in ('PreScript','PostScript','GameStartedScript')):
-            self.local.setdefault(ident,{})
-            for field,value in direct[0].items(): self.local[ident].setdefault(field,value)
-            self.local[ident].setdefault('launch_mode','direct')
+        from library_installations import launch_fields,installation
+        local=self.local.setdefault(ident,{})
+        fields=launch_fields(row,self.settings.get('playnite',''))
+        if fields and (not local.get('exe') or local.get('launch_origin')=='playnite' or local.get('launch_mode')=='playnite'):
+            local.update(fields)
+        local['installed']=installation(local)
 
     def prepare_thumbnails(self):
         from PySide6.QtGui import QImageReader
@@ -400,47 +409,8 @@ class Store:
         if self.high_thumbnails!=old_high_index: write_json(self.root/'thumbnail-hd-index.json',self.high_thumbnails)
 
     def rclone(self, command, folder='', values=None):
-        if command=='list' and '..' in folder.replace('\\','/').split('/'):
-            raise ValueError('浏览路径不能包含上级跳转符号')
-        settings = {**self.settings, **(values or {})}
-        password = settings.pop('password', '') or self.password()
-        if not password:
-            raise ValueError('请填写 DAV 密码并保存本机设置')
-        url = settings['dav_url'].strip()
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username:
-            raise ValueError('DAV 地址须为 http/https 地址，账号请单独填写')
-        obscured = run_process([settings['rclone'], 'obscure', '-'], input=password, timeout=10)
-        if obscured.returncode:
-            raise ValueError('rclone 密码处理失败')
-        environment = os.environ.copy()
-        environment.update({'RCLONE_CONFIG_GAMECLOUD_TYPE': 'webdav', 'RCLONE_CONFIG_GAMECLOUD_URL': url,
-                            'RCLONE_CONFIG_GAMECLOUD_VENDOR': 'other', 'RCLONE_CONFIG_GAMECLOUD_USER': settings['dav_user'],
-                            'RCLONE_CONFIG_GAMECLOUD_PASS': obscured.stdout.strip()})
-        empty_config = self.profile / 'rclone-empty.conf'
-        empty_config.touch(exist_ok=True)
-        retries=max(1,min(3,int(settings.get('cloud_retries',1))))
-        timeout=max(10,min(120,int(settings.get('cloud_timeout',20))))
-        args = [settings['rclone'], '--config', str(empty_config), '--contimeout', '6s', '--timeout', str(timeout)+'s', '--retries', str(retries)]
-        if command == 'list':
-            args += ['lsjson', 'gamecloud:' + folder.strip('/')]
-        else:
-            args += command
-        result = run_process(args, env=environment, timeout=timeout*retries+30)
-        if result.returncode:
-            # Do not surface raw subprocess output containing server/account details.
-            detail=result.stderr.casefold()
-            if '401' in detail or 'unauthorized' in detail:
-                raise ValueError('DAV 登录失败：请在连接设置中检查用户名和密码')
-            if '403' in detail or 'forbidden' in detail:
-                raise ValueError('DAV 没有读写权限：请选择可写的挂载文件夹')
-            if 'timed out' in detail or 'timeout' in detail:
-                raise ValueError('DAV 连接超时：请检查网络，或在传输选项中增加超时和尝试次数')
-            if '404' in detail or 'not found' in detail:
-                raise ValueError('DAV 目录或文件暂不可用：请刷新目录后重试')
-            raise ValueError('DAV 操作失败：检查地址、账号密码、网络及目录读写权限')
-        return sorted(json.loads(result.stdout),key=lambda row:(not row['IsDir'],row['Name'].casefold())) if command == 'list' else result.stdout
+        from cloud_transport import run
+        return run(self,command,folder,values)
 
     def preview_cloud(self,folder,entry,values=None):
         name=entry['Name']
@@ -616,6 +586,18 @@ class Store:
         local = self.local.get(ident, {})
         process=None
         mode=local.get('launch_mode','direct' if local.get('exe') else 'playnite')
+        if mode=='playnite':
+            try:
+                raw=next((row for row in self.read_playnite() if str(row.get('_id',{}).get('$guid','')).lower()==ident.lower()),None)
+                if raw:
+                    self.update_launch_actions(raw,ident)
+                    mode=local.get('launch_mode',mode)
+            except (ValueError,OSError):pass
+        from library_installations import installation
+        if (local.get('exe') or local.get('install_dir')) and not installation(local):
+            local['installed']=False
+            write_json(self.profile/'games.json',self.local)
+            raise ValueError('本机游戏文件已不存在；存档和资料已保留，请重新安装或选择启动文件')
         if mode=='platform':
             uri=local.get('launch_uri','')
             if not uri.startswith(('steam://rungameid/','com.epicgames.launcher://apps/','uplay://launch/')):

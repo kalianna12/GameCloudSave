@@ -34,6 +34,7 @@ def score_reviews(candidates,scores,weight):
                 candidate['score_note']='已核验本机进度文件；AI 低分未覆盖实际存档证据'
         if candidate.get('sample_backup'):combined=min(.55,combined)
         candidate['confidence']=math.floor(combined*100+.5+1e-9)/100
+        if candidate.get('verified_rule') and candidate.get('has_save_evidence'):candidate['confidence']=max(candidate['confidence'],.92)
     candidates.sort(key=lambda candidate:-candidate['confidence'])
 
 def merge(*identities):
@@ -121,7 +122,7 @@ def match(store,ident,progress=None,cancel=None):
     if item.get('platform')=='steam':local['_steam_appid']=item.get('steam_appid') or item.get('external_id','')
     if not local.get('install_dir') and local.get('exe'):local['install_dir']=str(Path(local['exe']).parent)
     started=time.monotonic();identities={};candidates=[];checked=[];warnings={};modes=[]
-    def combined():return merge(identities.get('ai'),identities.get('web'),identities.get('network'))
+    def combined():return merge(identities.get('ai'),identities.get('web'),identities.get('network'),identities.get('cloud'))
     def result(status='running'):
         identity=combined()
         return {'id':ident,'name':item['name'],'status':status,'message':'找到 '+str(len(candidates))+' 个候选目录' if candidates else '正在查找存档',
@@ -133,6 +134,9 @@ def match(store,ident,progress=None,cancel=None):
     pool=ThreadPoolExecutor(max_workers=3)
     futures={pool.submit(scan,item['name'],local,None,None,cancel):'local'}
     if store.settings.get('match_network',True):futures[pool.submit(cached_network,store,item,local,cancel)]='network'
+    if store.settings.get('match_network',True) and (item.get('steam_appid') or item.get('metadata_steam_appid') or item.get('platform')=='steam' and str(item.get('external_id','')).isdigit()):
+        from steam_cloud_paths import lookup as cloud_lookup
+        futures[pool.submit(cloud_lookup,store,item,local,cancel)]='cloud'
     if store.settings.get('ai_enabled'):futures[pool.submit(cached_ai,store,item,local,cancel)]='ai'
     try:
         while futures and not cancel.is_set():

@@ -56,8 +56,8 @@ class Sources(unittest.TestCase):
         self.assertEqual(repository.summary('ori')['unlocked'],1)
         before=source.stat().st_mtime_ns
         definition.write_bytes(full)
-        updated,events,_=check(repository,session)
-        self.assertTrue(updated);self.assertFalse(events)
+        updated=check(repository,session)
+        self.assertTrue(updated)
         self.assertEqual(source.stat().st_mtime_ns,before)
         self.assertEqual(repository.summary('ori')['unlocked'],2)
     def test_find_exact_appid_and_multiple_accounts(self):

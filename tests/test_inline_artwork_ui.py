@@ -1,4 +1,4 @@
-"""Rendered in-page search/capture with a local public-page fixture, never external browsing."""
+"""All search providers render scraped candidates in-page, using only a local server."""
 from pathlib import Path
 import sys,tempfile,time,threading,json
 from http.server import HTTPServer,BaseHTTPRequestHandler
@@ -50,18 +50,17 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     provider.setProperty('currentIndex',next(i for i,p in enumerate(backend.coverProviders) if p['id']=='google'))
     output=ROOT/'test-data/image-search-review';output.mkdir(exist_ok=True)
     def web_search(pane,retry=False):
-        with patch.object(backend,'artworkBrowserUrl',return_value=url+'/page') as endpoint:
+        from urllib.request import urlopen
+        def fetch(_url,cancel):
+            with urlopen(url+'/page',timeout=3) as r:return r.read().decode().replace('src="/','src="'+url+'/')
+        with patch('image_search.fetch',side_effect=fetch),patch('image_search.rendered',return_value=''),patch('PySide6.QtGui.QDesktopServices.openUrl',side_effect=AssertionError('Search opened an external browser')):
             invoke(pane,'search')
             if retry:
-                spin(100);assert pane.property('browserOpen')
-                old=pane.property('browserToken');endpoint.return_value=url+'/page?retry=1';invoke(pane,'search');spin(50)
-                browser=pane.findChild(QObject,'inlineImageBrowser')
-                assert browser.property('token')!=old and browser.property('searchUrl').toString().endswith('retry=1')
-            end=time.monotonic()+18
-            while pane.property('browserOpen') and time.monotonic()<end:spin(50)
-        assert not pane.property('browserOpen'),(backend.status,messages)
+                old=backend._image_token;invoke(pane,'search');assert backend._image_token!=old
+            idle()
+        assert not pane.property('browserOpen')
         assert len(backend.coverResults)==1,(backend.coverResults,backend.status,messages)
-        spin(250)
+        spin(100)
     def choose_visible():
         grid=picker.findChild(QObject,'gameCoverResults')
         button=next(item for item in walk(grid) if item.objectName()=='chooseArtwork' and item.isVisible())
@@ -69,11 +68,11 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
         assert point.y()<=grid.height()+1,('Artwork button clipped',point.y(),grid.height())
     web_search(picker,retry=True)
     choose_visible()
-    assert backend.coverResults[0]['provider']=='google' and backend.coverResults[0]['width']==360
+    assert backend.coverResults[0]['provider']=='google' and backend.coverResults[0]['image'].endswith('/cover.png')
     root.grabWindow().save(str(output/'inline-cover.png'))
     backend.applyCover('game','g',backend.coverResults[0]['id']);idle();assert store.games[0]['cover']
     tabs.setProperty('currentIndex',1);web_search(picker)
-    result=backend.coverResults[0];assert result['background_url'] and result['width']==1280
+    result=backend.coverResults[0];assert result['background_url'].endswith('/banner.png')
     root.grabWindow().save(str(output/'inline-banner.png'))
     backend.applyBackground('g',result['id']);idle();assert Path(store.games[0]['background']).is_file()
     assert variant(picker.property('record'))['backgroundUrl'].startswith('file:')
@@ -111,9 +110,10 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data') as directory:
     missing=window.findChild(QObject,'enrichOnlyMissing');missing.setProperty('checked',True);invoke(window,'sync');spin(100)
     listing=window.findChild(QObject,'enrichmentPreview');assert listing.property('count')==1
     stale=backend._image_token;backend.clearCoverSearch()
-    assert backend.receiveInlineImages(stale,'google',[{'image':url+'/cover.png'}])==0
+    backend.receiveArtwork(stale,[{'image':url+'/cover.png'}],True,'')
+    assert not backend.coverResults
     window.hide();spin(100)
     errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign','is not defined','is not a type'))]
     assert not errors,errors
     backend.shutdownWatch();backend.pool.shutdown(wait=True);shiboken6.delete(engine);server.shutdown();server.server_close()
-print('PASS: embedded Chromium page capture, portrait/banner results, catalog banner availability, settings apply, same-page completion preview, series excluded and stale capture rejection')
+print('PASS: background scraped image results, portrait/banner results, catalog banner availability, settings apply, same-page completion preview, series excluded and stale search rejection')

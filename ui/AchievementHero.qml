@@ -7,10 +7,11 @@ Rectangle {
     property var game: ({})
     property var info: ({})
     property bool compact: false
-    implicitHeight: compact ? 94 : 116
-    color: Theme.sidebar;radius: Theme.radius
+    implicitHeight: compact ? 108 : 128
+    color: Theme.sidebar;radius: Theme.radius;border.color: Theme.outline
+    ProgressBar { anchors.left: parent.left;anchors.right: parent.right;anchors.bottom: parent.bottom;anchors.margins: 12;height: 3;from: 0;to: Math.max(1,hero.info.total || 0);value: hero.info.unlocked || 0 }
     RowLayout {
-        anchors.fill: parent;anchors.margins: 12;spacing: 14
+        anchors.fill: parent;anchors.margins: 12;anchors.bottomMargin: 24;spacing: 14
         Rectangle {
             Layout.preferredWidth: hero.compact ? 52 : 64;Layout.fillHeight: true;radius: 4;color: Theme.surface;clip: true
             Image { id: cover;anchors.fill: parent;source: hero.game.coverHighUrl || hero.game.coverUrl || "";asynchronous: true;sourceSize.width: 180;fillMode: Image.PreserveAspectCrop }

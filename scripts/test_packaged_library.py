@@ -62,10 +62,11 @@ for design in ('classic', 'shelf', 'cinema', 'atlas'):
         'ReferenceError', 'TypeError', 'is not installed', 'failed to load component',
         'Unhandled ', 'Cannot assign', 'Unable to assign'))]
     assert not errors, (design, errors)
-for name in ('ExperienceData.js', 'WoodMaterials.js', 'InlineImageBrowser.qml', 'CinemaVideo.qml','MappingGamepad.qml','MappingChordEditor.qml'):
+for name in ('ExperienceData.js', 'WoodMaterials.js', 'CinemaVideo.qml','MappingGamepad.qml','MappingChordEditor.qml'):
     assert (program / '_internal/ui' / name).is_file(), name
-for name in ('QtWebEngineProcess.exe', 'Qt6WebEngineQuick.dll', 'Qt6Multimedia.dll'):
-    assert any((program / '_internal').rglob(name)), name
+for name in ('QtWebEngineProcess.exe','Qt6WebEngineCore.dll','rclone.exe'):
+    assert not any((program/'_internal').rglob(name)), name
+assert any((program/'_internal').rglob('Qt6Multimedia.dll'))
 assert (program/'_internal/vgamepad/win/vigem/client/x64/ViGEmClient.dll').is_file()
 from mapping_model import default_profile
 profile=default_profile();report['mapping']={}
@@ -80,5 +81,5 @@ content=(data/'logs/app.log').read_text(encoding='utf-8')
 assert not any(word in content for word in ('ReferenceError','TypeError','is not installed','failed to load component','Unhandled ','Cannot assign','Unable to assign','Binding loop'))
 report['passed'] = True
 (test / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
-print('PASS: portable self-test, four layouts, three mapping models, Qt web/video resources, bundled mapping client and isolated data')
+print('PASS: portable self-test, four layouts, three mapping models, pruned browser/native video resources, mapping client and isolated data')
 print(json.dumps(report))

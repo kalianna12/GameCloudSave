@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             assert manager.summary('local')['unlocked']==33
             assert manager.summary('steam')['unlocked']==1
             assert manager.statistics('steam',30)['unlocked']==1
-            assert manager.repository.configs['steam']['notifications'] is False
+            assert not hasattr(manager,'overlay')
             assert not manager.repository.configs['ambiguous']['source']
             assert any(r['id']=='missing' for r in manager.batchState['errors'])
             for design in ('classic','shelf','cinema','atlas'):
@@ -101,12 +101,12 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             steam_badge=next(b for b in walk(window.contentItem()) if b.objectName()=='achievementBadge' and b.property('gameId')=='steam' and b.isVisible())
             assert steam_badge.property('completed')==1
             from test_achievement_sources import kv
-            revision=backend.libraryRevision;popups=[];manager.overlay.enqueue=lambda *args:popups.append(args)
+            revision=backend.libraryRevision;popups=[]
             started=time.monotonic()
             steam.write_bytes(kv({'cache':{'7':{'data':1},'8':{'data':10},'9':{'data':4}}}))
             until(lambda:steam_badge.property('completed')==2)
             assert manager.summary('steam')['unlocked']==2 and manager.statistics('steam',30)['unlocked']==2
-            assert not manager.sessions and not popups and backend.libraryRevision==revision
+            assert not hasattr(manager,'sessions') and not popups and backend.libraryRevision==revision
             assert not window.findChild(QObject,'achievementsWindow').property('visible')
             window.grabWindow().save(str(output/'steam-passive-live-badge.png'))
             print('PASS: Steam timer -> actual cover badge without opening achievements, ms='+str(round((time.monotonic()-started)*1000)),flush=True)
@@ -133,8 +133,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-librar
             assert library.findChild(QObject,'achievementStatisticsCharts').property('visible')
             pages.setProperty('currentIndex',0);spin(350);library.grabWindow().save(str(output/'dashboard.png'))
             # Counters update in the library without rebuilding the game's model.
-            before=backend.libraryRevision;calls=[];manager.overlay.enqueue=lambda *args:calls.append(args)
-            manager.begin('steam').result(timeout=3);manager.sessions['steam']['target']={'pid':os.getpid(),'hwnd':0}
+            before=backend.libraryRevision;calls=[]
             from test_achievement_sources import kv
             steam.write_bytes(kv({'cache':{'7':{'data':-2147483647},'8':{'data':10},'9':{'data':4}}}))
             manager.poll();until(lambda:manager.summary('steam').get('unlocked')==3)

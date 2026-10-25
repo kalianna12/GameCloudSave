@@ -17,12 +17,8 @@ Item {
         provider.currentIndex=Math.max(0,backend.coverProviders.findIndex(function(row) { return row.id===backend.settings.cover_source }))
         imageUrl.text=""
     }
-    function search() {
-        if((backend.coverProviders[provider.currentIndex] || {}).kind==="browser") {
-            browserToken=backend.beginInlineImages("game",gameId,provider.currentValue,artKind)
-            browserUrl=backend.artworkBrowserUrl(query.text,provider.currentValue,artKind);browserOpen=!!browserToken
-        } else { browserOpen=false;backend.searchTargetArtwork("game",gameId,query.text,provider.currentValue,artKind,ai.checked) }
-    }
+    function resetSearch() { if(backend.coverSearchTarget==="game:"+picker.gameId) backend.clearCoverSearch() }
+    function search() { browserOpen=false;backend.searchTargetArtwork("game",gameId,query.text,provider.currentValue,artKind,ai.checked) }
     onVisibleChanged: if(!visible) { browserOpen=false;backend.cancelArtworkSearch("game",gameId) }
     ColumnLayout {
         anchors.fill: parent; spacing: 8
@@ -38,14 +34,14 @@ Item {
                 Label { text: picker.artKind==="background" ? "用于影院的大背景" : "用于游戏卡片与胶片列表"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
             }
         }
-        TabBar { id: pictureTabs; objectName: "artworkTabs"; Layout.fillWidth: true; onCurrentIndexChanged: picker.browserOpen=false; TabButton { text: "封面" } TabButton { text: "横幅" } }
+        TabBar { id: pictureTabs; objectName: "artworkTabs"; Layout.fillWidth: true; onCurrentIndexChanged: picker.resetSearch(); TabButton { text: "封面" } TabButton { text: "横幅" } }
         RowLayout {
             Layout.fillWidth: true
             AppTextField { id: query; objectName: "gameCoverQuery"; text: picker.gameName; placeholderText: "游戏名称"; Layout.fillWidth: true; Layout.minimumWidth: 80; onAccepted: if(!backend.busy) picker.search() }
-            AppComboBox { id: provider; objectName: "gameCoverProvider"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 180; onCurrentIndexChanged: picker.browserOpen=false }
+            AppComboBox { id: provider; objectName: "gameCoverProvider"; model: backend.coverProviders; textRole: "label"; valueRole: "id"; Layout.preferredWidth: 180; onCurrentIndexChanged: picker.resetSearch() }
             AppButton { objectName: "searchGameArtwork"; text: "搜索图片"; highlighted: true; enabled: !backend.busy && !!query.text; onClicked: picker.search() }
         }
-        CheckBox { id: ai; visible: (backend.coverProviders[provider.currentIndex] || {}).kind!=="browser"; text: "用 DeepSeek 辅助识别游戏名称"; checked: backend.settings.ai_enabled && backend.settings.has_ai_key; enabled: backend.settings.has_ai_key && !backend.busy }
+        CheckBox { id: ai; visible: (backend.coverProviders[provider.currentIndex] || {}).kind==="api"; text: "用 DeepSeek 辅助识别游戏名称"; checked: backend.settings.ai_enabled && backend.settings.has_ai_key; enabled: backend.settings.has_ai_key && !backend.busy }
         RowLayout {
             Layout.fillWidth: true
             AppTextField { id: imageUrl; Layout.fillWidth: true; placeholderText: "图片链接（可选）" }
@@ -53,12 +49,6 @@ Item {
             AppButton { text: "选择本地图片"; enabled: !backend.busy; onClicked: { if(picker.artKind==="background") backend.useLocalBackground(picker.gameId);else backend.useLocalCover("game",picker.gameId) } }
         }
         ProgressBar { visible: backend.artworkSearching && backend.coverSearchTarget==="game:"+picker.gameId; indeterminate: true; Layout.fillWidth: true; Layout.preferredHeight: 3 }
-        Loader {
-            id: browser; Layout.fillWidth: true; Layout.fillHeight: true; visible: picker.browserOpen; active: picker.visible && picker.browserOpen
-            source: active ? "InlineImageBrowser.qml" : ""
-            onLoaded: { item.token=Qt.binding(function() { return picker.browserToken });item.providerId=Qt.binding(function() { return provider.currentValue });item.searchUrl=Qt.binding(function() { return picker.browserUrl }) }
-            Connections { target: browser.item; function onCollected(count) { picker.browserOpen=false } function onDismissed() { picker.browserOpen=false } }
-        }
         ArtworkResults {
             id: results; objectName: "gameCoverResults"; visible: !picker.browserOpen; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             targetKey: "game:"+picker.gameId; kind: picker.artKind

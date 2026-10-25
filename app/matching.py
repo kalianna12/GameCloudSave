@@ -132,15 +132,20 @@ def scan(title, local, identity=None, root_override=None,cancel=None):
     for hint in identity.get('hints',[]):
         root=roots.get(hint['root'])
         if root is None: continue
-        candidate=(root/hint['relative']).resolve()
-        if not candidate.is_relative_to(root.resolve()): continue
-        exists=candidate.is_dir()
-        checked.append({'path':str(candidate),'exists':exists,'reason':hint['reason']})
-        if exists:
-            add(candidate,.8,hint['reason']+'；已确认目录存在','网页路径 + 本地验证' if hint.get('source_url') else 'DeepSeek 建议 + 本地验证')
-            from save_groups import complete_directory
-            key=str(complete_directory(candidate).resolve())
-            if key in found and hint.get('source_url'):found[key]['source_url']=hint['source_url']
+        from itertools import islice
+        choices=list(islice(root.glob(hint['relative']),64)) if '*' in hint['relative'] and hint.get('verified_rule') else [root/hint['relative']]
+        for candidate in choices:
+            candidate=candidate.resolve()
+            if not candidate.is_relative_to(root.resolve()): continue
+            exists=candidate.is_dir()
+            checked.append({'path':str(candidate),'exists':exists,'reason':hint['reason']})
+            if exists:
+                add(candidate,.92 if hint.get('verified_rule') else .8,hint['reason']+'；已确认目录存在','Steam 云存档配置' if hint.get('verified_rule') else '网页路径 + 本地验证' if hint.get('source_url') else '目录建议')
+                from save_groups import complete_directory
+                key=str(complete_directory(candidate).resolve())
+                if key in found:
+                    if hint.get('source_url'):found[key]['source_url']=hint['source_url']
+                    if hint.get('verified_rule'):found[key]['verified_rule']=True
     from local_index import directories
     from concurrent.futures import ThreadPoolExecutor
     name_scores={}

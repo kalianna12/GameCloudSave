@@ -11,14 +11,14 @@ ItemDelegate {
     property bool compact: false
     hoverEnabled: !backend.controllerMode
     padding: 12;leftPadding: 16;rightPadding: 16
-    implicitHeight: Math.max(compact ? 84 : 94,details.implicitHeight+24)
+    implicitHeight: Math.max(compact ? 78 : 88,details.implicitHeight+24)
     Accessible.name: Style.title(record,revealHidden)+"，"+(record.unlocked ? "已解锁" : "未解锁")+"，"+Style.rarity(record)
     background: Rectangle {
-        color: entry.hovered || entry.selected ? Theme.hover : Theme.surface
+        color: entry.selected ? Theme.selection : entry.hovered ? Theme.hover : "transparent"
         radius: Theme.controlRadius
         border.color: entry.selected || entry.activeFocus ? Theme.accent : "transparent"
         Rectangle { x: 0;y: 14;width: 3;height: parent.height-28;radius: 2;color: Theme.accent;visible: !!entry.record.unlocked }
-        Behavior on color { ColorAnimation { duration: Theme.motion ? 100 : 0 } }
+        Rectangle { anchors.bottom: parent.bottom;anchors.left: parent.left;anchors.right: parent.right;anchors.leftMargin: 16;anchors.rightMargin: 16;height: 1;color: Theme.outline;visible: !entry.selected }
     }
     contentItem: RowLayout {
         spacing: 14

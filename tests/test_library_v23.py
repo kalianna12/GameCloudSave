@@ -54,7 +54,7 @@ class LibraryV23(unittest.TestCase):
         self.assertEqual(rows[0]['groups'],['角色扮演']);self.assertEqual(rows[0]['series'],'');self.assertIn('开放世界',rows[0]['tags']);self.assertNotIn('category',store.games[0])
     def test_real_litedb_export_resolves_genre_and_tag_ids(self):
         from services import run_process
-        base=Path(Store().settings['playnite']);dll=base/'LiteDB.dll'
+        base=Path(Store(self.root/'discovery','test').settings['playnite']);dll=base/'LiteDB.dll'
         if not dll.is_file():dll=base/'Playnite/LiteDB.dll'
         if not dll.is_file():self.skipTest('Playnite LiteDB not installed')
         script=self.root/'create-fixture.ps1'

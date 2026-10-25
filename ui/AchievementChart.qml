@@ -38,7 +38,7 @@ Rectangle {
         onPaint: {
             var c=getContext("2d"),w=width,h=height,v=chart.values || [],max=Math.max.apply(null,[1].concat(v)),n=v.length
             c.reset();if(w<10 || h<10) return
-            c.font="10px Microsoft YaHei UI";c.fillStyle=Theme.secondary.toString();c.strokeStyle=Theme.outline.toString();c.lineWidth=1
+            c.font='10px "Microsoft YaHei UI"';c.fillStyle=Theme.secondary.toString();c.strokeStyle=Theme.outline.toString();c.lineWidth=1
             if(chart.kind==="donut") {
                 var radius=Math.max(4,Math.min(h*.4,w*.24)),cx=w*.36,cy=h/2,total=v.reduce(function(a,b){return a+b},0),start=-Math.PI/2
                 c.lineWidth=Math.max(7,radius*.25);c.strokeStyle=Theme.border.toString();c.beginPath();c.arc(cx,cy,radius,0,Math.PI*2);c.stroke()
@@ -46,7 +46,7 @@ Rectangle {
                     var angle=total ? v[d]/total*Math.PI*2*chart.reveal : 0
                     c.strokeStyle=d===0 ? Theme.accent.toString() : Theme.dark ? "#4d5764" : "#c3ccd5";c.beginPath();c.arc(cx,cy,radius,start,start+angle);c.stroke();start+=angle
                 }
-                c.textAlign="left";c.font="11px Microsoft YaHei UI"
+                c.textAlign="left";c.font='11px "Microsoft YaHei UI"'
                 for(var j=0;j<Math.min(2,n);j++) { c.fillStyle=j===0 ? Theme.accent.toString() : Theme.secondary.toString();c.fillRect(w*.68,cy-18+j*25,5,5);c.fillText((j===0 ? "已解锁 " : "未解锁 ")+v[j],w*.68+12,cy-11+j*25) }
                 return
             }

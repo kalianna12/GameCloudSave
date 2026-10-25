@@ -25,14 +25,15 @@ ApplicationWindow {
         var game=backend.games.find(function(game) { return game.id===entry.Name })
         return entry.IsDir && game ? game.name+"（旧备份）" : entry.Name
     }
-    function values() { return {dav_url:server.text,dav_user:user.text,password:password.text,rclone:rclonePath.text,cloud_folder:storage.text,cloud_separate_computer:separateComputer.checked,cloud_retries:retryCount.value,cloud_timeout:timeoutSeconds.value,watch_upload:watchUpload.checked} }
+    function values() { return {cloud_provider:cloudProvider.currentIndex===1 ? "github" : "webdav",github_repo:githubRepo.text,github_branch:githubBranch.text,github_token:githubToken.text,dav_url:server.text,dav_user:user.text,password:password.text,cloud_folder:storage.text,cloud_separate_computer:separateComputer.checked,cloud_retries:retryCount.value,cloud_timeout:timeoutSeconds.value,watch_upload:watchUpload.checked} }
     function openBrowser() {
         openBrowserDraft({})
     }
     function openConnectionSettings() { configTabs.currentIndex=1;openBrowserDraft({},false) }
     function openBrowserDraft(draft,browse) {
         var s=Object.assign({},backend.settings,draft)
-        server.text=s.dav_url; user.text=s.dav_user; password.text=s.password || ""; rclonePath.text=s.rclone
+        server.text=s.dav_url; user.text=s.dav_user; password.text=s.password || ""
+        cloudProvider.currentIndex=s.cloud_provider==="github" ? 1 : 0;githubRepo.text=s.github_repo || "";githubBranch.text=s.github_branch || "";githubToken.text=s.github_token || ""
         storage.text=s.cloud_folder; location.text=s.cloud_folder==="/" ? "" : s.cloud_folder
         separateComputer.checked=s.cloud_separate_computer; retryCount.value=s.cloud_retries; timeoutSeconds.value=s.cloud_timeout; watchUpload.checked=s.watch_upload
         var configured=backend.games.findIndex(function(game) { return game.saveSet })
@@ -49,7 +50,7 @@ ApplicationWindow {
             Label { text: "云端存储"; font.pixelSize: 28; font.bold: true }
             Item { Layout.fillWidth: true }
             Label { text: backend.settings.computer; color: Theme.secondary }
-            AppButton { text: "DAV 连接设置"; onClicked: configTabs.currentIndex=1 }
+            AppButton { text: "云端连接设置"; onClicked: configTabs.currentIndex=1 }
             AppButton { text: "传输选项"; onClicked: configTabs.currentIndex=2 }
         }
         Rectangle {
@@ -71,7 +72,7 @@ ApplicationWindow {
                     TabBar {
                         id: configTabs; objectName: "cloudConfigTabs"; Layout.fillWidth: true; currentIndex: backend.settings.has_password ? 0 : 1
                         TabButton { text: "存储位置"; font.pixelSize: 13 }
-                        TabButton { text: "DAV 连接"; font.pixelSize: 13 }
+                        TabButton { text: "云端连接"; font.pixelSize: 13 }
                         TabButton { text: "传输"; font.pixelSize: 13 }
                     }
                     Label { visible: configTabs.currentIndex===0; text: "备份文件夹"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.bold: true }
@@ -92,18 +93,20 @@ ApplicationWindow {
                         Label { text: "自动备份需在系统设置中开启游戏监听。"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.Wrap; font.pixelSize: 11 }
                     }
                     Label { visible: configTabs.currentIndex===1; text: "连接设置"; font.pixelSize: 18; font.bold: true }
+                    AppComboBox { id: cloudProvider;objectName: "cloudProvider";visible: configTabs.currentIndex===1;Layout.fillWidth: true;model: ["WebDAV / AList","GitHub 仓库"] }
+                    AppTextField { id: githubRepo;objectName: "githubRepository";visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===1;Layout.fillWidth: true;placeholderText: "用户名/仓库名";selectByMouse: true }
+                    AppTextField { id: githubBranch;visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===1;Layout.fillWidth: true;placeholderText: "分支（留空使用默认分支）" }
+                    AppTextField { id: githubToken;visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===1;Layout.fillWidth: true;echoMode: TextInput.Password;placeholderText: backend.settings.has_github_token ? "Token 已保存，留空保持" : "Token（仓库 Contents 读写权限）" }
+                    Label { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===1;Layout.fillWidth: true;wrapMode: Text.Wrap;color: Theme.secondary;text: "建议使用专用私有仓库。单份备份限 90 MiB；更大存档可使用 WebDAV。" }
                     Label { visible: configTabs.currentIndex===1; text: "先连接，再在右侧选择云端文件夹。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary }
-                    Label { visible: configTabs.currentIndex===1; text: "WebDAV 地址" }
-                    AppTextField { visible: configTabs.currentIndex===1; id: server; objectName: "davServer"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 地址" }
-                    Label { visible: configTabs.currentIndex===1; text: "AList 地址需以 /dav/ 结尾，例如 http://服务器:5244/dav/。请填写 WebDAV 地址，而非网页首页地址。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
-                    Label { visible: configTabs.currentIndex===1; text: "用户名" }
-                    AppTextField { visible: configTabs.currentIndex===1; id: user; Layout.fillWidth: true; placeholderText: "用户名"; selectByMouse: true }
-                    Label { visible: configTabs.currentIndex===1; text: "密码" }
-                    AppTextField { visible: configTabs.currentIndex===1; id: password; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: backend.settings.has_password ? "密码已保存，留空保持" : "密码" }
+                    Label { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; text: "WebDAV 地址" }
+                    AppTextField { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; id: server; objectName: "davServer"; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 地址" }
+                    Label { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; text: "AList 地址需以 /dav/ 结尾，例如 http://服务器:5244/dav/。请填写 WebDAV 地址，而非网页首页地址。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 11 }
+                    Label { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; text: "用户名" }
+                    AppTextField { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; id: user; Layout.fillWidth: true; placeholderText: "用户名"; selectByMouse: true }
+                    Label { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; text: "密码" }
+                    AppTextField { visible: configTabs.currentIndex===1 && cloudProvider.currentIndex===0; id: password; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: backend.settings.has_password ? "密码已保存，留空保持" : "密码" }
                     AppButton { visible: configTabs.currentIndex===1; text: "连接并浏览文件夹"; highlighted: true; enabled: !backend.busy; Layout.fillWidth: true; onClicked: backend.browseCloud("",values()) }
-                    AppButton { visible: configTabs.currentIndex===1; id: advanced; text: "高级：rclone 程序位置"; checkable: true; Layout.fillWidth: true }
-                    AppTextField { id: rclonePath; visible: configTabs.currentIndex===1 && advanced.checked; Layout.fillWidth: true; selectByMouse: true }
-                    AppButton { visible: configTabs.currentIndex===1 && advanced.checked; text: "选择 rclone.exe"; Layout.fillWidth: true; onClicked: { var p=backend.pickFile("exe"); if(p) rclonePath.text=p } }
                     Label { text: "单击文件夹进入，单击文件预览。AList 请进入实际挂载文件夹后选择保存位置。"; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.secondary; font.pixelSize: 12 }
                 }
             }
@@ -115,7 +118,7 @@ ApplicationWindow {
                 }
                 RowLayout {
                     AppButton { text: "上一级"; enabled: !backend.busy; onClicked: backend.browseCloud(backend.cloudPath.split('/').slice(0,-1).join('/'),cloud.values()) }
-                    AppTextField { id: location; Layout.fillWidth: true; selectByMouse: true; placeholderText: "DAV 根目录"; onAccepted: backend.browseCloud(text,cloud.values()) }
+                    AppTextField { id: location; Layout.fillWidth: true; selectByMouse: true; placeholderText: "云端根目录"; onAccepted: backend.browseCloud(text,cloud.values()) }
                     AppButton { text: "前往"; enabled: !backend.busy; onClicked: backend.browseCloud(location.text,cloud.values()) }
                     IconButton { iconName: "refresh"; hint: "刷新当前目录"; enabled: !backend.busy; onClicked: backend.browseCloud(backend.cloudPath,cloud.values()) }
                 }

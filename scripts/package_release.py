@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse,hashlib,re,shutil,zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.6.0');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.7.0');args=parser.parse_args()
 if not re.fullmatch(r'\d+\.\d+\.\d+',args.version):raise ValueError('Invalid release version')
 program=ROOT/'dist/GameCloudSave';installer=ROOT/('dist/installers/GameCloudSave-Setup-V'+args.version+'.exe')
 for file in (program/'GameCloudSave.exe',program/'Uninstall.exe',program/'source.zip',program/'使用说明.txt',installer):
@@ -21,7 +21,9 @@ for file in (portable,source):
         if archive.testzip():raise ValueError('Corrupt archive: '+file.name)
         names=archive.namelist()
         if any(name.endswith('.dpapi') or any(part in ('data','test-data','machines','.venv','.git') for part in Path(name).parts) for name in names):raise ValueError('Private data in archive')
-assets=(installer,portable,source)
+report=output/('GameCloudSave-V'+args.version+'-Report.md')
+shutil.copy2(ROOT/('docs/V'+args.version+'完整优化报告.md'),report)
+assets=(installer,portable,source,report)
 checks=[]
 for file in assets:
     with file.open('rb') as stream:checksum=hashlib.file_digest(stream,'sha256').hexdigest()

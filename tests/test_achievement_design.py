@@ -136,7 +136,7 @@ with tempfile.TemporaryDirectory(dir=ROOT/'test-data',prefix='achievement-design
         window.close();gameDialog=host.findChild(QObject,'gameDialog');invoke(gameDialog,'openFor','design-2680010',4);until(lambda:not manager.state['busy']);spin(.12)
         embedded=host.findChild(QObject,'achievementsPane');invoke(embedded,'focusEntries');invoke(gameDialog,'controllerInput','activate');spin(.08)
         assert embedded.property('entryOpen');invoke(gameDialog,'controllerInput','back');until(lambda:not embedded.property('entryOpen'));assert gameDialog.property('visible')
-        errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign','recursive rearrange'))];assert not errors,errors[:15]
+        errors=[m for m in messages if any(s in m for s in ('TypeError','ReferenceError','Binding loop','Cannot assign','Unable to assign','recursive rearrange','font families specified are invalid'))];assert not errors,errors[:15]
         (output/'report.json').write_text(json.dumps(dict(layouts=[900,1280,1440],themes=['violet','light','amber'],details=True,controller_return=True,real_dispatch=True,keyboard=True,live_focus_preserved=True,filters=True,hidden_protected=True,batch=True,recent_navigation=True,embedded=True),indent=2),encoding='utf-8')
         print('PASS: real-icon design review, responsive filters, long details, controller return, live focus, themes, hidden protection, batch and recent navigation')
     finally:

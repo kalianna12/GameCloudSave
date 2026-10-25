@@ -1,14 +1,16 @@
-# GameCloudSave V2.6.0
+# GameCloudSave V2.7.0
 
-Windows 游戏库与存档备份管理器，Python + PySide6 / Qt Quick。支持 Playnite、Steam/Epic/Ubisoft 已安装游戏、本地 EXE/BAT/CMD 扫描；先保存本地快照，再通过 rclone WebDAV 上传到 AList。
+Windows 游戏库与存档备份管理器，Python + PySide6 / Qt Quick。支持 Playnite、Steam/Epic/Ubisoft 已安装游戏、本地 EXE/BAT/CMD 扫描；先保存本地快照，再通过原生 WebDAV 上传到 AList，或保存至自己的 GitHub 仓库。
 
-从 [V2.6.0 发行页](https://github.com/kalianna12/GameCloudSave/releases/tag/v2.6.0) 下载安装包或便携包。安装版运行 `GameCloudSave-Setup-V2.6.0.exe`；便携包完整解压后运行 `GameCloudSave.exe`，无需另装 Python。当前本机便携目录仍可双击上级目录的 `启动新版.bat`。
+从 [V2.7.0 发行页](https://github.com/kalianna12/GameCloudSave/releases/tag/v2.7.0) 下载安装包或便携包。安装版运行 `GameCloudSave-Setup-V2.7.0.exe`；便携包完整解压后运行 `GameCloudSave.exe`，无需另装 Python。当前本机便携目录仍可双击上级目录的 `启动新版.bat`。
 
-V2.6.0 加入双向手柄映射、三种可编辑模型、八组游戏模板和逐键组合编辑，首页提供可关闭的 Steam/Xbox 推荐。完善多存档槽、跨设备账号映射和联网查找，修复全屏、主界面云存档状态与手柄导航；推荐回调按卡片增量更新，减少重复绑定。手柄到键鼠无需新驱动；键鼠到手柄需要单独安装 ViGEmBus，可在映射页检测并按需安装。
+V2.7.0 移除整个游戏内成就弹窗系统，保留成就图标、实时统计和管理页，使用文件变化事件更新进度。图片搜索统一在软件当前页面展示候选；移除内置 Chromium 和 rclone，精简安装体积。新增原生 GitHub 云存储、Steam 本机云存档规则及可靠结果一键应用。Playnite 可读文件动作直接启动，安装状态核验本机文件；独立启动器窗口优先交到前台。
+
+[完整优化与验证报告](docs/V2.7.0完整优化报告.md)
 
 V2.5.0 保留原版默认布局，新增书柜 SHELF、影院 CINEMA、星图 ATLAS，支持分组、随机选游戏、木材与日光、Playnite 媒体和动态星云。整合退出后一次自动备份、本机自动备份默认保留 5 份、页内封面/横幅搜索、资料补全预览、全屏、启动窗口交接和手柄导航修复。存档时间跟随电脑时区；已有资料保留，候选需预览后应用。
 
-[完整发布说明](docs/V2.6.0发布说明.md) · [安装、更新和卸载说明](docs/安装与便携使用说明.txt)
+[完整发布说明](docs/V2.7.0发布说明.md) · [安装、更新和卸载说明](docs/安装与便携使用说明.txt)
 
 V2.3.3 修复重复焦点高亮，首页与子页面支持平滑手柄滚动。手柄操作隐藏鼠标并暂停悬停，移动鼠标恢复；导航提示音可在个性化中关闭。沿用固定标签词库和已有分类保护。[本轮说明与验证](docs/V2.3.3输入与网络.md)
 
@@ -22,7 +24,7 @@ V2.2.1 将存档候选评分默认改为 DeepSeek 75%、本地规则 25%。在�
 
 [使用说明、封面来源及主题接口](docs/V2.2使用说明.md) · [主题示例](docs/theme.example.json) · [主题格式规范](docs/theme.schema.json) · [MIT 许可](LICENSE) · [第三方组件](THIRD_PARTY_NOTICES.md)
 
-V2.2 增加收藏、最近游玩、自定义分类、系列、规则/DeepSeek 分组预览，四种主题和强调色；导入时预览与重复检查；Steam Store、VNDB 软件内封面搜索与其他网站的浏览器入口；逐页设置向导、独立批量确认页、自动备份托盘通知、安装与卸载程序。
+V2.2 增加收藏、最近游玩、自定义分类、系列、规则/DeepSeek 分组预览，四种主题和强调色；导入时预览与重复检查；图片搜索、逐页设置向导、独立批量确认页、自动备份托盘通知、安装与卸载程序。图片来源在 V2.7.0 统一使用页内候选。
 
 云端按游戏名称和原存档目录分级，版本支持备注、校验与跨设备下载恢复。各电脑独立设置本地路径和凭据，不自动覆盖其他设备存档。未运行过的游戏可能没有存档；候选和分数是查找依据，需核对实际文件。
 
@@ -30,7 +32,7 @@ V2.2 增加收藏、最近游玩、自定义分类、系列、规则/DeepSeek �
 
 ## 开发
 
-本机源码预览可双击 workspace 下的 `启动源码版.bat`，使用隔离的 `test-data/source-preview`。V2.6.0 已整合 V2.5.0 之后的改动；见 [发布说明](docs/V2.6.0发布说明.md)。后续日常修改仍仅测试源码，发行文件以对应版本标签为准。
+本机源码预览可双击 workspace 下的 `启动源码版.bat`，使用 `test-data/source-preview`。该目录可能已有个人预览库，自动测试应创建自己的临时目录。V2.7.0 整合此前源码改动；见 [发布说明](docs/V2.7.0发布说明.md)。后续日常修改仍仅测试源码，发行文件以对应版本标签为准。
 
 ```powershell
 python -m venv .venv
@@ -39,7 +41,7 @@ $env:GAMECLOUD_DATA = "$PWD\test-data\source-preview"
 .\.venv\Scripts\python.exe app/main.py
 ```
 
-需要 Windows 和 rclone（放入 PATH）。Playnite 读取使用其 LiteDB.dll，只读导出数据库副本，客户端锁库时提示关闭后重试。扫描不执行游戏启动文件。
+需要 Windows；WebDAV 和 GitHub 云端无需安装 rclone。Playnite 读取使用其 LiteDB.dll，只读导出数据库副本，客户端锁库时提示关闭后重试。扫描不执行游戏启动文件。
 
 ## 验证与打包
 
@@ -51,11 +53,11 @@ $env:GAMECLOUD_DATA = "$PWD\test-data\source-preview"
 .\.venv\Scripts\python.exe tests/test_wizard_batch_v21.py
 $env:VGAMEPAD_SKIP_VIGEMBUS_INSTALL = 'true'
 .\.venv\Scripts\pip.exe install -r requirements-mapping.txt
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.6.0
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.6.0
-.\.venv\Scripts\python.exe scripts/package_release.py --version 2.6.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_release.ps1 -Version 2.7.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 -Version 2.7.0
+.\.venv\Scripts\python.exe scripts/package_release.py --version 2.7.0
 ```
 
-构建脚本从当前虚拟环境打包 Qt、Python、rclone、卸载程序、许可证和 source.zip，无需目标电脑安装 Python。安装包按用户安装，默认创建桌面和开始菜单快捷方式，卸载保留个人数据。构建安装包需网络获取第三方许可文本。
+构建脚本从当前虚拟环境打包精简 Qt、Python、卸载程序、许可证和 source.zip，无需目标电脑安装 Python。安装包按用户安装，默认创建桌面和开始菜单快捷方式，卸载保留个人数据。构建安装包需网络获取第三方许可文本。
 
 日常小版本修改只运行源码并使用隔离数据，不同步便携版或重建安装包；用户明确要求打包与发布后才运行构建脚本。可执行文件固定输出至 `dist/GameCloudSave/GameCloudSave.exe`，不按版本复制多份便携程序。旧版本源码和标签保留于 Git，需要回退时从对应标签重新构建。
